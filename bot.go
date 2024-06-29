@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -10,14 +12,24 @@ import (
 
 type bot struct {
 	l *llm
+	s *stableDiffusion
 }
 
-func newBot(ctx context.Context, dg *discordgo.Session) (*bot, error) {
-	l, err := newLLM(ctx)
-	if err != nil {
-		return nil, err
+func newBot(ctx context.Context, dg *discordgo.Session, llm, sd bool) (*bot, error) {
+	var err error
+	b := &bot{}
+	if llm {
+		if b.l, err = newLLM(ctx); err != nil {
+			b.Close()
+			return nil, err
+		}
 	}
-	b := &bot{l: l}
+	if sd {
+		if b.s, err = newStableDiffusion(); err != nil {
+			b.Close()
+			return nil, err
+		}
+	}
 	_ = dg.AddHandler(b.guildCreate)
 	_ = dg.AddHandler(b.messageCreate)
 	_ = dg.AddHandler(b.ready)
@@ -26,10 +38,18 @@ func newBot(ctx context.Context, dg *discordgo.Session) (*bot, error) {
 }
 
 func (b *bot) Close() error {
+	var err error
 	if b.l != nil {
-		return b.l.Close()
+		if err2 := b.l.Close(); err == nil {
+			err = err2
+		}
 	}
-	return nil
+	if b.s != nil {
+		if err2 := b.s.Close(); err == nil {
+			err = err2
+		}
+	}
+	return err
 }
 
 // A new message is created on any channel that the authenticated bot has
@@ -51,12 +71,30 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	case "pong":
 		_, err = s.ChannelMessageSend(m.ChannelID, "Ping!")
 	default:
-		resp := ""
-		if resp, err = b.l.prompt(content); err != nil {
-			logger.Error("prompt failure", "prompt", content, "err", err)
-			_, _ = s.ChannelMessageSend(m.ChannelID, "Failed: "+err.Error())
-		} else {
-			_, err = s.ChannelMessageSend(m.ChannelID, resp)
+		if b.l != nil {
+			reply := ""
+			if reply, err = b.l.prompt(content); err == nil {
+				_, err = s.ChannelMessageSend(m.ChannelID, reply)
+			}
+		}
+		if b.s != nil && err == nil {
+			// TODO: insert a stand-in, then replace it.
+			p := ""
+			if p, err = b.s.genImage(content); err == nil {
+				var r []byte
+				if r, err = os.ReadFile(p); err == nil {
+					data := discordgo.MessageSend{
+						Files: []*discordgo.File{
+							{
+								Name:        "prompt.png",
+								ContentType: "image/png",
+								Reader:      bytes.NewReader(r),
+							},
+						},
+					}
+					_, err = s.ChannelMessageSendComplex(m.ChannelID, &data)
+				}
+			}
 		}
 	}
 	if err != nil {
@@ -64,7 +102,7 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// when we do not share a server with the user (highly unlikely as we just
 		// received a message) or the user disabled DM in their settings (more
 		// likely).
-		fmt.Println("error sending DM message:", err)
+		logger.Error("bot", "message", content, "error", err)
 	}
 }
 

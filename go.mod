@@ -8,9 +8,12 @@ require (
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.20
 	github.com/schollz/progressbar/v3 v3.14.4
+	github.com/seasonjs/hf-hub v0.0.3
+	github.com/seasonjs/stable-diffusion v0.2.0
 )
 
 require (
+	github.com/ebitengine/purego v0.6.0-alpha.3.0.20240117154336-babd452e909b // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect

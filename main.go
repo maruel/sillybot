@@ -60,6 +60,8 @@ func mainImpl() error {
 
 	token := flag.String("t", "", "Bot Token; get one at https://discord.com/developers/applications")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
+	llm := flag.Bool("llm", true, "Enable LLM output")
+	sd := flag.Bool("sd", false, "Enable Stable Diffusion output")
 	flag.Parse()
 	if *verbose {
 		programLevel.Set(slog.LevelDebug)
@@ -81,7 +83,7 @@ func mainImpl() error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	bot, err := newBot(ctx, dg)
+	bot, err := newBot(ctx, dg, *llm, *sd)
 	if err != nil {
 		return err
 	}
