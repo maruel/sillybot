@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +24,11 @@ type llm struct {
 }
 
 func newLLM(ctx context.Context, cache, model string) (*llm, error) {
+	log, err := os.OpenFile(filepath.Join(cache, "server.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	defer log.Close()
 	l := &llm{
 		port:         8064,
 		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
@@ -40,9 +47,9 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 	logger.Info("Running", "command", cmd, "cwd", cache)
 	l.c = exec.CommandContext(ctx, "/bin/sh", "-c", cmd)
 	l.c.Dir = cache
-	//l.c.Stdout = os.Stdout
-	//l.c.Stderr = os.Stderr
-	if err := l.c.Start(); err != nil {
+	l.c.Stdout = log
+	l.c.Stderr = log
+	if err = l.c.Start(); err != nil {
 		return nil, err
 	}
 	logger.Info("Started llama", "pid", l.c.Process.Pid)
@@ -83,7 +90,11 @@ func (l *llm) prompt(prompt string) (string, error) {
 	if len(r.Choices) != 1 {
 		return "", errors.New("unexpected number of choices")
 	}
+	// Llama-3
 	reply := strings.TrimSuffix(r.Choices[0].Message.Content, "<|eot_id|>")
+	// Gemma-2
+	reply = strings.TrimSuffix(reply, "<end_of_turn>")
+	reply = strings.TrimSpace(reply)
 	logger.Info("llm", "prompt", prompt, "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
 	return reply, nil
 }

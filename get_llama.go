@@ -148,14 +148,18 @@ func main() {
 	}
 
 	// Browse at https://huggingface.co/Mozilla for recent models.
-	// https://huggingface.co/jartine/gemma-2-27b-it-llamafile/tree/main
 	// https://huggingface.co/Mozilla/Meta-Llama-3-70B-Instruct-llamafile/tree/main
-	//mdl := "Meta-Llama-3-8B-Instruct.Q5_K_M"
-	repo := "Mozilla/Meta-Llama-3-8B-Instruct-llamafile"
-	//mdl := "Meta-Llama-3-8B-Instruct.BF16" // Doesn't work on M3 Max.
-	mdl := "Meta-Llama-3-8B-Instruct.F16" // 3x slower than Q5_K_M.
-	//repo := "jartine/gemma-2-27b-it-llamafile"
-	//mdl := "gemma-2-27b-it.Q6_K"
+
+	/*
+		repo := "Mozilla/Meta-Llama-3-8B-Instruct-llamafile"
+		//mdl := "Meta-Llama-3-8B-Instruct.Q5_K_M"
+		//mdl := "Meta-Llama-3-8B-Instruct.BF16" // Doesn't work on M3 Max.
+		mdl := "Meta-Llama-3-8B-Instruct.F16" // 3x slower than Q5_K_M.
+	*/
+
+	// https://huggingface.co/jartine/gemma-2-27b-it-llamafile/tree/main
+	repo := "jartine/gemma-2-27b-it-llamafile"
+	mdl := "gemma-2-27b-it.Q6_K"
 	if err = getHfModelGGUFFromLlamafile(cache, repo, mdl); err != nil {
 		log.Fatal(err)
 	}
