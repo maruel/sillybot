@@ -1,18 +1,4 @@
 // Ask me why is a discord bot.
-//
-// # Setup
-//
-//  1. Discord App
-//     - User settings, Advanced, Enable "Developer Mode"
-//     - User settings, My Account, Enable SECURITY KEYS (or another MFA).
-//  2. https://discord.com/developers/applications
-//     - "New Team"
-//     - "New Application"
-//     - Add name, description, picture
-//     - Setup web server, add TERMS OF SERVICE URL and PRIVACY POLICY URL.
-//     - Bot, Privileged Gateway Intents, Enable: MESSAGE CONTENT INTENT; SERVER MEMBERS INTENT PRESENCE INTENT
-//     - Installation, Guild Install, Scopes: applications.commands, bot
-//     - Installation, Guild Install, Permissions: Connect, Send Messages
 package main
 
 import (

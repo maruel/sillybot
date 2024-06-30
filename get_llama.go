@@ -12,6 +12,9 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
+// Instead, get llamafile + GGUF?
+// https://github.com/Mozilla-Ocho/llamafile/releases/download/0.8.8/llamafile-0.8.8
+
 func main() {
 	model := "Meta-Llama-3-8B-Instruct.Q5_K_M.llamafile"
 	cache, err := os.Getwd()

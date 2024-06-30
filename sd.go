@@ -16,6 +16,8 @@ type stableDiffusion struct {
 }
 
 func newStableDiffusion() (*stableDiffusion, error) {
+	// Investigate https://github.com/SpenserCai/sd-webui-discord
+
 	hapi, err := api.NewApi()
 	if err != nil {
 		return nil, err
