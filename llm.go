@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -33,19 +34,24 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 		port:         8064,
 		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
 	}
-	cmd := strings.Join([]string{
-		"./llamafile",
+	exe := "./llamafile"
+	if runtime.GOOS == "windows" {
+		exe = ".\\llamafile.exe"
+	}
+	cmd := []string{
+		exe,
 		"--model", model + ".gguf",
-		//"--log-file", "llm",
-		//"--log-new",
-		//"--log-disable",
 		"-ngl", "9999",
 		"--nobrowser",
 		"--port", strconv.Itoa(l.port),
-	},
-		" ")
-	logger.Info("Running", "command", cmd, "cwd", cache)
-	l.c = exec.CommandContext(ctx, "/bin/sh", "-c", cmd)
+	}
+	single := strings.Join(cmd, " ")
+	logger.Info("Running", "command", single, "cwd", cache)
+	if runtime.GOOS == "windows" {
+		l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+	} else {
+		l.c = exec.CommandContext(ctx, "/bin/sh", "-c", single)
+	}
 	l.c.Dir = cache
 	l.c.Stdout = log
 	l.c.Stderr = log

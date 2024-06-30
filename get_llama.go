@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/schollz/progressbar/v3"
 )
@@ -130,6 +131,14 @@ func main() {
 		log.Fatal(err)
 	}
 	cache := filepath.Join(wd, "cache")
+	if err = os.MkdirAll(cache, 0o755); err != nil {
+		log.Fatal(err)
+	}
+
+	execSuffix := ""
+	if runtime.GOOS == "windows" {
+		execSuffix = ".exe"
+	}
 
 	// First, download llamafile from GitHub. We always want the latest and
 	// greatest as it is very actively developed and the model we download likely
@@ -138,28 +147,29 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	dst := filepath.Join(cache, name)
+	dst := filepath.Join(cache, name+execSuffix)
 	if err = downloadExec(url, dst); err != nil {
 		log.Fatal(err)
 	}
 	// Copy it as the default executable to use.
-	if err = copyFile(filepath.Join(cache, "llamafile"), dst); err != nil {
+	if err = copyFile(filepath.Join(cache, "llamafile"+execSuffix), dst); err != nil {
 		log.Fatal(err)
 	}
 
 	// Browse at https://huggingface.co/Mozilla for recent models.
 	// https://huggingface.co/Mozilla/Meta-Llama-3-70B-Instruct-llamafile/tree/main
+	// is too large for my computers. :(
 
-	/*
-		repo := "Mozilla/Meta-Llama-3-8B-Instruct-llamafile"
-		//mdl := "Meta-Llama-3-8B-Instruct.Q5_K_M"
-		//mdl := "Meta-Llama-3-8B-Instruct.BF16" // Doesn't work on M3 Max.
-		mdl := "Meta-Llama-3-8B-Instruct.F16" // 3x slower than Q5_K_M.
-	*/
+	// https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile/tree/main
+	repo := "Mozilla/Meta-Llama-3-8B-Instruct-llamafile"
+	mdl := "Meta-Llama-3-8B-Instruct.Q5_K_M"
+	//mdl := "Meta-Llama-3-8B-Instruct.BF16" // Doesn't work on M3 Max.
+	//mdl := "Meta-Llama-3-8B-Instruct.F16" // 3x slower than Q5_K_M.
 
 	// https://huggingface.co/jartine/gemma-2-27b-it-llamafile/tree/main
-	repo := "jartine/gemma-2-27b-it-llamafile"
-	mdl := "gemma-2-27b-it.Q6_K"
+	//repo := "jartine/gemma-2-27b-it-llamafile"
+	//mdl := "gemma-2-27b-it.Q6_K"
+	// Sync with main.go.
 	if err = getHfModelGGUFFromLlamafile(cache, repo, mdl); err != nil {
 		log.Fatal(err)
 	}

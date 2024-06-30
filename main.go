@@ -52,7 +52,12 @@ func mainImpl() error {
 
 	token := flag.String("t", "", "Bot Token; get one at https://discord.com/developers/applications")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
-	llm := flag.Bool("llm", true, "Enable LLM output")
+	// Sync with get_llama.go.
+	// "Meta-Llama-3-8B-Instruct.Q5_K_M"
+	// "Meta-Llama-3-8B-Instruct.BF16"
+	// "Meta-Llama-3-8B-Instruct.F16"
+	// "gemma-2-27b-it.Q6_K"
+	llm := flag.String("llm", "Meta-Llama-3-8B-Instruct.Q5_K_M", "Enable LLM output")
 	sd := flag.Bool("sd", false, "Enable Stable Diffusion output")
 	flag.Parse()
 	if *verbose {

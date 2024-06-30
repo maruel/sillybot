@@ -15,15 +15,11 @@ type bot struct {
 	s *stableDiffusion
 }
 
-func newBot(ctx context.Context, cache string, dg *discordgo.Session, llm, sd bool) (*bot, error) {
+func newBot(ctx context.Context, cache string, dg *discordgo.Session, llm string, sd bool) (*bot, error) {
 	var err error
 	b := &bot{}
-	if llm {
-		//mdl := "Meta-Llama-3-8B-Instruct.Q5_K_M"
-		//mdl := "Meta-Llama-3-8B-Instruct.BF16"
-		//mdl := "Meta-Llama-3-8B-Instruct.F16"
-		mdl := "gemma-2-27b-it.Q6_K"
-		if b.l, err = newLLM(ctx, cache, mdl); err != nil {
+	if llm != "" {
+		if b.l, err = newLLM(ctx, cache, llm); err != nil {
 			b.Close()
 			return nil, err
 		}
