@@ -15,11 +15,14 @@ type bot struct {
 	s *stableDiffusion
 }
 
-func newBot(ctx context.Context, dg *discordgo.Session, llm, sd bool) (*bot, error) {
+func newBot(ctx context.Context, cache string, dg *discordgo.Session, llm, sd bool) (*bot, error) {
 	var err error
 	b := &bot{}
 	if llm {
-		if b.l, err = newLLM(ctx); err != nil {
+		//mdl := "Meta-Llama-3-8B-Instruct.Q5_K_M"
+		//mdl := "Meta-Llama-3-8B-Instruct.BF16"
+		mdl := "Meta-Llama-3-8B-Instruct.F16"
+		if b.l, err = newLLM(ctx, cache, mdl); err != nil {
 			b.Close()
 			return nil, err
 		}
@@ -75,6 +78,8 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			reply := ""
 			if reply, err = b.l.prompt(content); err == nil {
 				_, err = s.ChannelMessageSend(m.ChannelID, reply)
+			} else {
+				_, _ = s.ChannelMessageSend(m.ChannelID, err.Error())
 			}
 		}
 		if b.s != nil && err == nil {

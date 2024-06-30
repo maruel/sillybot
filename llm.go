@@ -16,30 +16,37 @@ import (
 )
 
 type llm struct {
-	c    *exec.Cmd
-	port int
+	c            *exec.Cmd
+	port         int
+	systemPrompt string
 }
 
-func newLLM(ctx context.Context) (*llm, error) {
-	l := &llm{port: 8064}
+func newLLM(ctx context.Context, cache, model string) (*llm, error) {
+	l := &llm{
+		port:         8064,
+		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
+	}
 	cmd := strings.Join([]string{
-		"./Meta-Llama-3-8B-Instruct.Q5_K_M.llamafile",
-		"--log-disable",
+		"./llamafile",
+		"--model", model + ".gguf",
+		//"--log-file", "llm",
+		//"--log-new",
+		//"--log-disable",
 		"-ngl", "9999",
 		"--nobrowser",
 		"--port", strconv.Itoa(l.port),
 	},
 		" ")
-	logger.Info("Running", "command", cmd)
-	l.c = exec.CommandContext(
-		ctx,
-		"/bin/sh",
-		"-c",
-		cmd)
+	logger.Info("Running", "command", cmd, "cwd", cache)
+	l.c = exec.CommandContext(ctx, "/bin/sh", "-c", cmd)
+	l.c.Dir = cache
+	//l.c.Stdout = os.Stdout
+	//l.c.Stderr = os.Stderr
 	if err := l.c.Start(); err != nil {
 		return nil, err
 	}
 	logger.Info("Started llama", "pid", l.c.Process.Pid)
+	// TODO: Ping the server, since it can take a while to start.
 	return l, nil
 }
 
@@ -50,41 +57,11 @@ func (l *llm) Close() error {
 	return nil
 }
 
-type openAIMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type openAIReq struct {
-	Model    string          `json:"model"`
-	Stream   bool            `json:"stream"`
-	Messages []openAIMessage `json:"messages"`
-}
-
-type openAIRespChoices struct {
-	FinishReason string        `json:"finish_reason"`
-	Index        int           `json:"index"`
-	Message      openAIMessage `json:"message"`
-}
-
-type openAIResp struct {
-	Choices []openAIRespChoices `json:"choices"`
-	Created int64               `json:"created"`
-	ID      string              `json:"id"`
-	Model   string              `json:"model"`
-	Object  string              `json:"object"`
-	Usage   struct {
-		CompletionTokens int64 `json:"completion_tokens"`
-		PromptTokens     int64 `json:"prompt_tokens"`
-		TotalTokens      int64 `json:"total_tokens"`
-	} `json:"usage"`
-}
-
 func (l *llm) prompt(prompt string) (string, error) {
-	data := openAIReq{
+	data := openAIChatCompletionRequest{
 		Model: "llama-3",
 		Messages: []openAIMessage{
-			{"system", "You are a terse assistant. You reply with short and sarcastic answers. You are very blunt."},
+			{"system", l.systemPrompt},
 			{"user", prompt},
 		},
 	}
@@ -97,7 +74,7 @@ func (l *llm) prompt(prompt string) (string, error) {
 	}
 	d := json.NewDecoder(resp.Body)
 	d.DisallowUnknownFields()
-	r := openAIResp{}
+	r := openAIChatCompletionsResponse{}
 	err = d.Decode(&r)
 	_ = resp.Body.Close()
 	if err != nil {
@@ -111,18 +88,40 @@ func (l *llm) prompt(prompt string) (string, error) {
 	return reply, nil
 }
 
-func runPrompt(prompt string) (string, error) {
-	ctx := context.Background()
-	cmd := exec.CommandContext(
-		ctx,
-		"./Meta-Llama-3-8B-Instruct.Q5_K_M.llamafile",
-		"-p", "Answer succinctly. "+prompt,
-		"--prompt-cache", "prompt.cache",
-		"--flash-attn",
-		"--log-disable",
-		"--seed", "1",
-		"-ngl", "9999",
-		"--silent-prompt")
-	b, err := cmd.Output()
-	return string(b), err
+// Messages. https://platform.openai.com/docs/api-reference/making-requests
+
+// openAIChatCompletionRequest is documented at
+// https://platform.openai.com/docs/api-reference/chat/create
+type openAIChatCompletionRequest struct {
+	Model    string          `json:"model"`
+	Stream   bool            `json:"stream"`
+	Messages []openAIMessage `json:"messages"`
+}
+
+type openAIMessage struct {
+	// Role is one of system, user or assistant.
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// openAIChatCompletionsResponse is documented at
+// https://platform.openai.com/docs/api-reference/chat/object
+type openAIChatCompletionsResponse struct {
+	Choices []openAIChoices `json:"choices"`
+	Created int64           `json:"created"`
+	ID      string          `json:"id"`
+	Model   string          `json:"model"`
+	Object  string          `json:"object"`
+	Usage   struct {
+		CompletionTokens int64 `json:"completion_tokens"`
+		PromptTokens     int64 `json:"prompt_tokens"`
+		TotalTokens      int64 `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+type openAIChoices struct {
+	// FinishReason is one of stop, legnth, content_filter or tool_calls.
+	FinishReason string        `json:"finish_reason"`
+	Index        int           `json:"index"`
+	Message      openAIMessage `json:"message"`
 }

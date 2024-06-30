@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -43,6 +44,11 @@ func mainImpl() error {
 			logger.Error(msg)
 		}
 	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	cache := filepath.Join(wd, "cache")
 
 	token := flag.String("t", "", "Bot Token; get one at https://discord.com/developers/applications")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
@@ -69,7 +75,7 @@ func mainImpl() error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	bot, err := newBot(ctx, dg, *llm, *sd)
+	bot, err := newBot(ctx, cache, dg, *llm, *sd)
 	if err != nil {
 		return err
 	}
