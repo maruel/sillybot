@@ -104,7 +104,7 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 		logger.Info("llm", "state", "terminated")
 		l.done <- struct{}{}
 	}()
-	logger.Info("llm", "state", "started", "pid", l.c.Process.Pid)
+	logger.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
 	for {
 		if _, err = l.prompt("reply with \"ok\""); err == nil {
 			break

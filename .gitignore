@@ -1,6 +1,2 @@
-/*.ckpt
 /cache
-/*.log
-/*.png
 /token.txt
-/py/venv

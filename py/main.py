@@ -27,6 +27,7 @@ def load():
   if sys.platform == "darwin":
     pipe = pipe.to("mps")
   else:
+    fuck()
     pipe = pipe.to("cuda")
   return pipe
 
@@ -42,11 +43,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
     content_length = int(self.headers['Content-Length'])
     post_data = self.rfile.read(content_length)
     data = json.loads(post_data)
+    # TODO: Structured format and verifications.
     prompt = data["message"]
+    steps = data["steps"]
     img = self._pipe(
         prompt=prompt,
         negative_prompt=self._neg,
-        num_inference_steps=28,
+        num_inference_steps=steps,
         guidance_scale=7.0,
     ).images[0]
     d = io.BytesIO()
@@ -71,7 +74,7 @@ def main():
   if args.token:
     huggingface_hub.login(token=args.token)
   Handler._pipe = load()
-  httpd = http.server.HTTPServer(("", args.port), Handler)
+  httpd = http.server.HTTPServer(("localhost", args.port), Handler)
   print(f"Started server on port {args.port}")
   sys.stdout.flush()
   try:
