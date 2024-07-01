@@ -3,9 +3,16 @@
 A simple discord bot written in Go that natively serves LLM and Stable Diffusion
 (in python for now).
 
-Tested on linux, macOS and Windows.
-
-Tested to work with llama3-8B, Gemma-2 and Stable Diffusion 3 medium.
+- Works on linux, macOS and Windows.
+- LLM: Tested to work with
+  [Meta-Llama3-8B-instruct](https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile)
+  at various quantization levels and [Gemma-2-27B
+  instruct](https://huggingface.co/jartine/gemma-2-27b-it-llamafile) in Q6_K.
+- Image: Tested to work with [Segmind SSD-1B with
+  LLCM](https://huggingface.co/segmind/SSD-1B) which is super fast, and [Stable
+  Diffusion 3
+  Medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium) which is
+  too slow on a M3 Max.
 
 ## Setup
 
