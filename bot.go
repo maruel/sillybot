@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"golang.org/x/sync/errgroup"
 )
 
 func findFreePort() int {
@@ -33,21 +34,31 @@ type bot struct {
 func newBot(ctx context.Context, cache string, dg *discordgo.Session, llm string, sd bool) (*bot, error) {
 	start := time.Now()
 	logger.Info("bot", "state", "initializing")
-	var err error
 	b := &bot{}
-	if llm != "" {
-		if b.l, err = newLLM(ctx, cache, llm); err != nil {
-			b.Close()
-			logger.Info("bot", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond))
-			return nil, err
+	// Both take a while to start. Run them in parallel.
+	eg := errgroup.Group{}
+	eg.Go(func() error {
+		var err error
+		if llm != "" {
+			if b.l, err = newLLM(ctx, cache, llm); err != nil {
+				b.Close()
+				logger.Info("bot", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond))
+			}
 		}
-	}
-	if sd {
-		if b.s, err = newStableDiffusion(ctx, cache); err != nil {
-			b.Close()
-			logger.Info("bot", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond))
-			return nil, err
+		return err
+	})
+	eg.Go(func() error {
+		var err error
+		if sd {
+			if b.s, err = newStableDiffusion(ctx, cache); err != nil {
+				b.Close()
+				logger.Info("bot", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond))
+			}
 		}
+		return err
+	})
+	if err := eg.Wait(); err != nil {
+		return nil, err
 	}
 	_ = dg.AddHandler(b.guildCreate)
 	_ = dg.AddHandler(b.messageCreate)

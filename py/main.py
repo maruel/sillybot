@@ -21,20 +21,32 @@ import diffusers
 import huggingface_hub
 import torch
 
+DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+DTYPE = torch.float16 if DEVICE in ("cuda", "mps") else torch.float32
+
+def get_generator(seed):
+  if DEVICE in ("cuda", "mps"):
+    return torch.Generator(DEVICE).manual_seed(seed)
+  return torch.Generator().manual_seed(seed)
+
 
 def load():
+  if DEVICE == "cuda":
+    torch.backends.cuda.matmul.allow_tf32 = True
   if False:
     pipe = diffusers.StableDiffusion3Pipeline.from_pretrained(
         "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16)
-  else:
+  elif False:
     pipe = diffusers.DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", variant="fp16")
     pipe.load_lora_weights("latent-consistency/lcm-lora-sdxl")
     pipe.scheduler = diffusers.LCMScheduler.from_config(pipe.scheduler.config)
-  if sys.platform == "darwin":
-    pipe = pipe.to("mps", dtype=torch.float16)
   else:
-    fuck()
-    pipe = pipe.to("cuda", dtype=torch.float16)
+    pipe = diffusers.DiffusionPipeline.from_pretrained("segmind/SSD-1B")
+    pipe.load_lora_weights("latent-consistency/lcm-lora-ssd-1b")
+    pipe.scheduler = diffusers.LCMScheduler.from_config(pipe.scheduler.config)
+  pipe = pipe.to(DEVICE, dtype=DTYPE)
+  if DEVICE == "cuda":
+    torch.backends.cuda.matmul.allow_tf32 = True
   return pipe
 
 
@@ -52,11 +64,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # TODO: Structured format and verifications.
     prompt = data["message"]
     steps = data["steps"]
+    seed = data["seed"]
     img = self._pipe(
         prompt=prompt,
         negative_prompt=self._neg,
         num_inference_steps=steps,
-        guidance_scale=7.0,
+        generator=get_generator(seed),
+        # Use 1 when using LoRA.
+        #guidance_scale=7.0,
+        guidance_scale=1.0,
     ).images[0]
     d = io.BytesIO()
     img.save(d, format="png")

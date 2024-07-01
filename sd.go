@@ -19,10 +19,11 @@ import (
 )
 
 type stableDiffusion struct {
-	c     *exec.Cmd
-	done  chan error
-	port  int
-	steps int
+	c       *exec.Cmd
+	done    chan error
+	port    int
+	steps   int
+	loading bool
 }
 
 func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusion, error) {
@@ -32,9 +33,10 @@ func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusion, er
 	}
 	defer log.Close()
 	s := &stableDiffusion{
-		done:  make(chan error),
-		port:  findFreePort(),
-		steps: 1,
+		done:    make(chan error),
+		port:    findFreePort(),
+		steps:   1,
+		loading: true,
 	}
 	python3, err := filepath.Abs(filepath.Join("py", "venv", "bin", "python3"))
 	if err != nil {
@@ -54,7 +56,7 @@ func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusion, er
 		}
 		return s.c.Process.Kill()
 	}
-	logger.Info("sd", "command", s.c.Args, "cwd", cache)
+	logger.Info("sd", "command", s.c.Args, "cwd", cache, "log", log.Name())
 	if err := s.c.Start(); err != nil {
 		return nil, err
 	}
@@ -75,6 +77,7 @@ func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusion, er
 	}
 	s.steps = 4
 	logger.Info("sd", "state", "ready")
+	s.loading = false
 	return s, nil
 }
 
@@ -85,15 +88,24 @@ func (s *stableDiffusion) Close() error {
 }
 
 func (s *stableDiffusion) genImage(prompt string) ([]byte, error) {
+	start := time.Now()
+	if !s.loading {
+		// Otherwise it storms on startup.
+		logger.Info("sd", "prompt", prompt)
+	}
 	data := struct {
 		Message string `json:"message"`
 		Steps   int    `json:"steps"`
-	}{Message: prompt, Steps: s.steps}
+		Seed    int    `json:"seed"`
+	}{Message: prompt, Steps: s.steps, Seed: 1}
 	b, _ := json.Marshal(data)
 	url := fmt.Sprintf("http://localhost:%d/", s.port)
-	start := time.Now()
 	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
 	if err != nil {
+		if !s.loading {
+			// Otherwise it storms on startup.
+			logger.Error("sd", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		}
 		return nil, err
 	}
 	d := json.NewDecoder(resp.Body)
@@ -104,6 +116,7 @@ func (s *stableDiffusion) genImage(prompt string) ([]byte, error) {
 	err = d.Decode(&r)
 	_ = resp.Body.Close()
 	if err != nil {
+		logger.Error("sd", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return nil, err
 	}
 	logger.Info("sd", "prompt", prompt, "duration", time.Since(start).Round(time.Millisecond))

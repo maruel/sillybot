@@ -29,6 +29,7 @@ type llm struct {
 	done         chan error
 	port         int
 	systemPrompt string
+	loading      bool
 }
 
 func newLLM(ctx context.Context, cache, model string) (*llm, error) {
@@ -84,10 +85,11 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 		done:         make(chan error),
 		port:         findFreePort(),
 		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
+		loading:      true,
 	}
 	cmd := []string{llamafile, "--model", modelFile, "-ngl", "9999", "--nobrowser", "--port", strconv.Itoa(l.port)}
 	single := strings.Join(cmd, " ")
-	logger.Info("llm", "command", single, "cwd", cache)
+	logger.Info("llm", "command", single, "cwd", cache, "log", log.Name())
 	if runtime.GOOS == "windows" {
 		l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 	} else {
@@ -115,6 +117,7 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 		}
 	}
 	logger.Info("llm", "state", "ready")
+	l.loading = false
 	return l, nil
 }
 
@@ -125,6 +128,11 @@ func (l *llm) Close() error {
 }
 
 func (l *llm) prompt(prompt string) (string, error) {
+	if !l.loading {
+		// Otherwise it storms on startup.
+		logger.Info("llm", "prompt", prompt)
+	}
+	start := time.Now()
 	data := openAIChatCompletionRequest{
 		Model: "llama-3",
 		Messages: []message{
@@ -134,9 +142,12 @@ func (l *llm) prompt(prompt string) (string, error) {
 	}
 	b, _ := json.Marshal(data)
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
-	start := time.Now()
 	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
 	if err != nil {
+		if !l.loading {
+			// Otherwise it storms on startup.
+			logger.Error("llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		}
 		return "", err
 	}
 	d := json.NewDecoder(resp.Body)
@@ -145,10 +156,13 @@ func (l *llm) prompt(prompt string) (string, error) {
 	err = d.Decode(&r)
 	_ = resp.Body.Close()
 	if err != nil {
+		logger.Error("llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return "", err
 	}
 	if len(r.Choices) != 1 {
-		return "", errors.New("unexpected number of choices")
+		err = errors.New("unexpected number of choices")
+		logger.Error("llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		return "", err
 	}
 	// Llama-3
 	reply := strings.TrimSuffix(r.Choices[0].Message.Content, "<|eot_id|>")
