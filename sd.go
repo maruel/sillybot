@@ -1,3 +1,7 @@
+// Copyright 2024 Marc-Antoine Ruel. All rights reserved.
+// Use of this source code is governed under the Apache License, Version 2.0
+// that can be found in the LICENSE file.
+
 package main
 
 import (
@@ -25,7 +29,7 @@ func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusion, er
 	}
 	defer log.Close()
 	s := &stableDiffusion{port: 8032}
-	s.c = exec.CommandContext(ctx, "python3", filepath.Join("py", "main.py"), "--port", strconv.Itoa(s.port))
+	s.c = exec.CommandContext(ctx, filepath.Join("py", "main.sh"), "--port", strconv.Itoa(s.port))
 	s.c.Stdout = log
 	s.c.Stderr = log
 	if err := s.c.Start(); err != nil {
