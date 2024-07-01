@@ -96,6 +96,7 @@ def main():
   logging.basicConfig(level=logging.DEBUG)
 
   if args.token:
+    # Needed to retrieve SD3.
     huggingface_hub.login(token=args.token)
   Handler._pipe = load()
   httpd = http.server.HTTPServer(("localhost", args.port), Handler)

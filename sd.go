@@ -38,7 +38,14 @@ func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusion, er
 		steps:   1,
 		loading: true,
 	}
-	python3, err := filepath.Abs(filepath.Join("py", "venv", "bin", "python3"))
+	bin := "bin"
+	pythonexe := "python3"
+	if runtime.GOOS == "windows" {
+		bin = "Scripts"
+		// They don't put a python3.exe in the virtualenv... Seriously.
+		pythonexe = "python.exe"
+	}
+	python3, err := filepath.Abs(filepath.Join("py", "venv", bin, pythonexe))
 	if err != nil {
 		return nil, err
 	}

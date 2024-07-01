@@ -8,12 +8,11 @@ A simple discord bot written in Go that natively serves LLM and Stable Diffusion
   [Meta-Llama3-8B-instruct](https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile)
   at various quantization levels and [Gemma-2-27B
   instruct](https://huggingface.co/jartine/gemma-2-27b-it-llamafile) in Q6_K.
-- Image: Tested to work with [Segmind SSD-1B with
-  LLCM](https://huggingface.co/segmind/SSD-1B) which is super fast, and [Stable
+- Image: Tested to work with [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B) coupled with [LCM Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) which is super fast, and [Stable
   Diffusion 3
   Medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium) which is
   too slow on a M3 Max.
-    - Segmind SSD-1B renders under 5s on a M3 Max and 50s on an Intel i7-13700.
+    - Segmind SSD-1B renders under 5s on a MacBook Pro M3 Max, under 50s on an Intel i7-13700 on Ubuntu and under 80s on a i9-13900H on Windows 11.
 
 ## Setup
 
