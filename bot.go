@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -25,7 +24,7 @@ func newBot(ctx context.Context, cache string, dg *discordgo.Session, llm string
 		}
 	}
 	if sd {
-		if b.s, err = newStableDiffusion(); err != nil {
+		if b.s, err = newStableDiffusion(ctx, cache); err != nil {
 			b.Close()
 			return nil, err
 		}
@@ -81,21 +80,20 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 		if b.s != nil && err == nil {
 			// TODO: insert a stand-in, then replace it.
-			p := ""
+			var p []byte
 			if p, err = b.s.genImage(content); err == nil {
-				var r []byte
-				if r, err = os.ReadFile(p); err == nil {
-					data := discordgo.MessageSend{
-						Files: []*discordgo.File{
-							{
-								Name:        "prompt.png",
-								ContentType: "image/png",
-								Reader:      bytes.NewReader(r),
-							},
+				data := discordgo.MessageSend{
+					Files: []*discordgo.File{
+						{
+							Name:        "prompt.png",
+							ContentType: "image/png",
+							Reader:      bytes.NewReader(p),
 						},
-					}
-					_, err = s.ChannelMessageSendComplex(m.ChannelID, &data)
+					},
 				}
+				_, err = s.ChannelMessageSendComplex(m.ChannelID, &data)
+			} else {
+				_, _ = s.ChannelMessageSend(m.ChannelID, err.Error())
 			}
 		}
 	}

@@ -1,71 +1,68 @@
 package main
 
 import (
-	"io"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"time"
-
-	"github.com/seasonjs/hf-hub/api"
-	sd "github.com/seasonjs/stable-diffusion"
 )
 
 type stableDiffusion struct {
-	m      *sd.Model
-	p      sd.FullParams
-	prefix string
+	c    *exec.Cmd
+	port int
 }
 
-func newStableDiffusion() (*stableDiffusion, error) {
-	// Investigate https://github.com/SpenserCai/sd-webui-discord
-
-	hapi, err := api.NewApi()
+func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusion, error) {
+	log, err := os.OpenFile(filepath.Join(cache, "sd.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, err
 	}
-	// https://github.com/leejet/stable-diffusion.cpp
-	modelPath, err := hapi.Model("justinpinkney/miniSD").Get("miniSD.ckpt")
-	//modelPath, err := hapi.Model("latent-consistency/lcm-lora-sdv1-5").Get("pytorch_lora_weights.safetensors")
-	logger.Info("sd", "model", "miniSD.ckpt", "model_path", modelPath)
-	if err != nil {
+	defer log.Close()
+	s := &stableDiffusion{port: 8032}
+	s.c = exec.CommandContext(ctx, "python3", filepath.Join("py", "main.py"), "--port", strconv.Itoa(s.port))
+	s.c.Stdout = log
+	s.c.Stderr = log
+	if err := s.c.Start(); err != nil {
 		return nil, err
 	}
-	opt := sd.DefaultOptions
-	//opt.RngType = sd.STD_DEFAULT_RNG
-	model, err := sd.NewAutoModel(opt)
-	if err != nil {
-		return nil, err
-	}
-	if err = model.LoadFromFile(modelPath); err != nil {
-		model.Close()
-		return nil, err
-	}
-	s := &stableDiffusion{
-		m: model,
-		p: sd.DefaultFullParams,
-		//prefix: "<lora:lcm-lora-sdv1-5:1> ",
-	}
-	//s.p.CfgScale = 1
-	//s.p.SampleMethod = sd.LCM // Incorrect?
-	s.p.SampleSteps = 10
+	logger.Info("sd: started")
 	return s, nil
 }
 
 func (s *stableDiffusion) Close() error {
-	return s.m.Close()
+	logger.Info("sd: Terminating")
+	s.c.Cancel()
+	s.c.Wait()
+	return nil
 }
 
-func (s *stableDiffusion) genImage(prompt string) (string, error) {
-	p := time.Now().Format("2006-01-02T15:04:05") + ".png"
-	f, err := os.Create(p)
+func (s *stableDiffusion) genImage(prompt string) ([]byte, error) {
+	data := struct {
+		Message string `json:"message"`
+	}{Message: prompt}
+	b, _ := json.Marshal(data)
+	url := fmt.Sprintf("http://localhost:%d/", s.port)
+	start := time.Now()
+	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	defer f.Close()
-	writers := []io.Writer{f}
-	// "british short hair cat, high quality"
-	if err = s.m.Predict(s.prefix+prompt, s.p, writers); err != nil {
-		os.Remove(p)
-		return "", err
+	d := json.NewDecoder(resp.Body)
+	d.DisallowUnknownFields()
+	r := struct {
+		Image []byte `json:"image"`
+	}{}
+	err = d.Decode(&r)
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, err
 	}
-	return p, nil
+	logger.Info("sd", "prompt", prompt, "duration", time.Since(start).Round(time.Millisecond))
+	return r.Image, nil
 }

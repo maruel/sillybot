@@ -1,5 +1,8 @@
 # ask-me-why bot
 
+Tested on linux, macOS and Windows.
+
+Tested to work with llama3-8B, Gemma-2 and Stable Diffusion 3 medium.
 
 ## Setup
 
@@ -16,4 +19,3 @@
     - Installation, Guild Install:
         - Scopes: applications.commands, bot
         - Permissions: Connect, Send Messages
-
