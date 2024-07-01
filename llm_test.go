@@ -6,11 +6,16 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 )
 
 func TestLLM(t *testing.T) {
-	l, err := newLLM(context.Background(), "cache", "Meta-Llama-3-8B-Instruct.Q5_K_M")
+	cache, err := filepath.Abs("cache")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, err := newLLM(context.Background(), cache, "Meta-Llama-3-8B-Instruct.Q5_K_M")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -53,15 +54,24 @@ func mainImpl() error {
 		return err
 	}
 	cache := filepath.Join(wd, "cache")
+	if err = os.MkdirAll(cache, 0o755); err != nil {
+		log.Fatal(err)
+	}
 
 	token := flag.String("t", "", "Bot Token; get one at https://discord.com/developers/applications")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
-	// Sync with get_llama.go.
-	// "Meta-Llama-3-8B-Instruct.Q5_K_M"
-	// "Meta-Llama-3-8B-Instruct.BF16"
-	// "Meta-Llama-3-8B-Instruct.F16"
-	// "gemma-2-27b-it.Q6_K"
-	llm := flag.String("llm", "Meta-Llama-3-8B-Instruct.Q5_K_M", "Enable LLM output")
+	// Browse at https://huggingface.co/Mozilla for recent models.
+	// https://huggingface.co/Mozilla/Meta-Llama-3-70B-Instruct-llamafile/tree/main
+	// is too large for my computers. :(
+
+	// https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile/tree/main
+	defaultModel := "Meta-Llama-3-8B-Instruct.Q5_K_M"
+	// defaultModel := "Meta-Llama-3-8B-Instruct.BF16" // Doesn't work on M3 Max.
+	// defaultModel := "Meta-Llama-3-8B-Instruct.F16" // 3x slower than Q5_K_M.
+
+	// https://huggingface.co/jartine/gemma-2-27b-it-llamafile/tree/main
+	//defaultModel := "gemma-2-27b-it.Q6_K"
+	llm := flag.String("llm", defaultModel, "Enable LLM output")
 	sd := flag.Bool("sd", false, "Enable Stable Diffusion output")
 	flag.Parse()
 	if *verbose {
