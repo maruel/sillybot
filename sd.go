@@ -64,7 +64,7 @@ func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusion, er
 		s.done <- s.c.Wait()
 		logger.Info("sd", "state", "terminated")
 	}()
-	logger.Info("sd", "state", "started", "pid", s.c.Process.Pid, "port", s.port)
+	logger.Info("sd", "state", "started", "pid", s.c.Process.Pid, "port", s.port, "message", "Please be patient, it can take several minutes to download everything")
 	for {
 		if _, err = s.genImage("cat"); err == nil {
 			break

@@ -108,7 +108,7 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		_, err = s.ChannelMessageSend(m.ChannelID, "Ping!")
 	default:
 		if strings.HasPrefix(content, "image:") {
-			content := strings.TrimSpace(strings.TrimPrefix(m.Content, "image:"))
+			content := strings.TrimSpace(strings.TrimPrefix(content, "image:"))
 			if b.s == nil {
 				err = errors.New("image generation is not enabled")
 			} else {

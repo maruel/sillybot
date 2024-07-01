@@ -13,6 +13,7 @@ A simple discord bot written in Go that natively serves LLM and Stable Diffusion
   Diffusion 3
   Medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium) which is
   too slow on a M3 Max.
+    - Segmind SSD-1B renders under 5s on a M3 Max and 50s on an Intel i7-13700.
 
 ## Setup
 
