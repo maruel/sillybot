@@ -1,4 +1,4 @@
-// Ask me why is a discord bot.
+// Discord bot to chat with.
 package main
 
 import (
@@ -102,7 +102,7 @@ func mainImpl() error {
 
 func main() {
 	if err := mainImpl(); err != nil {
-		fmt.Fprintf(os.Stderr, "ask-me-why: %v\n", err.Error())
+		fmt.Fprintf(os.Stderr, "discord-bot: %v\n", err.Error())
 		os.Exit(1)
 	}
 }

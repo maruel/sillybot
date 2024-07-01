@@ -1,4 +1,7 @@
-# ask-me-why bot
+# discord bot
+
+A simple discord bot written in Go that natively serves LLM and Stable Diffusion
+(in python for now).
 
 Tested on linux, macOS and Windows.
 
