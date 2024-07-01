@@ -3,7 +3,7 @@
 A simple discord bot written in Go that natively serves LLM and Stable Diffusion
 (in python for now).
 
-- Works on linux, macOS and Windows.
+- Works on Ubuntu (linux), macOS and Windows.
 - LLM: Tested to work with
   [Meta-Llama3-8B-instruct](https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile)
   at various quantization levels and [Gemma-2-27B
