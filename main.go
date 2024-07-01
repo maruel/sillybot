@@ -92,11 +92,11 @@ func mainImpl() error {
 	if err = dg.Open(); err != nil {
 		return err
 	}
-	logger.Info("Bot is now running.  Press CTRL-C to exit.")
+	logger.Info("discord", "state", "running", "info", "Press CTRL-C to exit.")
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-c
-	logger.Info("Quitting")
+	logger.Info("discord", "state", "terminating")
 	err = dg.Close()
 	if err2 := bot.Close(); err == nil {
 		err = err2

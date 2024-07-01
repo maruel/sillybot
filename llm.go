@@ -24,18 +24,20 @@ import (
 
 type llm struct {
 	c            *exec.Cmd
+	done         chan struct{}
 	port         int
 	systemPrompt string
 }
 
 func newLLM(ctx context.Context, cache, model string) (*llm, error) {
-	log, err := os.OpenFile(filepath.Join(cache, "server.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+	log, err := os.OpenFile(filepath.Join(cache, "llm.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, err
 	}
 	defer log.Close()
 	l := &llm{
-		port:         8064,
+		done:         make(chan struct{}),
+		port:         findFreePort(),
 		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
 	}
 	exe := "./llamafile"
@@ -50,7 +52,7 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 		"--port", strconv.Itoa(l.port),
 	}
 	single := strings.Join(cmd, " ")
-	logger.Info("Running", "command", single, "cwd", cache)
+	logger.Info("llm", "command", single, "cwd", cache)
 	if runtime.GOOS == "windows" {
 		l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 	} else {
@@ -62,24 +64,39 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 	if err = l.c.Start(); err != nil {
 		return nil, err
 	}
-	logger.Info("Started llama", "pid", l.c.Process.Pid)
-	// TODO: Ping the server, since it can take a while to start.
+	go func() {
+		l.c.Wait()
+		logger.Info("llm", "state", "terminated")
+		l.done <- struct{}{}
+	}()
+	logger.Info("llm", "state", "started", "pid", l.c.Process.Pid)
+	for {
+		if _, err = l.prompt("reply with \"ok\""); err == nil {
+			break
+		}
+		select {
+		case <-l.done:
+			return nil, errors.New("failed to start")
+		default:
+		}
+	}
+	logger.Info("llm", "state", "ready")
 	return l, nil
 }
 
 func (l *llm) Close() error {
-	logger.Info("Terminating llama")
+	logger.Info("llm", "state", "terminating")
 	l.c.Cancel()
-	l.c.Wait()
+	<-l.done
 	return nil
 }
 
 func (l *llm) prompt(prompt string) (string, error) {
 	data := openAIChatCompletionRequest{
 		Model: "llama-3",
-		Messages: []openAIMessage{
-			{"system", l.systemPrompt},
-			{"user", prompt},
+		Messages: []message{
+			{system, l.systemPrompt},
+			{user, prompt},
 		},
 	}
 	b, _ := json.Marshal(data)
@@ -114,14 +131,21 @@ func (l *llm) prompt(prompt string) (string, error) {
 // openAIChatCompletionRequest is documented at
 // https://platform.openai.com/docs/api-reference/chat/create
 type openAIChatCompletionRequest struct {
-	Model    string          `json:"model"`
-	Stream   bool            `json:"stream"`
-	Messages []openAIMessage `json:"messages"`
+	Model    string    `json:"model"`
+	Stream   bool      `json:"stream"`
+	Messages []message `json:"messages"`
 }
 
-type openAIMessage struct {
-	// Role is one of system, user or assistant.
-	Role    string `json:"role"`
+type role string
+
+const (
+	system    role = "system"
+	user      role = "user"
+	assistant role = "assistant"
+)
+
+type message struct {
+	Role    role   `json:"role"`
 	Content string `json:"content"`
 }
 
@@ -142,7 +166,7 @@ type openAIChatCompletionsResponse struct {
 
 type openAIChoices struct {
 	// FinishReason is one of stop, legnth, content_filter or tool_calls.
-	FinishReason string        `json:"finish_reason"`
-	Index        int           `json:"index"`
-	Message      openAIMessage `json:"message"`
+	FinishReason string  `json:"finish_reason"`
+	Index        int     `json:"index"`
+	Message      message `json:"message"`
 }

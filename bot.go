@@ -8,10 +8,21 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
+
+func findFreePort() int {
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
 
 type bot struct {
 	l *llm
@@ -19,17 +30,21 @@ type bot struct {
 }
 
 func newBot(ctx context.Context, cache string, dg *discordgo.Session, llm string, sd bool) (*bot, error) {
+	start := time.Now()
+	logger.Info("bot", "state", "initializing")
 	var err error
 	b := &bot{}
 	if llm != "" {
 		if b.l, err = newLLM(ctx, cache, llm); err != nil {
 			b.Close()
+			logger.Info("bot", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond))
 			return nil, err
 		}
 	}
 	if sd {
 		if b.s, err = newStableDiffusion(ctx, cache); err != nil {
 			b.Close()
+			logger.Info("bot", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond))
 			return nil, err
 		}
 	}
@@ -37,6 +52,7 @@ func newBot(ctx context.Context, cache string, dg *discordgo.Session, llm string
 	_ = dg.AddHandler(b.messageCreate)
 	_ = dg.AddHandler(b.ready)
 	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentGuildPresences | discordgo.IntentDirectMessages
+	logger.Info("bot", "state", "ready", "duration", time.Since(start).Round(time.Millisecond))
 	return b, nil
 }
 
@@ -58,7 +74,7 @@ func (b *bot) Close() error {
 // A new message is created on any channel that the authenticated bot has
 // access to.
 func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	logger.Debug("messageCreate", "event", m.Message, "state", s.State)
+	logger.Debug("discord", "event", "messageCreate", "message", m.Message, "state", s.State)
 	// Ignore all messages created by the bot itself. This isn't required in this
 	// specific example but it's a good practice.
 	botid := s.State.User.ID
@@ -66,7 +82,7 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 	content := strings.TrimSpace(strings.TrimPrefix(m.Content, fmt.Sprintf("<@%s>", botid)))
-	logger.Info("messageCreate", "author", m.Author.Username, "message", content)
+	logger.Info("discord", "event", "messageCreate", "author", m.Author.Username, "message", content)
 	var err error
 	switch content {
 	case "ping":
@@ -106,14 +122,14 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// when we do not share a server with the user (highly unlikely as we just
 		// received a message) or the user disabled DM in their settings (more
 		// likely).
-		logger.Error("bot", "message", content, "error", err)
+		logger.Error("discord", "message", content, "error", err)
 	}
 }
 
 // A new guild is joined.
 func (b *bot) guildCreate(s *discordgo.Session, event *discordgo.GuildCreate) {
-	logger.Debug("guildCreate", "event", event.Guild)
-	logger.Info("guildCreate", "name", event.Guild.Name)
+	logger.Debug("discord", "event", "guildCreate", "event", event.Guild)
+	logger.Info("discord", "event", "guildCreate", "name", event.Guild.Name)
 	if event.Guild.Unavailable {
 		return
 	}
@@ -126,6 +142,6 @@ func (b *bot) guildCreate(s *discordgo.Session, event *discordgo.GuildCreate) {
 }
 
 func (b *bot) ready(s *discordgo.Session, r *discordgo.Ready) {
-	logger.Debug("ready", "session", s, "event", r)
-	logger.Info("ready", "user", r.User.String())
+	logger.Debug("discord", "event", "ready", "session", s, "event", r)
+	logger.Info("discord", "event", "ready", "user", r.User.String())
 }
