@@ -26,7 +26,7 @@ import (
 
 type llm struct {
 	c            *exec.Cmd
-	done         chan struct{}
+	done         chan error
 	port         int
 	systemPrompt string
 }
@@ -81,7 +81,7 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 	}
 	defer log.Close()
 	l := &llm{
-		done:         make(chan struct{}),
+		done:         make(chan error),
 		port:         findFreePort(),
 		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
 	}
@@ -100,9 +100,8 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 		return nil, err
 	}
 	go func() {
-		l.c.Wait()
+		l.done <- l.c.Wait()
 		logger.Info("llm", "state", "terminated")
-		l.done <- struct{}{}
 	}()
 	logger.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
 	for {
@@ -110,8 +109,8 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 			break
 		}
 		select {
-		case <-l.done:
-			return nil, errors.New("failed to start")
+		case err := <-l.done:
+			return nil, fmt.Errorf("failed to start: %w", err)
 		default:
 		}
 	}
@@ -122,8 +121,7 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 func (l *llm) Close() error {
 	logger.Info("llm", "state", "terminating")
 	l.c.Cancel()
-	<-l.done
-	return nil
+	return <-l.done
 }
 
 func (l *llm) prompt(prompt string) (string, error) {

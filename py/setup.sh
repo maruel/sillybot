@@ -12,5 +12,5 @@ fi
 source venv/bin/activate
 
 pip install -U pip
-pip install -U accelerate diffusers protobuf sentencepiece torch transformers
+pip install -U accelerate diffusers peft protobuf sentencepiece setuptools torch transformers
 pip freeze > requirements.txt

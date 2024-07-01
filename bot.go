@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -81,7 +82,12 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == botid {
 		return
 	}
-	content := strings.TrimSpace(strings.TrimPrefix(m.Content, fmt.Sprintf("<@%s>", botid)))
+	user := fmt.Sprintf("<@%s>", botid)
+	if !strings.HasPrefix(m.Content, user) {
+		// Ignore.
+		return
+	}
+	content := strings.TrimSpace(strings.TrimPrefix(m.Content, user))
 	logger.Info("discord", "event", "messageCreate", "author", m.Author.Username, "message", content)
 	var err error
 	switch content {
@@ -90,31 +96,38 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	case "pong":
 		_, err = s.ChannelMessageSend(m.ChannelID, "Ping!")
 	default:
-		if b.l != nil {
-			reply := ""
-			if reply, err = b.l.prompt(content); err == nil {
-				_, err = s.ChannelMessageSend(m.ChannelID, reply)
+		if strings.HasPrefix(content, "image:") {
+			content := strings.TrimSpace(strings.TrimPrefix(m.Content, "image:"))
+			if b.s == nil {
+				err = errors.New("image generation is not enabled")
 			} else {
-				_, _ = s.ChannelMessageSend(m.ChannelID, err.Error())
+				// TODO: insert a stand-in, then replace it.
+				var p []byte
+				if p, err = b.s.genImage(content); err == nil {
+					data := discordgo.MessageSend{
+						Files: []*discordgo.File{
+							{
+								Name:        "prompt.png",
+								ContentType: "image/png",
+								Reader:      bytes.NewReader(p),
+							},
+						},
+					}
+					_, err = s.ChannelMessageSendComplex(m.ChannelID, &data)
+				}
+			}
+		} else {
+			if b.l == nil {
+				err = errors.New("text generation is not enabled")
+			} else {
+				reply := ""
+				if reply, err = b.l.prompt(content); err == nil {
+					_, err = s.ChannelMessageSend(m.ChannelID, reply)
+				}
 			}
 		}
-		if b.s != nil && err == nil {
-			// TODO: insert a stand-in, then replace it.
-			var p []byte
-			if p, err = b.s.genImage(content); err == nil {
-				data := discordgo.MessageSend{
-					Files: []*discordgo.File{
-						{
-							Name:        "prompt.png",
-							ContentType: "image/png",
-							Reader:      bytes.NewReader(p),
-						},
-					},
-				}
-				_, err = s.ChannelMessageSendComplex(m.ChannelID, &data)
-			} else {
-				_, _ = s.ChannelMessageSend(m.ChannelID, err.Error())
-			}
+		if err != nil {
+			_, _ = s.ChannelMessageSend(m.ChannelID, "ERROR: "+err.Error())
 		}
 	}
 	if err != nil {
