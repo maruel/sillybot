@@ -19,12 +19,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bwmarrin/discordgo"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"golang.org/x/sync/errgroup"
 )
 
+// Logging configuration.
 var (
 	programLevel = &slog.LevelVar{}
 	logger       = slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
@@ -34,21 +35,40 @@ var (
 	}))
 )
 
+// loadModels loads the models.
+//
+// Both take a while to start, so load them in parallel.
+func loadModels(ctx context.Context, cache string, llm string, sd bool) (*llmServer, *stableDiffusionServer, error) {
+	start := time.Now()
+	logger.Info("models", "state", "initializing")
+	eg := errgroup.Group{}
+	var l *llmServer
+	var s *stableDiffusionServer
+	eg.Go(func() error {
+		var err error
+		if llm != "" {
+			if l, err = newLLM(ctx, cache, llm); err != nil {
+				logger.Info("sd", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
+			}
+		}
+		return err
+	})
+	eg.Go(func() error {
+		var err error
+		if sd {
+			if s, err = newStableDiffusion(ctx, cache); err != nil {
+				logger.Info("sd", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/sd.log'")
+			}
+		}
+		return err
+	})
+	err := eg.Wait()
+	logger.Info("models", "state", "ready", "error", err, "duration", time.Since(start).Round(time.Millisecond))
+	return l, s, err
+}
+
 func mainImpl() error {
 	slog.SetDefault(logger)
-	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
-		msg := fmt.Sprintf(format, a...)
-		switch msgL {
-		case discordgo.LogDebug:
-			logger.Debug(msg)
-		case discordgo.LogInformational:
-			logger.Info(msg)
-		case discordgo.LogWarning:
-			logger.Warn(msg)
-		case discordgo.LogError:
-			logger.Error(msg)
-		}
-	}
 	wd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -71,8 +91,8 @@ func mainImpl() error {
 
 	// https://huggingface.co/jartine/gemma-2-27b-it-llamafile/tree/main
 	//defaultModel := "gemma-2-27b-it.Q6_K"
-	llm := flag.String("llm", defaultModel, "Enable LLM output")
-	sd := flag.Bool("sd", false, "Enable Stable Diffusion output")
+	llmModel := flag.String("llm", defaultModel, "Enable LLM output")
+	sdUse := flag.Bool("sd", false, "Enable Stable Diffusion output")
 	flag.Parse()
 	if *verbose {
 		programLevel.Set(slog.LevelDebug)
@@ -84,34 +104,28 @@ func mainImpl() error {
 		}
 		*token = strings.TrimSpace(string(b))
 	}
-	dg, err := discordgo.New("Bot " + *token)
-	if err != nil {
-		return err
-	}
-	if *verbose {
-		// It's very verbose.
-		//dg.LogLevel = discordgo.LogDebug
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	bot, err := newBot(ctx, cache, dg, *llm, *sd)
+
+	l, sd, err := loadModels(ctx, cache, *llmModel, *sdUse)
+	if l != nil {
+		defer l.Close()
+	}
+	if sd != nil {
+		defer sd.Close()
+	}
 	if err != nil {
 		return err
 	}
-	// Open a websocket connection to Discord and begin listening.
-	if err = dg.Open(); err != nil {
+	d, err := newDiscordBot(*token, *verbose, l, sd)
+	if err != nil {
 		return err
 	}
-	logger.Info("discord", "state", "running", "info", "Press CTRL-C to exit.")
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-c
-	logger.Info("discord", "state", "terminating")
-	err = dg.Close()
-	if err2 := bot.Close(); err == nil {
-		err = err2
-	}
-	return err
+	return d.Close()
 }
 
 func main() {

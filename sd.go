@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-type stableDiffusion struct {
+type stableDiffusionServer struct {
 	c       *exec.Cmd
 	done    chan error
 	port    int
@@ -26,13 +26,13 @@ type stableDiffusion struct {
 	loading bool
 }
 
-func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusion, error) {
+func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusionServer, error) {
 	log, err := os.OpenFile(filepath.Join(cache, "sd.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, err
 	}
 	defer log.Close()
-	s := &stableDiffusion{
+	s := &stableDiffusionServer{
 		done:    make(chan error),
 		port:    findFreePort(),
 		steps:   1,
@@ -88,13 +88,13 @@ func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusion, er
 	return s, nil
 }
 
-func (s *stableDiffusion) Close() error {
+func (s *stableDiffusionServer) Close() error {
 	logger.Info("sd", "state", "terminating")
 	s.c.Cancel()
 	return <-s.done
 }
 
-func (s *stableDiffusion) genImage(prompt string) ([]byte, error) {
+func (s *stableDiffusionServer) genImage(prompt string) ([]byte, error) {
 	start := time.Now()
 	if !s.loading {
 		// Otherwise it storms on startup.

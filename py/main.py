@@ -24,29 +24,34 @@ import torch
 DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 DTYPE = torch.float16 if DEVICE in ("cuda", "mps") else torch.float32
 
+
 def get_generator(seed):
+  """Returns a deterministic random number generator."""
   if DEVICE in ("cuda", "mps"):
     return torch.Generator(DEVICE).manual_seed(seed)
   return torch.Generator().manual_seed(seed)
 
 
-def load():
-  if DEVICE == "cuda":
-    torch.backends.cuda.matmul.allow_tf32 = True
-  if False:
-    pipe = diffusers.StableDiffusion3Pipeline.from_pretrained(
-        "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16)
-  elif False:
-    pipe = diffusers.DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", variant="fp16")
-    pipe.load_lora_weights("latent-consistency/lcm-lora-sdxl")
-    pipe.scheduler = diffusers.LCMScheduler.from_config(pipe.scheduler.config)
-  else:
-    pipe = diffusers.DiffusionPipeline.from_pretrained("segmind/SSD-1B")
-    pipe.load_lora_weights("latent-consistency/lcm-lora-ssd-1b")
-    pipe.scheduler = diffusers.LCMScheduler.from_config(pipe.scheduler.config)
-  pipe = pipe.to(DEVICE, dtype=DTYPE)
-  if DEVICE == "cuda":
-    torch.backends.cuda.matmul.allow_tf32 = True
+def load_sd3():
+  """Returns Stable Diffusion 3 Medium. Requires authentication to Hugging
+  Face."""
+  return diffusers.StableDiffusion3Pipeline.from_pretrained(
+      "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16)
+
+
+def load_sdxl_lcm_lora():
+  """Loads Stable Diffusion 1.0 XL with LCM LoRa."""
+  pipe = diffusers.DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", variant="fp16")
+  pipe.load_lora_weights("latent-consistency/lcm-lora-sdxl")
+  pipe.scheduler = diffusers.LCMScheduler.from_config(pipe.scheduler.config)
+  return pipe
+
+
+def load_segmind_ssd_1b_lcm_lora():
+  """Returns Segmind SSD 1B with LCM LoRa."""
+  pipe = diffusers.DiffusionPipeline.from_pretrained("segmind/SSD-1B")
+  pipe.load_lora_weights("latent-consistency/lcm-lora-ssd-1b")
+  pipe.scheduler = diffusers.LCMScheduler.from_config(pipe.scheduler.config)
   return pipe
 
 
@@ -98,7 +103,9 @@ def main():
   if args.token:
     # Needed to retrieve SD3.
     huggingface_hub.login(token=args.token)
-  Handler._pipe = load()
+  if DEVICE == "cuda":
+    torch.backends.cuda.matmul.allow_tf32 = True
+  Handler._pipe = load_segmind_ssd_1b_lcm_lora().to(DEVICE, dtype=DTYPE)
   httpd = http.server.HTTPServer(("localhost", args.port), Handler)
   logging.info(f"Started server on port {args.port}")
 

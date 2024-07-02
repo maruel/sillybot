@@ -24,7 +24,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
-type llm struct {
+type llmServer struct {
 	c            *exec.Cmd
 	done         chan error
 	port         int
@@ -32,7 +32,7 @@ type llm struct {
 	loading      bool
 }
 
-func newLLM(ctx context.Context, cache, model string) (*llm, error) {
+func newLLM(ctx context.Context, cache, model string) (*llmServer, error) {
 	execSuffix := ""
 	if runtime.GOOS == "windows" {
 		execSuffix = ".exe"
@@ -81,7 +81,7 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 		return nil, err
 	}
 	defer log.Close()
-	l := &llm{
+	l := &llmServer{
 		done:         make(chan error),
 		port:         findFreePort(),
 		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
@@ -98,6 +98,12 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 	l.c.Dir = cache
 	l.c.Stdout = log
 	l.c.Stderr = log
+	l.c.Cancel = func() error {
+		if runtime.GOOS != "windows" {
+			return l.c.Process.Signal(os.Interrupt)
+		}
+		return l.c.Process.Kill()
+	}
 	if err = l.c.Start(); err != nil {
 		return nil, err
 	}
@@ -121,13 +127,13 @@ func newLLM(ctx context.Context, cache, model string) (*llm, error) {
 	return l, nil
 }
 
-func (l *llm) Close() error {
+func (l *llmServer) Close() error {
 	logger.Info("llm", "state", "terminating")
 	l.c.Cancel()
 	return <-l.done
 }
 
-func (l *llm) prompt(prompt string) (string, error) {
+func (l *llmServer) prompt(prompt string) (string, error) {
 	if !l.loading {
 		// Otherwise it storms on startup.
 		logger.Info("llm", "prompt", prompt)

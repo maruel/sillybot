@@ -6,15 +6,12 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"golang.org/x/sync/errgroup"
 )
 
 func findFreePort() int {
@@ -26,66 +23,56 @@ func findFreePort() int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-type bot struct {
-	l *llm
-	s *stableDiffusion
+type discordBot struct {
+	dg *discordgo.Session
+	l  *llmServer
+	s  *stableDiffusionServer
 }
 
-func newBot(ctx context.Context, cache string, dg *discordgo.Session, llm string, sd bool) (*bot, error) {
-	start := time.Now()
-	logger.Info("bot", "state", "initializing")
-	b := &bot{}
-	// Both take a while to start. Run them in parallel.
-	eg := errgroup.Group{}
-	eg.Go(func() error {
-		var err error
-		if llm != "" {
-			if b.l, err = newLLM(ctx, cache, llm); err != nil {
-				b.Close()
-				logger.Info("bot", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond))
-			}
+// newDiscordBot opens a websocket connection to Discord and begin listening.
+func newDiscordBot(token string, verbose bool, l *llmServer, s *stableDiffusionServer) (*discordBot, error) {
+	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
+		msg := fmt.Sprintf(format, a...)
+		switch msgL {
+		case discordgo.LogDebug:
+			logger.Debug(msg)
+		case discordgo.LogInformational:
+			logger.Info(msg)
+		case discordgo.LogWarning:
+			logger.Warn(msg)
+		case discordgo.LogError:
+			logger.Error(msg)
 		}
-		return err
-	})
-	eg.Go(func() error {
-		var err error
-		if sd {
-			if b.s, err = newStableDiffusion(ctx, cache); err != nil {
-				b.Close()
-				logger.Info("bot", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond))
-			}
-		}
-		return err
-	})
-	if err := eg.Wait(); err != nil {
+	}
+	dg, err := discordgo.New("Bot " + token)
+	if err != nil {
 		return nil, err
 	}
-	_ = dg.AddHandler(b.guildCreate)
-	_ = dg.AddHandler(b.messageCreate)
-	_ = dg.AddHandler(b.ready)
+	if verbose {
+		// It's very verbose.
+		//dg.LogLevel = discordgo.LogDebug
+	}
+	if err = dg.Open(); err != nil {
+		dg.Close()
+		return nil, err
+	}
+	d := &discordBot{dg: dg, l: l, s: s}
+	_ = dg.AddHandler(d.guildCreate)
+	_ = dg.AddHandler(d.messageCreate)
+	_ = dg.AddHandler(d.ready)
 	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentGuildPresences | discordgo.IntentDirectMessages
-	logger.Info("bot", "state", "ready", "duration", time.Since(start).Round(time.Millisecond))
-	return b, nil
+	logger.Info("discord", "state", "running", "info", "Press CTRL-C to exit.")
+	return d, nil
 }
 
-func (b *bot) Close() error {
-	var err error
-	if b.l != nil {
-		if err2 := b.l.Close(); err == nil {
-			err = err2
-		}
-	}
-	if b.s != nil {
-		if err2 := b.s.Close(); err == nil {
-			err = err2
-		}
-	}
-	return err
+func (d *discordBot) Close() error {
+	logger.Info("discord", "state", "terminating")
+	return d.dg.Close()
 }
 
 // A new message is created on any channel that the authenticated bot has
 // access to.
-func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	logger.Debug("discord", "event", "messageCreate", "message", m.Message, "state", s.State)
 	// Ignore all messages created by the bot itself. This isn't required in this
 	// specific example but it's a good practice.
@@ -109,12 +96,12 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	default:
 		if strings.HasPrefix(content, "image:") {
 			content := strings.TrimSpace(strings.TrimPrefix(content, "image:"))
-			if b.s == nil {
+			if d.s == nil {
 				err = errors.New("image generation is not enabled")
 			} else {
 				// TODO: insert a stand-in, then replace it.
 				var p []byte
-				if p, err = b.s.genImage(content); err == nil {
+				if p, err = d.s.genImage(content); err == nil {
 					data := discordgo.MessageSend{
 						Files: []*discordgo.File{
 							{
@@ -128,11 +115,11 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 				}
 			}
 		} else {
-			if b.l == nil {
+			if d.l == nil {
 				err = errors.New("text generation is not enabled")
 			} else {
 				reply := ""
-				if reply, err = b.l.prompt(content); err == nil {
+				if reply, err = d.l.prompt(content); err == nil {
 					_, err = s.ChannelMessageSend(m.ChannelID, reply)
 				}
 			}
@@ -151,7 +138,7 @@ func (b *bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 }
 
 // A new guild is joined.
-func (b *bot) guildCreate(s *discordgo.Session, event *discordgo.GuildCreate) {
+func (d *discordBot) guildCreate(s *discordgo.Session, event *discordgo.GuildCreate) {
 	logger.Debug("discord", "event", "guildCreate", "event", event.Guild)
 	logger.Info("discord", "event", "guildCreate", "name", event.Guild.Name)
 	if event.Guild.Unavailable {
@@ -165,7 +152,7 @@ func (b *bot) guildCreate(s *discordgo.Session, event *discordgo.GuildCreate) {
 	}
 }
 
-func (b *bot) ready(s *discordgo.Session, r *discordgo.Ready) {
+func (d *discordBot) ready(s *discordgo.Session, r *discordgo.Ready) {
 	logger.Debug("discord", "event", "ready", "session", s, "event", r)
 	logger.Info("discord", "event", "ready", "user", r.User.String())
 }
