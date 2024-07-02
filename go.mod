@@ -8,6 +8,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.20
 	github.com/schollz/progressbar/v3 v3.14.4
+	github.com/slack-go/slack v0.13.0
 	golang.org/x/sync v0.7.0
 )
 

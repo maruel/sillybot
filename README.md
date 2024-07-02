@@ -1,7 +1,7 @@
-# discord bot
+# Silly Bot
 
-A simple discord bot written in Go that natively serves LLM and Stable Diffusion
-(in python for now).
+A simple Discord and Slack bot written in Go that natively serves LLM and Stable
+Diffusion (in python for now).
 
 - Works on Ubuntu (linux), macOS and Windows.
 - LLM: Tested to work with
@@ -14,7 +14,7 @@ A simple discord bot written in Go that natively serves LLM and Stable Diffusion
   too slow on a M3 Max.
     - Segmind SSD-1B renders under 5s on a MacBook Pro M3 Max, under 50s on an Intel i7-13700 on Ubuntu and under 80s on a i9-13900H on Windows 11.
 
-## Setup
+## Discord
 
 1. Discord App:
     - User settings, Advanced, Enable "Developer Mode"
@@ -29,3 +29,52 @@ A simple discord bot written in Go that natively serves LLM and Stable Diffusion
     - Installation, Guild Install:
         - Scopes: applications.commands, bot
         - Permissions: Connect, Send Messages
+
+## Slack
+
+- https://api.slack.com/apps
+- Socket Mode
+    - Enable Socket Mode.
+- OAuth & Permissions
+    - Scopes, Bot Token Scopes, Add an OAuth Scope. _This is about what the bot
+      has access to. The more it has access to, the more 'damage' it can do._
+        - app_mentions:read
+        - channels:join
+        - channels:history
+        - channels:read
+        - channels:write.topic
+        - chat:write
+        - chat:write.customize
+        - files:write
+        - groups:history
+        - groups:read
+        - groups:write
+        - groups:write.topic
+        - im:history
+        - im:read
+        - im:write
+        - metadata.message:read
+        - mpim:history
+        - mpim:read
+        - mpim:write
+        - mpim:write.history
+        - reactions:read
+        - team:read
+        - users:read
+        - users:write
+- App Home
+    - Show Tabs, Messages Tab, "Allow users to send Slash commands and messages
+      from the messages tab"
+- Event Subscriptions
+    - Enable Events
+    - Subscript to bot events. _This is which events the bots receive. This more
+      it receives the more spam it gets._
+        - app_mention
+        - message.channels
+        - message.mpim
+        - member_joined_channel
+- Install App
+    - Install to a workspace you are admin of
+
+Read more at https://api.slack.com/apis/socket-mode. In particular, you cannot
+add an app using Socket Mode to the public Slack App Directory.

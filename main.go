@@ -78,7 +78,8 @@ func mainImpl() error {
 		log.Fatal(err)
 	}
 
-	token := flag.String("t", "", "Bot Token; get one at https://discord.com/developers/applications")
+	bottoken := flag.String("bot-token", "", "Bot Token; get one at https://discord.com/developers/applications or https://api.slack.com/apps")
+	apptoken := flag.String("app-token", "", "App Token; get one at https://api.slack.com/apps; do not use with discord")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
 	// Browse at https://huggingface.co/Mozilla for recent models.
 	// https://huggingface.co/Mozilla/Meta-Llama-3-70B-Instruct-llamafile/tree/main
@@ -94,15 +95,43 @@ func mainImpl() error {
 	llmModel := flag.String("llm", defaultModel, "Enable LLM output")
 	sdUse := flag.Bool("sd", false, "Enable Stable Diffusion output")
 	flag.Parse()
+
+	if len(flag.Args()) != 1 {
+		return errors.New("must pass command discord or slack")
+	}
+	botKind := flag.Args()[0]
+	switch botKind {
+	case "discord":
+		if *bottoken == "" {
+			b, err := os.ReadFile("token_discord.txt")
+			if err != nil || len(b) < 10 {
+				return errors.New("-bot-token or a 'token_discord.txt' is required")
+			}
+			*bottoken = strings.TrimSpace(string(b))
+		}
+		if *apptoken != "" {
+			return errors.New("do not use -app-token with discord")
+		}
+	case "slack":
+		if *bottoken == "" {
+			b, err := os.ReadFile("token_slack_bot.txt")
+			if err != nil || len(b) < 10 {
+				return errors.New("-bot-token or a 'token_slack_bot.txt' is required")
+			}
+			*bottoken = strings.TrimSpace(string(b))
+		}
+		if *apptoken == "" {
+			a, err := os.ReadFile("token_slack_app.txt")
+			if err != nil || len(a) < 10 {
+				return errors.New("-app-token or a 'token_slack_app.txt' is required")
+			}
+			*apptoken = strings.TrimSpace(string(a))
+		}
+	default:
+		return errors.New("must pass command discord or slack")
+	}
 	if *verbose {
 		programLevel.Set(slog.LevelDebug)
-	}
-	if *token == "" {
-		b, err := os.ReadFile("token.txt")
-		if err != nil || len(b) < 10 {
-			return errors.New("-t or a 'token.txt' is required")
-		}
-		*token = strings.TrimSpace(string(b))
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -117,19 +146,37 @@ func mainImpl() error {
 	if err != nil {
 		return err
 	}
-	d, err := newDiscordBot(*token, *verbose, l, sd)
-	if err != nil {
-		return err
-	}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-	<-c
-	return d.Close()
+
+	switch botKind {
+	case "discord":
+		d, err := newDiscordBot(*bottoken, *verbose, l, sd)
+		if err != nil {
+			return err
+		}
+		<-c
+		return d.Close()
+	case "slack":
+		s, err := newSlackBot(*apptoken, *bottoken, *verbose, l, sd)
+		if err != nil {
+			return err
+		}
+		ctx2, cancel2 := context.WithCancel(ctx)
+		defer cancel2()
+		go func() {
+			<-c
+			cancel2()
+		}()
+		return s.Run(ctx2)
+	default:
+		return errors.New("internal error")
+	}
 }
 
 func main() {
-	if err := mainImpl(); err != nil {
+	if err := mainImpl(); err != nil && err != context.Canceled {
 		fmt.Fprintf(os.Stderr, "discord-bot: %v\n", err.Error())
 		os.Exit(1)
 	}
