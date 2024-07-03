@@ -6,6 +6,7 @@ package sillybot
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -197,52 +198,104 @@ func (l *LLMInstruct) Close() error {
 
 // Prompt prompts the LLM and returns the reply.
 func (l *LLMInstruct) Prompt(ctx context.Context, prompt string) (string, error) {
+	start := time.Now()
 	lvl := slog.LevelInfo
 	if l.loading {
 		// Otherwise it storms on startup.
 		lvl = slog.LevelDebug
 	}
 	slog.Log(ctx, lvl, "llm", "prompt", prompt)
-	start := time.Now()
-	data := openAIChatCompletionRequest{
-		Model: "ignored",
-		Messages: []message{
-			{system, l.systemPrompt},
-			{user, prompt},
-		},
+	msgs := []message{
+		{system, l.systemPrompt},
+		{user, prompt},
 	}
+	//reply, err := l.promptBlocking(ctx, msgs)
+	reply, err := l.promptStreaming(ctx, msgs)
+	if err != nil {
+		lvl := slog.LevelDebug
+		if !l.loading || err == context.Canceled {
+			lvl = slog.LevelError
+		}
+		slog.Log(ctx, lvl, "llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		return reply, err
+	}
+	// Llama-3
+	reply = strings.TrimSuffix(reply, "<|eot_id|>")
+	// Gemma-2
+	reply = strings.TrimSuffix(reply, "<end_of_turn>")
+	reply = strings.TrimSpace(reply)
+	slog.Info("llm", "prompt", prompt, "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
+	return reply, nil
+}
+
+func (l *LLMInstruct) promptBlocking(ctx context.Context, msgs []message) (string, error) {
+	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs}
 	b, _ := json.Marshal(data)
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		if !l.loading || err == context.Canceled {
-			lvl = slog.LevelError
-		}
-		slog.Log(ctx, lvl, "llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return "", err
 	}
 	d := json.NewDecoder(resp.Body)
 	d.DisallowUnknownFields()
-	r := openAIChatCompletionsResponse{}
-	err = d.Decode(&r)
+	msg := openAIChatCompletionsResponse{}
+	err = d.Decode(&msg)
 	_ = resp.Body.Close()
 	if err != nil {
-		slog.Error("llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return "", err
 	}
-	if len(r.Choices) != 1 {
-		err = errors.New("unexpected number of choices")
-		slog.Error("llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+	if len(msg.Choices) != 1 {
+		return "", errors.New("unexpected number of choices")
+	}
+	return msg.Choices[0].Message.Content, nil
+}
+
+func (l *LLMInstruct) promptStreaming(ctx context.Context, msgs []message) (string, error) {
+	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs, Stream: true}
+	b, _ := json.Marshal(data)
+	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
 		return "", err
 	}
-	// Llama-3
-	reply := strings.TrimSuffix(r.Choices[0].Message.Content, "<|eot_id|>")
-	// Gemma-2
-	reply = strings.TrimSuffix(reply, "<end_of_turn>")
-	reply = strings.TrimSpace(reply)
-	slog.Info("llm", "prompt", prompt, "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
+	defer resp.Body.Close()
+	r := bufio.NewReader(resp.Body)
+	reply := ""
+	for {
+		line, err := r.ReadBytes('\n')
+		if err == io.EOF {
+			err = nil
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		if !bytes.HasPrefix(line, []byte("data: ")) {
+			panic(line)
+		}
+		d := json.NewDecoder(bytes.NewReader(line[len("data: "):]))
+		d.DisallowUnknownFields()
+		msg := openAIChatCompletionsStreamResponse{}
+		err = d.Decode(&msg)
+		if err != nil {
+			slog.Error("llm", "data", string(line))
+			return "", err
+		}
+		if len(msg.Choices) != 1 {
+			return "", errors.New("unexpected number of choices")
+		}
+		word := msg.Choices[0].Delta.Content
+		slog.Debug("llm", "word", word)
+		reply += word
+	}
 	return reply, nil
 }
 
@@ -285,10 +338,31 @@ type openAIChatCompletionsResponse struct {
 }
 
 type openAIChoices struct {
-	// FinishReason is one of stop, legnth, content_filter or tool_calls.
+	// FinishReason is one of "stop", "length", "content_filter" or "tool_calls".
 	FinishReason string  `json:"finish_reason"`
 	Index        int     `json:"index"`
 	Message      message `json:"message"`
+}
+
+// openAIChatCompletionsStreamResponse is not documented?
+type openAIChatCompletionsStreamResponse struct {
+	Choices []openAIStreamChoices `json:"choices"`
+	Created int64                 `json:"created"`
+	ID      string                `json:"id"`
+	Model   string                `json:"model"`
+	Object  string                `json:"object"`
+}
+
+type openAIStreamChoices struct {
+	Delta openAIStreamDelta `json:"delta"`
+	// FinishReason is one of null, "stop", "length", "content_filter" or "tool_calls".
+	FinishReason string  `json:"finish_reason"`
+	Index        int     `json:"index"`
+	Message      message `json:"message"`
+}
+
+type openAIStreamDelta struct {
+	Content string `json:"content"`
 }
 
 // Tools
