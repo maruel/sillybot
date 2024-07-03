@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/maruel/sillybot"
@@ -32,7 +33,7 @@ type slackLogger struct {
 }
 
 func (s *slackLogger) Output(l int, msg string) error {
-	logger.Info(s.p, "msg", msg)
+	slog.Info(s.p, "msg", msg)
 	return nil
 }
 
@@ -67,25 +68,25 @@ func newSlackBot(apptoken, bottoken string, verbose bool, l *sillybot.LLMInstruc
 }
 
 func (s *slackBot) Run(ctx context.Context) error {
-	logger.Info("slack", "state", "running")
+	slog.Info("slack", "state", "running")
 	go s.socketEventLoop(ctx)
 	return s.sc.RunContext(ctx)
 }
 
 func (s *slackBot) socketEventLoop(ctx context.Context) {
-	logger.Info("slack", "state", "eventloop")
+	slog.Info("slack", "state", "eventloop")
 	for evt := range s.sc.Events {
 		s.handleSocketEvent(ctx, evt)
 		if evt.Request != nil {
-			logger.Debug("slack", "type", "ack", "envelopeid", evt.Request.EnvelopeID)
+			slog.Debug("slack", "type", "ack", "envelopeid", evt.Request.EnvelopeID)
 			if evt.Request.EnvelopeID != "" {
 				var pld interface{}
 				if err := s.sc.AckCtx(ctx, evt.Request.EnvelopeID, pld); err != nil {
-					logger.Error("slack", "type", "ack", "error", err)
+					slog.Error("slack", "type", "ack", "error", err)
 				}
 			}
 		} else {
-			logger.Debug("slack", "type", "no_ack")
+			slog.Debug("slack", "type", "no_ack")
 		}
 	}
 }
@@ -93,34 +94,34 @@ func (s *slackBot) socketEventLoop(ctx context.Context) {
 func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) {
 	switch evt.Type {
 	case "incoming_error":
-		logger.Error("slack", "event", evt.Type, "payload", evt)
+		slog.Error("slack", "event", evt.Type, "payload", evt)
 	case "connecting", "connection_error":
-		logger.Info("slack", "state", evt.Type)
+		slog.Info("slack", "state", evt.Type)
 	case "hello":
-		logger.Info("slack", "payload", evt.Type)
+		slog.Info("slack", "payload", evt.Type)
 		if evt.Request.NumConnections != 1 {
-			logger.Warn("slack", "error", "more than one active connection!", "num_connections", evt.Request.NumConnections)
+			slog.Warn("slack", "error", "more than one active connection!", "num_connections", evt.Request.NumConnections)
 		}
 	case "connected":
 		a, err := s.api.AuthTest()
 		if err != nil {
-			logger.Error("slack", "event", evt.Type, "error", err)
+			slog.Error("slack", "event", evt.Type, "error", err)
 			return
 		}
-		logger.Info("slack", "event", evt.Type, "user", a.User, "userid", a.UserID, "botid", a.BotID)
+		slog.Info("slack", "event", evt.Type, "user", a.User, "userid", a.UserID, "botid", a.BotID)
 		s.botID = a.BotID
 		s.userID = a.UserID
 	case "events_api":
 		eventsAPIEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
 		if !ok {
-			logger.Error("slack", "event", evt.Type, "error", "unknown", "payload", evt)
+			slog.Error("slack", "event", evt.Type, "error", "unknown", "payload", evt)
 			return
 		}
 		switch eventsAPIEvent.Type {
 		case "event_callback":
 			switch ev := eventsAPIEvent.InnerEvent.Data.(type) {
 			case *slackevents.AppMentionEvent:
-				logger.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "text", ev.Text, "channel", ev.Channel)
+				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "text", ev.Text, "channel", ev.Channel)
 				if ev.User == s.userID {
 					// We posted something.
 					return
@@ -157,38 +158,38 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 					}
 				}
 				if err != nil {
-					logger.Error("slack", "event", "failed posting message", "error", err)
+					slog.Error("slack", "event", "failed posting message", "error", err)
 				}
 			case *slackevents.MemberJoinedChannelEvent:
-				logger.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel)
+				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel)
 			case *slackevents.MessageEvent:
-				logger.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel, "text", ev.Text)
+				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel, "text", ev.Text)
 			default:
-				logger.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "error", "unknown", "payload", evt)
+				slog.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "error", "unknown", "payload", evt)
 			}
 		default:
-			logger.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "payload", evt)
+			slog.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "payload", evt)
 		}
 	case "interactive":
 		callback, ok := evt.Data.(slack.InteractionCallback)
 		if !ok {
-			logger.Error("slack", "event", evt.Type, "error", "unknown", "payload", evt)
+			slog.Error("slack", "event", evt.Type, "error", "unknown", "payload", evt)
 			return
 		}
 		switch callback.Type {
 		case "block_actions", "dialog_submission", "shortcut", "view_submission":
-			logger.Info("slack", "event", evt.Type, "callback", callback.Type)
+			slog.Info("slack", "event", evt.Type, "callback", callback.Type)
 		default:
-			logger.Warn("slack", "event", evt.Type, "error", "unknown", "callback", callback.Type)
+			slog.Warn("slack", "event", evt.Type, "error", "unknown", "callback", callback.Type)
 		}
 	case "slash_commands":
 		cmd, ok := evt.Data.(slack.SlashCommand)
 		if !ok {
-			logger.Error("slack", "event", evt.Type, "error", "unknown", "payload", evt)
+			slog.Error("slack", "event", evt.Type, "error", "unknown", "payload", evt)
 			return
 		}
-		logger.Info("slack", "event", evt.Type, "user", cmd.UserID, "channel", cmd.ChannelID, "command", cmd.Command)
+		slog.Info("slack", "event", evt.Type, "user", cmd.UserID, "channel", cmd.ChannelID, "command", cmd.Command)
 	default:
-		logger.Error("slack", "event", evt.Type, "error", "unknown event", "payload", evt)
+		slog.Error("slack", "event", evt.Type, "error", "unknown event", "payload", evt)
 	}
 }

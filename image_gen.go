@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -65,15 +66,15 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 		}
 		return ig.c.Process.Kill()
 	}
-	logger.Info("ig", "command", ig.c.Args, "cwd", cache, "log", log.Name())
+	slog.Info("ig", "command", ig.c.Args, "cwd", cache, "log", log.Name())
 	if err := ig.c.Start(); err != nil {
 		return nil, err
 	}
 	go func() {
 		ig.done <- ig.c.Wait()
-		logger.Info("ig", "state", "terminated")
+		slog.Info("ig", "state", "terminated")
 	}()
-	logger.Info("ig", "state", "started", "pid", ig.c.Process.Pid, "port", ig.port, "message", "Please be patient, it can take several minutes to download everything")
+	slog.Info("ig", "state", "started", "pid", ig.c.Process.Pid, "port", ig.port, "message", "Please be patient, it can take several minutes to download everything")
 	for {
 		if _, err = ig.GenImage("cat"); err == nil {
 			break
@@ -85,13 +86,13 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 		}
 	}
 	ig.steps = 4
-	logger.Info("ig", "state", "ready")
+	slog.Info("ig", "state", "ready")
 	ig.loading = false
 	return ig, nil
 }
 
 func (ig *ImageGen) Close() error {
-	logger.Info("ig", "state", "terminating")
+	slog.Info("ig", "state", "terminating")
 	ig.c.Cancel()
 	return <-ig.done
 }
@@ -101,7 +102,7 @@ func (ig *ImageGen) GenImage(prompt string) ([]byte, error) {
 	start := time.Now()
 	if !ig.loading {
 		// Otherwise it storms on startup.
-		logger.Info("ig", "prompt", prompt)
+		slog.Info("ig", "prompt", prompt)
 	}
 	data := struct {
 		Message string `json:"message"`
@@ -114,7 +115,7 @@ func (ig *ImageGen) GenImage(prompt string) ([]byte, error) {
 	if err != nil {
 		if !ig.loading {
 			// Otherwise it storms on startup.
-			logger.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+			slog.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		}
 		return nil, err
 	}
@@ -126,9 +127,9 @@ func (ig *ImageGen) GenImage(prompt string) ([]byte, error) {
 	err = d.Decode(&r)
 	_ = resp.Body.Close()
 	if err != nil {
-		logger.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		slog.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return nil, err
 	}
-	logger.Info("ig", "prompt", prompt, "duration", time.Since(start).Round(time.Millisecond))
+	slog.Info("ig", "prompt", prompt, "duration", time.Since(start).Round(time.Millisecond))
 	return r.Image, nil
 }

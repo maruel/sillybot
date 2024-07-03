@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -26,13 +27,13 @@ func newDiscordBot(token string, verbose bool, l *sillybot.LLMInstruct, s *silly
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
 		case discordgo.LogDebug:
-			logger.Debug(msg)
+			slog.Debug(msg)
 		case discordgo.LogInformational:
-			logger.Info(msg)
+			slog.Info(msg)
 		case discordgo.LogWarning:
-			logger.Warn(msg)
+			slog.Warn(msg)
 		case discordgo.LogError:
-			logger.Error(msg)
+			slog.Error(msg)
 		}
 	}
 	dg, err := discordgo.New("Bot " + token)
@@ -52,19 +53,19 @@ func newDiscordBot(token string, verbose bool, l *sillybot.LLMInstruct, s *silly
 	_ = dg.AddHandler(d.messageCreate)
 	_ = dg.AddHandler(d.ready)
 	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentGuildPresences | discordgo.IntentDirectMessages
-	logger.Info("discord", "state", "running", "info", "Press CTRL-C to exit.")
+	slog.Info("discord", "state", "running", "info", "Press CTRL-C to exit.")
 	return d, nil
 }
 
 func (d *discordBot) Close() error {
-	logger.Info("discord", "state", "terminating")
+	slog.Info("discord", "state", "terminating")
 	return d.dg.Close()
 }
 
 // A new message is created on any channel that the authenticated bot has
 // access to.
 func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	logger.Debug("discord", "event", "messageCreate", "message", m.Message, "state", s.State)
+	slog.Debug("discord", "event", "messageCreate", "message", m.Message, "state", s.State)
 	// Ignore all messages created by the bot itself. This isn't required in this
 	// specific example but it's a good practice.
 	botid := s.State.User.ID
@@ -77,7 +78,7 @@ func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCre
 		return
 	}
 	content := strings.TrimSpace(strings.TrimPrefix(m.Content, user))
-	logger.Info("discord", "event", "messageCreate", "author", m.Author.Username, "message", content)
+	slog.Info("discord", "event", "messageCreate", "author", m.Author.Username, "message", content)
 	var err error
 	switch content {
 	case "ping":
@@ -124,14 +125,14 @@ func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCre
 		// when we do not share a server with the user (highly unlikely as we just
 		// received a message) or the user disabled DM in their settings (more
 		// likely).
-		logger.Error("discord", "message", content, "error", err)
+		slog.Error("discord", "message", content, "error", err)
 	}
 }
 
 // A new guild is joined.
 func (d *discordBot) guildCreate(s *discordgo.Session, event *discordgo.GuildCreate) {
-	logger.Debug("discord", "event", "guildCreate", "event", event.Guild)
-	logger.Info("discord", "event", "guildCreate", "name", event.Guild.Name)
+	slog.Debug("discord", "event", "guildCreate", "event", event.Guild)
+	slog.Info("discord", "event", "guildCreate", "name", event.Guild.Name)
 	if event.Guild.Unavailable {
 		return
 	}
@@ -144,6 +145,6 @@ func (d *discordBot) guildCreate(s *discordgo.Session, event *discordgo.GuildCre
 }
 
 func (d *discordBot) ready(s *discordgo.Session, r *discordgo.Ready) {
-	logger.Debug("discord", "event", "ready", "session", s, "event", r)
-	logger.Info("discord", "event", "ready", "user", r.User.String())
+	slog.Debug("discord", "event", "ready", "session", s, "event", r)
+	slog.Info("discord", "event", "ready", "user", r.User.String())
 }

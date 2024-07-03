@@ -10,23 +10,9 @@ import (
 	"context"
 	"log/slog"
 	"net"
-	"os"
 	"time"
 
-	"github.com/lmittmann/tint"
-	"github.com/mattn/go-colorable"
-	"github.com/mattn/go-isatty"
 	"golang.org/x/sync/errgroup"
-)
-
-// Logging configuration.
-var (
-	programLevel = &slog.LevelVar{}
-	logger       = slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
-		Level:      programLevel,
-		TimeFormat: time.TimeOnly,
-		NoColor:    !isatty.IsTerminal(os.Stderr.Fd()),
-	}))
 )
 
 func findFreePort() int {
@@ -43,7 +29,7 @@ func findFreePort() int {
 // Both take a while to start, so load them in parallel for faster initialization.
 func LoadModels(ctx context.Context, cache string, llm string, ig bool) (*LLMInstruct, *ImageGen, error) {
 	start := time.Now()
-	logger.Info("models", "state", "initializing")
+	slog.Info("models", "state", "initializing")
 	eg := errgroup.Group{}
 	var l *LLMInstruct
 	var s *ImageGen
@@ -51,7 +37,7 @@ func LoadModels(ctx context.Context, cache string, llm string, ig bool) (*LLMIns
 		var err error
 		if llm != "" {
 			if l, err = NewLLMInstruct(ctx, cache, llm); err != nil {
-				logger.Info("llm", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
+				slog.Info("llm", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
 			}
 		}
 		return err
@@ -60,12 +46,12 @@ func LoadModels(ctx context.Context, cache string, llm string, ig bool) (*LLMIns
 		var err error
 		if ig {
 			if s, err = NewImageGen(ctx, cache); err != nil {
-				logger.Info("ig", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/imagegen.log'")
+				slog.Info("ig", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/imagegen.log'")
 			}
 		}
 		return err
 	})
 	err := eg.Wait()
-	logger.Info("models", "state", "ready", "error", err, "duration", time.Since(start).Round(time.Millisecond))
+	slog.Info("models", "state", "ready", "error", err, "duration", time.Since(start).Round(time.Millisecond))
 	return l, s, err
 }

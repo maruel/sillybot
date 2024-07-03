@@ -83,7 +83,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 	}
 	llamafile := filepath.Join(cache, "llamafile"+execSuffix)
 	if _, err := os.Stat(llamafile); err != nil {
-		logger.Info("llm", "llamafile", "", "state", "missing")
+		slog.Info("llm", "llamafile", "", "state", "missing")
 		// Download llamafile from GitHub. We always want the latest and greatest
 		// as it is very actively developed and the model we download likely use an
 		// older version.
@@ -91,7 +91,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 		if err != nil {
 			return nil, err
 		}
-		logger.Info("llm", "llamafile_release", name)
+		slog.Info("llm", "llamafile_release", name)
 		versioned := filepath.Join(cache, name+execSuffix)
 		if err = downloadExec(url, versioned); err != nil {
 			return nil, err
@@ -105,7 +105,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 	switch filepath.Ext(model) {
 	case ".BF16":
 		if runtime.GOOS == "darwin" {
-			logger.Warn("llm", "message", "bfloat16 is likely not supported on your Apple Silicon system")
+			slog.Warn("llm", "message", "bfloat16 is likely not supported on your Apple Silicon system")
 		}
 	case ".F16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
 	case "":
@@ -116,7 +116,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 
 	modelFile := filepath.Join(cache, model+".gguf")
 	if _, err := os.Stat(modelFile); err != nil {
-		logger.Info("llm", "model", model, "state", "missing")
+		slog.Info("llm", "model", model, "state", "missing")
 		url := ""
 		for _, k := range KnownLLMs {
 			if strings.HasPrefix(model, k.BaseName) {
@@ -152,7 +152,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 	}
 	cmd := []string{llamafile, "--model", modelFile, "-ngl", "9999", "--nobrowser", "--port", strconv.Itoa(l.port)}
 	single := strings.Join(cmd, " ")
-	logger.Info("llm", "command", single, "cwd", cache, "log", log.Name())
+	slog.Info("llm", "command", single, "cwd", cache, "log", log.Name())
 	if runtime.GOOS == "windows" {
 		l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 	} else {
@@ -172,9 +172,9 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 	}
 	go func() {
 		l.done <- l.c.Wait()
-		logger.Info("llm", "state", "terminated")
+		slog.Info("llm", "state", "terminated")
 	}()
-	logger.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
+	slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
 	for {
 		if _, err = l.Prompt("reply with \"ok\""); err == nil {
 			break
@@ -185,13 +185,13 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 		default:
 		}
 	}
-	logger.Info("llm", "state", "ready")
+	slog.Info("llm", "state", "ready")
 	l.loading = false
 	return l, nil
 }
 
 func (l *LLMInstruct) Close() error {
-	logger.Info("llm", "state", "terminating")
+	slog.Info("llm", "state", "terminating")
 	l.c.Cancel()
 	return <-l.done
 }
@@ -204,7 +204,7 @@ func (l *LLMInstruct) Prompt(prompt string) (string, error) {
 		// Otherwise it storms on startup.
 		lvl = slog.LevelDebug
 	}
-	logger.Log(ctx, lvl, "llm", "prompt", prompt)
+	slog.Log(ctx, lvl, "llm", "prompt", prompt)
 	start := time.Now()
 	data := openAIChatCompletionRequest{
 		Model: "llama-3",
@@ -220,7 +220,7 @@ func (l *LLMInstruct) Prompt(prompt string) (string, error) {
 		if !l.loading {
 			lvl = slog.LevelError
 		}
-		logger.Log(ctx, lvl, "llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		slog.Log(ctx, lvl, "llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return "", err
 	}
 	d := json.NewDecoder(resp.Body)
@@ -229,12 +229,12 @@ func (l *LLMInstruct) Prompt(prompt string) (string, error) {
 	err = d.Decode(&r)
 	_ = resp.Body.Close()
 	if err != nil {
-		logger.Error("llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		slog.Error("llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return "", err
 	}
 	if len(r.Choices) != 1 {
 		err = errors.New("unexpected number of choices")
-		logger.Error("llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		slog.Error("llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return "", err
 	}
 	// Llama-3
@@ -242,7 +242,7 @@ func (l *LLMInstruct) Prompt(prompt string) (string, error) {
 	// Gemma-2
 	reply = strings.TrimSuffix(reply, "<end_of_turn>")
 	reply = strings.TrimSpace(reply)
-	logger.Info("llm", "prompt", prompt, "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
+	slog.Info("llm", "prompt", prompt, "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
 	return reply, nil
 }
 
@@ -331,7 +331,7 @@ func downloadExec(url, dst string) error {
 	if _, err := os.Stat(dst); err == nil || !os.IsNotExist(err) {
 		return err
 	}
-	logger.Info("llm", "downloading", url)
+	slog.Info("llm", "downloading", url)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err

@@ -25,18 +25,15 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-// Logging configuration.
-var (
-	programLevel = &slog.LevelVar{}
-	logger       = slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
+func mainImpl() error {
+	programLevel := &slog.LevelVar{}
+	logger := slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
 		Level:      programLevel,
 		TimeFormat: time.TimeOnly,
 		NoColor:    !isatty.IsTerminal(os.Stderr.Fd()),
 	}))
-)
-
-func mainImpl() error {
 	slog.SetDefault(logger)
+
 	wd, err := os.Getwd()
 	if err != nil {
 		return err
