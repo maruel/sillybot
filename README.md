@@ -30,3 +30,17 @@ server (Discord or Slack) is different:
 
 - For Discord, see [cmd/discord-bot/README.md](cmd/discord-bot/README.md).
 - For Slack, see [cmd/slack-bot/README.md](cmd/slack-bot/README.md).
+
+
+## Acknowledgements
+
+This projects wouldn't have been as easy to make if it weren't for
+[llamafile](https://github.com/Mozilla-Ocho/llamafile) by [Justine
+Tunney](https://github.com/jart) and all the companies providing open-weights
+models.
+
+
+## Author
+
+`sillybot` was created with ❤️️ and passion by [Marc-Antoine
+Ruel](https://github.com/maruel).

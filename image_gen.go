@@ -63,6 +63,7 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 	ig.c.Cancel = func() error {
 		slog.Debug("ig", "state", "killing")
 		if runtime.GOOS != "windows" {
+			// TODO: Poll for 30s then kill.
 			return ig.c.Process.Signal(os.Interrupt)
 		}
 		return ig.c.Process.Kill()

@@ -164,6 +164,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 	l.c.Cancel = func() error {
 		slog.Debug("llm", "state", "killing")
 		if runtime.GOOS != "windows" {
+			// TODO: Poll for 30s then kill.
 			return l.c.Process.Signal(os.Interrupt)
 		}
 		return l.c.Process.Kill()
@@ -208,7 +209,7 @@ func (l *LLMInstruct) Prompt(ctx context.Context, prompt string) (string, error)
 	slog.Log(ctx, lvl, "llm", "prompt", prompt)
 	start := time.Now()
 	data := openAIChatCompletionRequest{
-		Model: "llama-3",
+		Model: "ignored",
 		Messages: []message{
 			{system, l.systemPrompt},
 			{user, prompt},
@@ -216,7 +217,9 @@ func (l *LLMInstruct) Prompt(ctx context.Context, prompt string) (string, error)
 	}
 	b, _ := json.Marshal(data)
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		if !l.loading {
 			lvl = slog.LevelError

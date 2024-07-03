@@ -52,6 +52,9 @@ func LoadModels(ctx context.Context, cache string, llm string, ig bool) (*LLMIns
 		return err
 	})
 	err := eg.Wait()
+	if err == nil {
+		err = ctx.Err()
+	}
 	slog.Info("models", "state", "ready", "error", err, "duration", time.Since(start).Round(time.Millisecond))
 	return l, s, err
 }
