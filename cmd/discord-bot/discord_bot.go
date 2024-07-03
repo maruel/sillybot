@@ -8,29 +8,20 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"net"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/maruel/sillybot"
 )
-
-func findFreePort() int {
-	l, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		panic(err)
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
-}
 
 type discordBot struct {
 	dg *discordgo.Session
-	l  *llmServer
-	s  *stableDiffusionServer
+	l  *sillybot.LLMInstruct
+	s  *sillybot.ImageGen
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(token string, verbose bool, l *llmServer, s *stableDiffusionServer) (*discordBot, error) {
+func newDiscordBot(token string, verbose bool, l *sillybot.LLMInstruct, s *sillybot.ImageGen) (*discordBot, error) {
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
@@ -101,7 +92,7 @@ func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCre
 			} else {
 				// TODO: insert a stand-in, then replace it.
 				var p []byte
-				if p, err = d.s.genImage(content); err == nil {
+				if p, err = d.s.GenImage(content); err == nil {
 					data := discordgo.MessageSend{
 						Files: []*discordgo.File{
 							{
@@ -119,7 +110,7 @@ func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCre
 				err = errors.New("text generation is not enabled")
 			} else {
 				reply := ""
-				if reply, err = d.l.prompt(content); err == nil {
+				if reply, err = d.l.Prompt(content); err == nil {
 					_, err = s.ChannelMessageSend(m.ChannelID, reply)
 				}
 			}

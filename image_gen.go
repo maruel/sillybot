@@ -2,7 +2,7 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package main
+package sillybot
 
 import (
 	"bytes"
@@ -18,7 +18,8 @@ import (
 	"time"
 )
 
-type stableDiffusionServer struct {
+// ImageGen manages an image generation server.
+type ImageGen struct {
 	c       *exec.Cmd
 	done    chan error
 	port    int
@@ -26,13 +27,14 @@ type stableDiffusionServer struct {
 	loading bool
 }
 
-func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusionServer, error) {
+// NewImageGen initializes a new image generation server.
+func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 	log, err := os.OpenFile(filepath.Join(cache, "sd.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, err
 	}
 	defer log.Close()
-	s := &stableDiffusionServer{
+	s := &ImageGen{
 		done:    make(chan error),
 		port:    findFreePort(),
 		steps:   1,
@@ -73,7 +75,7 @@ func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusionServ
 	}()
 	logger.Info("sd", "state", "started", "pid", s.c.Process.Pid, "port", s.port, "message", "Please be patient, it can take several minutes to download everything")
 	for {
-		if _, err = s.genImage("cat"); err == nil {
+		if _, err = s.GenImage("cat"); err == nil {
 			break
 		}
 		select {
@@ -88,13 +90,14 @@ func newStableDiffusion(ctx context.Context, cache string) (*stableDiffusionServ
 	return s, nil
 }
 
-func (s *stableDiffusionServer) Close() error {
+func (s *ImageGen) Close() error {
 	logger.Info("sd", "state", "terminating")
 	s.c.Cancel()
 	return <-s.done
 }
 
-func (s *stableDiffusionServer) genImage(prompt string) ([]byte, error) {
+// GenImage returns a PNG encoded image based on the prompt.
+func (s *ImageGen) GenImage(prompt string) ([]byte, error) {
 	start := time.Now()
 	if !s.loading {
 		// Otherwise it storms on startup.

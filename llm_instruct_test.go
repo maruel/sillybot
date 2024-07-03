@@ -2,7 +2,7 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package main
+package sillybot
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestSD(t *testing.T) {
+func TestLLM(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test case in short mode")
 	}
@@ -18,20 +18,21 @@ func TestSD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := newStableDiffusion(context.Background(), cache)
+	l, err := NewLLMInstruct(context.Background(), cache, "Meta-Llama-3-8B-Instruct.Q5_K_M")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := s.Close(); err != nil {
+		if err := l.Close(); err != nil {
 			t.Error(err)
 		}
 	})
-	got, err := s.genImage("cat")
+	got, err := l.Prompt("reply with \"ok\"")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) < 1000 {
-		t.Fatal("uh")
+	want := "ok"
+	if got != want {
+		t.Fatalf("expected %s, got %s", want, got)
 	}
 }

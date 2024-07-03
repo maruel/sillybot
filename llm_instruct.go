@@ -2,7 +2,7 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package main
+package sillybot
 
 import (
 	"archive/zip"
@@ -24,15 +24,19 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
-type llmServer struct {
+// LLMInstruct runs a llamafile server and runs queries on it.
+type LLMInstruct struct {
 	c            *exec.Cmd
 	done         chan error
 	port         int
 	systemPrompt string
 	loading      bool
+
+	_ struct{}
 }
 
-func newLLM(ctx context.Context, cache, model string) (*llmServer, error) {
+// NewLLMInstruct instantiates a llamafile server.
+func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, error) {
 	execSuffix := ""
 	if runtime.GOOS == "windows" {
 		execSuffix = ".exe"
@@ -81,7 +85,7 @@ func newLLM(ctx context.Context, cache, model string) (*llmServer, error) {
 		return nil, err
 	}
 	defer log.Close()
-	l := &llmServer{
+	l := &LLMInstruct{
 		done:         make(chan error),
 		port:         findFreePort(),
 		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
@@ -113,7 +117,7 @@ func newLLM(ctx context.Context, cache, model string) (*llmServer, error) {
 	}()
 	logger.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
 	for {
-		if _, err = l.prompt("reply with \"ok\""); err == nil {
+		if _, err = l.Prompt("reply with \"ok\""); err == nil {
 			break
 		}
 		select {
@@ -127,13 +131,14 @@ func newLLM(ctx context.Context, cache, model string) (*llmServer, error) {
 	return l, nil
 }
 
-func (l *llmServer) Close() error {
+func (l *LLMInstruct) Close() error {
 	logger.Info("llm", "state", "terminating")
 	l.c.Cancel()
 	return <-l.done
 }
 
-func (l *llmServer) prompt(prompt string) (string, error) {
+// Prompt prompts the LLM and returns the reply.
+func (l *LLMInstruct) Prompt(prompt string) (string, error) {
 	if !l.loading {
 		// Otherwise it storms on startup.
 		logger.Info("llm", "prompt", prompt)

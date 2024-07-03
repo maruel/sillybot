@@ -2,21 +2,15 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-// Silly bot to chat with.
-package main
+// Package sillybot implements the common code used by both discord-bot and
+// slack-bot.
+package sillybot
 
 import (
 	"context"
-	"errors"
-	"flag"
-	"fmt"
-	"log"
 	"log/slog"
+	"net"
 	"os"
-	"os/signal"
-	"path/filepath"
-	"strings"
-	"syscall"
 	"time"
 
 	"github.com/lmittmann/tint"
@@ -35,19 +29,28 @@ var (
 	}))
 )
 
-// loadModels loads the models.
+func findFreePort() int {
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+// LoadModels loads the LLMInstruct and ImageGen models.
 //
-// Both take a while to start, so load them in parallel.
-func loadModels(ctx context.Context, cache string, llm string, sd bool) (*llmServer, *stableDiffusionServer, error) {
+// Both take a while to start, so load them in parallel for faster initialization.
+func LoadModels(ctx context.Context, cache string, llm string, sd bool) (*LLMInstruct, *ImageGen, error) {
 	start := time.Now()
 	logger.Info("models", "state", "initializing")
 	eg := errgroup.Group{}
-	var l *llmServer
-	var s *stableDiffusionServer
+	var l *LLMInstruct
+	var s *ImageGen
 	eg.Go(func() error {
 		var err error
 		if llm != "" {
-			if l, err = newLLM(ctx, cache, llm); err != nil {
+			if l, err = NewLLMInstruct(ctx, cache, llm); err != nil {
 				logger.Info("sd", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
 			}
 		}
@@ -56,7 +59,7 @@ func loadModels(ctx context.Context, cache string, llm string, sd bool) (*llmSer
 	eg.Go(func() error {
 		var err error
 		if sd {
-			if s, err = newStableDiffusion(ctx, cache); err != nil {
+			if s, err = NewImageGen(ctx, cache); err != nil {
 				logger.Info("sd", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/sd.log'")
 			}
 		}
@@ -67,6 +70,7 @@ func loadModels(ctx context.Context, cache string, llm string, sd bool) (*llmSer
 	return l, s, err
 }
 
+/*
 func mainImpl() error {
 	slog.SetDefault(logger)
 	wd, err := os.Getwd()
@@ -174,10 +178,4 @@ func mainImpl() error {
 		return errors.New("internal error")
 	}
 }
-
-func main() {
-	if err := mainImpl(); err != nil && err != context.Canceled {
-		fmt.Fprintf(os.Stderr, "discord-bot: %v\n", err.Error())
-		os.Exit(1)
-	}
-}
+*/

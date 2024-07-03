@@ -12,6 +12,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/maruel/sillybot"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
@@ -20,8 +21,8 @@ import (
 type slackBot struct {
 	api    *slack.Client
 	sc     *socketmode.Client
-	l      *llmServer
-	s      *stableDiffusionServer
+	l      *sillybot.LLMInstruct
+	s      *sillybot.ImageGen
 	botID  string
 	userID string
 }
@@ -39,7 +40,7 @@ type ilog interface {
 	Output(int, string) error
 }
 
-func newSlackBot(apptoken, bottoken string, verbose bool, l *llmServer, sd *stableDiffusionServer) (*slackBot, error) {
+func newSlackBot(apptoken, bottoken string, verbose bool, l *sillybot.LLMInstruct, sd *sillybot.ImageGen) (*slackBot, error) {
 	if !strings.HasPrefix(apptoken, "xapp-") {
 		return nil, errors.New("slack apptoken must have the prefix \"xapp-\"")
 	}
@@ -132,7 +133,7 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 					} else {
 						msg = strings.TrimSpace(strings.TrimPrefix(msg, "image:"))
 						var p []byte
-						if p, err = s.s.genImage(msg); err == nil {
+						if p, err = s.s.GenImage(msg); err == nil {
 							param := slack.UploadFileV2Parameters{
 								Title:    "Image",
 								Filename: "image.png",
@@ -148,7 +149,7 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 						_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText("LLM is not enabled. ", false))
 					} else {
 						reply := ""
-						if reply, err = s.l.prompt(msg); err == nil {
+						if reply, err = s.l.Prompt(msg); err == nil {
 							_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText(reply, false))
 						} else {
 							_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText("ERROR: "+err.Error(), false))
