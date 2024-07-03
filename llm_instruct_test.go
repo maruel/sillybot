@@ -18,7 +18,8 @@ func TestLLM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, err := NewLLMInstruct(context.Background(), cache, "Meta-Llama-3-8B-Instruct.Q5_K_M")
+	ctx := context.Background()
+	l, err := NewLLMInstruct(ctx, cache, "Meta-Llama-3-8B-Instruct.Q5_K_M")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +28,7 @@ func TestLLM(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	got, err := l.Prompt("reply with \"ok\"")
+	got, err := l.Prompt(ctx, "reply with \"ok\"")
 	if err != nil {
 		t.Fatal(err)
 	}

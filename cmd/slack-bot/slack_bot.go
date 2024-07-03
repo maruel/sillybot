@@ -150,7 +150,7 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 						_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText("LLM is not enabled. ", false))
 					} else {
 						reply := ""
-						if reply, err = s.l.Prompt(msg); err == nil {
+						if reply, err = s.l.Prompt(ctx, msg); err == nil {
 							_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText(reply, false))
 						} else {
 							_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText("ERROR: "+err.Error(), false))

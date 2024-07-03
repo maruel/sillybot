@@ -61,12 +61,13 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 	ig.c.Stdout = log
 	ig.c.Stderr = log
 	ig.c.Cancel = func() error {
+		slog.Debug("ig", "state", "killing")
 		if runtime.GOOS != "windows" {
 			return ig.c.Process.Signal(os.Interrupt)
 		}
 		return ig.c.Process.Kill()
 	}
-	slog.Info("ig", "command", ig.c.Args, "cwd", cache, "log", log.Name())
+	slog.Debug("ig", "command", ig.c.Args, "cwd", cache, "log", log.Name())
 	if err := ig.c.Start(); err != nil {
 		return nil, err
 	}
@@ -75,14 +76,15 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 		slog.Info("ig", "state", "terminated")
 	}()
 	slog.Info("ig", "state", "started", "pid", ig.c.Process.Pid, "port", ig.port, "message", "Please be patient, it can take several minutes to download everything")
-	for {
+	for ctx.Err() == nil {
 		if _, err = ig.GenImage("cat"); err == nil {
 			break
 		}
 		select {
 		case err := <-ig.done:
 			return nil, fmt.Errorf("failed to start: %w", err)
-		default:
+		case <-ctx.Done():
+		case <-time.After(100 * time.Millisecond):
 		}
 	}
 	ig.steps = 4

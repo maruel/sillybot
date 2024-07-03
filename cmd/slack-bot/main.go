@@ -26,6 +26,9 @@ import (
 )
 
 func mainImpl() error {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	defer stop()
+
 	programLevel := &slog.LevelVar{}
 	logger := slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
 		Level:      programLevel,
@@ -33,6 +36,10 @@ func mainImpl() error {
 		NoColor:    !isatty.IsTerminal(os.Stderr.Fd()),
 	}))
 	slog.SetDefault(logger)
+	go func() {
+		<-ctx.Done()
+		slog.Info("main", "message", "quitting")
+	}()
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -86,8 +93,6 @@ func mainImpl() error {
 	if *verbose {
 		programLevel.Set(slog.LevelDebug)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	l, sd, err := sillybot.LoadModels(ctx, cache, *llmModel, *sdUse)
 	if l != nil {
@@ -100,20 +105,11 @@ func mainImpl() error {
 		return err
 	}
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-
 	s, err := newSlackBot(*apptoken, *bottoken, *verbose, l, sd)
 	if err != nil {
 		return err
 	}
-	ctx2, cancel2 := context.WithCancel(ctx)
-	defer cancel2()
-	go func() {
-		<-c
-		cancel2()
-	}()
-	return s.Run(ctx2)
+	return s.Run(ctx)
 }
 
 func main() {

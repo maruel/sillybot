@@ -93,7 +93,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 		}
 		slog.Info("llm", "llamafile_release", name)
 		versioned := filepath.Join(cache, name+execSuffix)
-		if err = downloadExec(url, versioned); err != nil {
+		if err = downloadExec(ctx, url, versioned); err != nil {
 			return nil, err
 		}
 		// Copy it as the default executable to use.
@@ -130,7 +130,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 		hf := "https://huggingface.co/"
 		if strings.HasPrefix(url, hf) {
 			repo := url[len(hf):]
-			if err = getHfModelGGUFFromLlamafile(cache, repo, model); err != nil {
+			if err = getHfModelGGUFFromLlamafile(ctx, cache, repo, model); err != nil {
 				return nil, err
 			}
 		} else {
@@ -152,7 +152,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 	}
 	cmd := []string{llamafile, "--model", modelFile, "-ngl", "9999", "--nobrowser", "--port", strconv.Itoa(l.port)}
 	single := strings.Join(cmd, " ")
-	slog.Info("llm", "command", single, "cwd", cache, "log", log.Name())
+	slog.Debug("llm", "command", single, "cwd", cache, "log", log.Name())
 	if runtime.GOOS == "windows" {
 		l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 	} else {
@@ -162,6 +162,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 	l.c.Stdout = log
 	l.c.Stderr = log
 	l.c.Cancel = func() error {
+		slog.Debug("llm", "state", "killing")
 		if runtime.GOOS != "windows" {
 			return l.c.Process.Signal(os.Interrupt)
 		}
@@ -175,14 +176,15 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 		slog.Info("llm", "state", "terminated")
 	}()
 	slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
-	for {
-		if _, err = l.Prompt("reply with \"ok\""); err == nil {
+	for ctx.Err() == nil {
+		if _, err = l.Prompt(ctx, "reply with \"ok\""); err == nil {
 			break
 		}
 		select {
 		case err := <-l.done:
 			return nil, fmt.Errorf("failed to start: %w", err)
-		default:
+		case <-ctx.Done():
+		case <-time.After(100 * time.Millisecond):
 		}
 	}
 	slog.Info("llm", "state", "ready")
@@ -197,8 +199,7 @@ func (l *LLMInstruct) Close() error {
 }
 
 // Prompt prompts the LLM and returns the reply.
-func (l *LLMInstruct) Prompt(prompt string) (string, error) {
-	ctx := context.Background()
+func (l *LLMInstruct) Prompt(ctx context.Context, prompt string) (string, error) {
 	lvl := slog.LevelInfo
 	if l.loading {
 		// Otherwise it storms on startup.
@@ -327,12 +328,12 @@ func getGitHubLatestRelease(owner, repo, contentType string) (string, string, er
 }
 
 // downloadExec downloads an executable.
-func downloadExec(url, dst string) error {
+func downloadExec(ctx context.Context, url, dst string) error {
 	if _, err := os.Stat(dst); err == nil || !os.IsNotExist(err) {
 		return err
 	}
 	slog.Info("llm", "downloading", url)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return err
 	}
@@ -372,10 +373,10 @@ func copyFile(dst, src string) error {
 }
 
 // getHfModelGGUFFromLlamafile retrieves a file from an HuggingFace repository.
-func getHfModelGGUFFromLlamafile(cache, repo, model string) error {
+func getHfModelGGUFFromLlamafile(ctx context.Context, cache, repo, model string) error {
 	url := "https://huggingface.co/" + repo + "/resolve/main/" + model + ".llamafile?download=true"
 	dst := filepath.Join(cache, model+".llamafile")
-	if err := downloadExec(url, dst); err != nil {
+	if err := downloadExec(ctx, url, dst); err != nil {
 		return err
 	}
 	gguf := model + ".gguf"

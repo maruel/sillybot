@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -111,7 +112,8 @@ func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCre
 				err = errors.New("text generation is not enabled")
 			} else {
 				reply := ""
-				if reply, err = d.l.Prompt(content); err == nil {
+				// TODO: Flow context.
+				if reply, err = d.l.Prompt(context.Background(), content); err == nil {
 					_, err = s.ChannelMessageSend(m.ChannelID, reply)
 				}
 			}
