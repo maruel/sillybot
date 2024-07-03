@@ -163,10 +163,6 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 	l.c.Stderr = log
 	l.c.Cancel = func() error {
 		slog.Debug("llm", "state", "killing")
-		if runtime.GOOS != "windows" {
-			// TODO: Poll for 30s then kill.
-			return l.c.Process.Signal(os.Interrupt)
-		}
 		return l.c.Process.Kill()
 	}
 	if err = l.c.Start(); err != nil {
@@ -221,7 +217,7 @@ func (l *LLMInstruct) Prompt(ctx context.Context, prompt string) (string, error)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		if !l.loading {
+		if !l.loading || err == context.Canceled {
 			lvl = slog.LevelError
 		}
 		slog.Log(ctx, lvl, "llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
