@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,6 +24,45 @@ import (
 
 	"github.com/schollz/progressbar/v3"
 )
+
+// KnownLLM is a known model.
+type KnownLLM struct {
+	URL      string
+	Upstream string
+	BaseName string
+	// Most native format. Normally BF16 or F16 depending on the model. This is
+	// found in config.json in Upstream.
+	Native string
+}
+
+// KnownLLMs is a list of known models for ease of use. This is in no way
+// limits what can be used with this system.
+var KnownLLMs = []KnownLLM{
+	{
+		URL:      "https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile",
+		Upstream: "https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct",
+		BaseName: "Meta-Llama-3-8B-Instruct",
+		Native:   "BF16",
+	},
+	{
+		URL:      "https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile",
+		Upstream: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct",
+		BaseName: "Phi-3-mini-4k-instruct",
+		Native:   "BF16",
+	},
+	{
+		URL:      "https://huggingface.co/Mozilla/Phi-3-medium-128k-instruct-llamafile",
+		Upstream: "https://huggingface.co/microsoft/Phi-3-medium-128k-instruct",
+		BaseName: "Phi-3-medium-128k-instruct",
+		Native:   "BF16",
+	},
+	{
+		URL:      "https://huggingface.co/jartine/gemma-2-27b-it-llamafile",
+		Upstream: "https://huggingface.co/google/gemma-2-27b-it",
+		BaseName: "gemma-2-27b-it",
+		Native:   "BF16",
+	},
+}
 
 // LLMInstruct runs a llamafile server and runs queries on it.
 type LLMInstruct struct {
@@ -62,20 +102,39 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 		}
 	}
 
+	switch filepath.Ext(model) {
+	case ".BF16":
+		if runtime.GOOS == "darwin" {
+			logger.Warn("llm", "message", "bfloat16 is likely not supported on your Apple Silicon system")
+		}
+	case ".F16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
+	case "":
+		return nil, errors.New("you forgot to add a quantization suffix like '.BF16' or '.Q5_K_M'")
+	default:
+		return nil, errors.New("unknown quantization, did you forget a suffix like '.BF16' or '.Q5_K_M'?")
+	}
+
 	modelFile := filepath.Join(cache, model+".gguf")
 	if _, err := os.Stat(modelFile); err != nil {
 		logger.Info("llm", "model", model, "state", "missing")
-		// TODO: Hack.
-		repo := ""
-		if strings.HasPrefix(model, "Meta-Llama-3-8B-Instruct.") {
-			repo = "Mozilla/Meta-Llama-3-8B-Instruct-llamafile"
-		} else if strings.HasPrefix(model, "gemma-2-27b-it.") {
-			repo = "jartine/gemma-2-27b-it-llamafile"
-		} else {
+		url := ""
+		for _, k := range KnownLLMs {
+			if strings.HasPrefix(model, k.BaseName) {
+				url = k.URL
+				break
+			}
+		}
+		if url == "" {
 			return nil, errors.New("can't guess model's huggingface repo")
 		}
-		if err = getHfModelGGUFFromLlamafile(cache, repo, model); err != nil {
-			return nil, err
+		hf := "https://huggingface.co/"
+		if strings.HasPrefix(url, hf) {
+			repo := url[len(hf):]
+			if err = getHfModelGGUFFromLlamafile(cache, repo, model); err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, errors.New("can't guess model's source")
 		}
 	}
 
@@ -139,10 +198,13 @@ func (l *LLMInstruct) Close() error {
 
 // Prompt prompts the LLM and returns the reply.
 func (l *LLMInstruct) Prompt(prompt string) (string, error) {
-	if !l.loading {
+	ctx := context.Background()
+	lvl := slog.LevelInfo
+	if l.loading {
 		// Otherwise it storms on startup.
-		logger.Info("llm", "prompt", prompt)
+		lvl = slog.LevelDebug
 	}
+	logger.Log(ctx, lvl, "llm", "prompt", prompt)
 	start := time.Now()
 	data := openAIChatCompletionRequest{
 		Model: "llama-3",
@@ -156,9 +218,9 @@ func (l *LLMInstruct) Prompt(prompt string) (string, error) {
 	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
 	if err != nil {
 		if !l.loading {
-			// Otherwise it storms on startup.
-			logger.Error("llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+			lvl = slog.LevelError
 		}
+		logger.Log(ctx, lvl, "llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return "", err
 	}
 	d := json.NewDecoder(resp.Body)

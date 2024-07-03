@@ -29,12 +29,12 @@ type ImageGen struct {
 
 // NewImageGen initializes a new image generation server.
 func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
-	log, err := os.OpenFile(filepath.Join(cache, "sd.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+	log, err := os.OpenFile(filepath.Join(cache, "imagegen.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, err
 	}
 	defer log.Close()
-	s := &ImageGen{
+	ig := &ImageGen{
 		done:    make(chan error),
 		port:    findFreePort(),
 		steps:   1,
@@ -55,66 +55,66 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.c = exec.CommandContext(ctx, python3, main, "--port", strconv.Itoa(s.port))
-	s.c.Dir = cache
-	s.c.Stdout = log
-	s.c.Stderr = log
-	s.c.Cancel = func() error {
+	ig.c = exec.CommandContext(ctx, python3, main, "--port", strconv.Itoa(ig.port))
+	ig.c.Dir = cache
+	ig.c.Stdout = log
+	ig.c.Stderr = log
+	ig.c.Cancel = func() error {
 		if runtime.GOOS != "windows" {
-			return s.c.Process.Signal(os.Interrupt)
+			return ig.c.Process.Signal(os.Interrupt)
 		}
-		return s.c.Process.Kill()
+		return ig.c.Process.Kill()
 	}
-	logger.Info("sd", "command", s.c.Args, "cwd", cache, "log", log.Name())
-	if err := s.c.Start(); err != nil {
+	logger.Info("ig", "command", ig.c.Args, "cwd", cache, "log", log.Name())
+	if err := ig.c.Start(); err != nil {
 		return nil, err
 	}
 	go func() {
-		s.done <- s.c.Wait()
-		logger.Info("sd", "state", "terminated")
+		ig.done <- ig.c.Wait()
+		logger.Info("ig", "state", "terminated")
 	}()
-	logger.Info("sd", "state", "started", "pid", s.c.Process.Pid, "port", s.port, "message", "Please be patient, it can take several minutes to download everything")
+	logger.Info("ig", "state", "started", "pid", ig.c.Process.Pid, "port", ig.port, "message", "Please be patient, it can take several minutes to download everything")
 	for {
-		if _, err = s.GenImage("cat"); err == nil {
+		if _, err = ig.GenImage("cat"); err == nil {
 			break
 		}
 		select {
-		case err := <-s.done:
+		case err := <-ig.done:
 			return nil, fmt.Errorf("failed to start: %w", err)
 		default:
 		}
 	}
-	s.steps = 4
-	logger.Info("sd", "state", "ready")
-	s.loading = false
-	return s, nil
+	ig.steps = 4
+	logger.Info("ig", "state", "ready")
+	ig.loading = false
+	return ig, nil
 }
 
-func (s *ImageGen) Close() error {
-	logger.Info("sd", "state", "terminating")
-	s.c.Cancel()
-	return <-s.done
+func (ig *ImageGen) Close() error {
+	logger.Info("ig", "state", "terminating")
+	ig.c.Cancel()
+	return <-ig.done
 }
 
 // GenImage returns a PNG encoded image based on the prompt.
-func (s *ImageGen) GenImage(prompt string) ([]byte, error) {
+func (ig *ImageGen) GenImage(prompt string) ([]byte, error) {
 	start := time.Now()
-	if !s.loading {
+	if !ig.loading {
 		// Otherwise it storms on startup.
-		logger.Info("sd", "prompt", prompt)
+		logger.Info("ig", "prompt", prompt)
 	}
 	data := struct {
 		Message string `json:"message"`
 		Steps   int    `json:"steps"`
 		Seed    int    `json:"seed"`
-	}{Message: prompt, Steps: s.steps, Seed: 1}
+	}{Message: prompt, Steps: ig.steps, Seed: 1}
 	b, _ := json.Marshal(data)
-	url := fmt.Sprintf("http://localhost:%d/", s.port)
+	url := fmt.Sprintf("http://localhost:%d/", ig.port)
 	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
 	if err != nil {
-		if !s.loading {
+		if !ig.loading {
 			// Otherwise it storms on startup.
-			logger.Error("sd", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+			logger.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		}
 		return nil, err
 	}
@@ -126,9 +126,9 @@ func (s *ImageGen) GenImage(prompt string) ([]byte, error) {
 	err = d.Decode(&r)
 	_ = resp.Body.Close()
 	if err != nil {
-		logger.Error("sd", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		logger.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return nil, err
 	}
-	logger.Info("sd", "prompt", prompt, "duration", time.Since(start).Round(time.Millisecond))
+	logger.Info("ig", "prompt", prompt, "duration", time.Since(start).Round(time.Millisecond))
 	return r.Image, nil
 }
