@@ -1,4 +1,4 @@
-module github.com/maruel/discord-bot
+module github.com/maruel/sillybot
 
 go 1.22.4
 

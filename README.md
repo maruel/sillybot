@@ -3,7 +3,8 @@
 A simple Discord and Slack bot written in Go that natively serves LLM and Stable
 Diffusion (in python for now).
 
-- Works on Ubuntu (linux), macOS and Windows.
+- Uses WebSocket so no need to setup a web server!
+- Works on Ubuntu (linux), macOS and Windows!
 - LLM: Tested to work with
   [Meta-Llama3-8B-instruct](https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile)
   at various quantization levels and [Gemma-2-27B
@@ -16,10 +17,10 @@ Diffusion (in python for now).
 
 ## Discord
 
-1. Discord App:
+1. In the Discord App:
     - User settings, Advanced, Enable "Developer Mode"
     - User settings, My Account, Enable SECURITY KEYS (or another MFA).
-2. https://discord.com/developers/applications
+2. Configure the Discord Application at https://discord.com/developers/applications
     - "New Team"
     - "New Application"
     - Add name, description, picture. You can generate a free picture with
@@ -32,15 +33,16 @@ Diffusion (in python for now).
 
 ## Slack
 
-- https://api.slack.com/apps
-- Socket Mode
+Configure the Slack App at https://api.slack.com/apps:
+
+1. Socket Mode
     - Enable Socket Mode.
-- OAuth & Permissions
+2. OAuth & Permissions
     - Scopes, Bot Token Scopes, Add an OAuth Scope. _This is about what the bot
       has access to. The more it has access to, the more 'damage' it can do._
         - app_mentions:read
-        - channels:join
         - channels:history
+        - channels:join
         - channels:read
         - channels:write.topic
         - chat:write
@@ -62,18 +64,18 @@ Diffusion (in python for now).
         - team:read
         - users:read
         - users:write
-- App Home
+3. App Home
     - Show Tabs, Messages Tab, "Allow users to send Slash commands and messages
       from the messages tab"
-- Event Subscriptions
+4. Event Subscriptions
     - Enable Events
-    - Subscript to bot events. _This is which events the bots receive. This more
-      it receives the more spam it gets._
+    - Subscript to bot events. _This is which events the bot receives. This more
+      it receives, the more spam it gets._
         - app_mention
+        - member_joined_channel
         - message.channels
         - message.mpim
-        - member_joined_channel
-- Install App
+5. Install App
     - Install to a workspace you are admin of
 
 Read more at https://api.slack.com/apis/socket-mode. In particular, you cannot
