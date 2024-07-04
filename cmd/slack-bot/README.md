@@ -58,14 +58,12 @@ add an app using Socket Mode to the public Slack App Directory.
 
 ## Local installation
 
+Install the [Go toolchain](https://go.dev/dl/)
+
 ```
-git clone https://github.com/maruel/sillybot
-cd sillybot
-go install ./cmd/slack-bot
+go install github.com/maruel/sillybot/cmd/slack-bot@latest
 slack-bot -sd -bottoken <bot-token> -apptoken <app-token>
 ```
-
-TODO: (soon) Use `go install`.
 
 Warning: it takes a while (several minutes, more if you don't have a 1Gbps
 network) to download the models on first run, be patient.

@@ -45,10 +45,6 @@ func mainImpl() error {
 	if err != nil {
 		return err
 	}
-	cache := filepath.Join(wd, "cache")
-	if err = os.MkdirAll(cache, 0o755); err != nil {
-		log.Fatal(err)
-	}
 
 	flag.Usage = func() {
 		o := flag.CommandLine.Output()
@@ -68,6 +64,7 @@ func mainImpl() error {
 
 	bottoken := flag.String("bot-token", "", "Bot Token; get one at https://discord.com/developers/applications or https://api.slack.com/apps")
 	apptoken := flag.String("app-token", "", "App Token; get one at https://api.slack.com/apps; do not use with discord")
+	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
 	llmModel := flag.String("llm", sillybot.KnownLLMs[0].BaseName+".Q5_K_M", "Enable LLM output")
 	sdUse := flag.Bool("sd", false, "Enable Stable Diffusion output")
@@ -94,7 +91,10 @@ func mainImpl() error {
 		programLevel.Set(slog.LevelDebug)
 	}
 
-	l, sd, err := sillybot.LoadModels(ctx, cache, *llmModel, *sdUse)
+	if err = os.MkdirAll(*cache, 0o755); err != nil {
+		log.Fatal(err)
+	}
+	l, sd, err := sillybot.LoadModels(ctx, *cache, *llmModel, *sdUse)
 	if l != nil {
 		defer l.Close()
 	}

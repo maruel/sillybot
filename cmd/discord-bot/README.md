@@ -25,14 +25,12 @@ Do this first.
 
 ## Local installation and running
 
+Install the [Go toolchain](https://go.dev/dl/)
+
 ```
-git clone https://github.com/maruel/sillybot
-cd sillybot
-go install ./cmd/discord-bot
+go install github.com/maruel/sillybot/cmd/discord-bot@latest
 discord-bot -sd -token <bot-token>
 ```
-
-TODO: (soon) Use `go install`.
 
 Warning: it takes a while (several minutes, more if you don't have a 1Gbps
 network) to download the models on first run, be patient.
