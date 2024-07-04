@@ -65,8 +65,11 @@ var KnownLLMs = []KnownLLM{
 	},
 }
 
-// LLMInstruct runs a llamafile server and runs queries on it.
-type LLMInstruct struct {
+// LLM runs a llamafile server and runs queries on it.
+//
+// While it is expected that the model is an Instruct form, it is not a
+// requirement.
+type LLM struct {
 	c            *exec.Cmd
 	done         chan error
 	port         int
@@ -76,8 +79,8 @@ type LLMInstruct struct {
 	_ struct{}
 }
 
-// NewLLMInstruct instantiates a llamafile server.
-func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, error) {
+// NewLLM instantiates a llamafile server.
+func NewLLM(ctx context.Context, cache, model string) (*LLM, error) {
 	execSuffix := ""
 	if runtime.GOOS == "windows" {
 		execSuffix = ".exe"
@@ -145,7 +148,7 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 		return nil, err
 	}
 	defer log.Close()
-	l := &LLMInstruct{
+	l := &LLM{
 		done:         make(chan error),
 		port:         findFreePort(),
 		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
@@ -190,14 +193,14 @@ func NewLLMInstruct(ctx context.Context, cache, model string) (*LLMInstruct, err
 	return l, nil
 }
 
-func (l *LLMInstruct) Close() error {
+func (l *LLM) Close() error {
 	slog.Info("llm", "state", "terminating")
 	l.c.Cancel()
 	return <-l.done
 }
 
 // Prompt prompts the LLM and returns the reply.
-func (l *LLMInstruct) Prompt(ctx context.Context, prompt string) (string, error) {
+func (l *LLM) Prompt(ctx context.Context, prompt string) (string, error) {
 	start := time.Now()
 	lvl := slog.LevelInfo
 	if l.loading {
@@ -228,7 +231,7 @@ func (l *LLMInstruct) Prompt(ctx context.Context, prompt string) (string, error)
 	return reply, nil
 }
 
-func (l *LLMInstruct) promptBlocking(ctx context.Context, msgs []message) (string, error) {
+func (l *LLM) promptBlocking(ctx context.Context, msgs []message) (string, error) {
 	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs}
 	b, _ := json.Marshal(data)
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
@@ -252,7 +255,7 @@ func (l *LLMInstruct) promptBlocking(ctx context.Context, msgs []message) (strin
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *LLMInstruct) promptStreaming(ctx context.Context, msgs []message) (string, error) {
+func (l *LLM) promptStreaming(ctx context.Context, msgs []message) (string, error) {
 	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs, Stream: true}
 	b, _ := json.Marshal(data)
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)

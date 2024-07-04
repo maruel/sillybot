@@ -24,19 +24,19 @@ func findFreePort() int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-// LoadModels loads the LLMInstruct and ImageGen models.
+// LoadModels loads the LLM and ImageGen models.
 //
 // Both take a while to start, so load them in parallel for faster initialization.
-func LoadModels(ctx context.Context, cache string, llm string, ig bool) (*LLMInstruct, *ImageGen, error) {
+func LoadModels(ctx context.Context, cache string, llm string, ig bool) (*LLM, *ImageGen, error) {
 	start := time.Now()
 	slog.Info("models", "state", "initializing")
 	eg := errgroup.Group{}
-	var l *LLMInstruct
+	var l *LLM
 	var s *ImageGen
 	eg.Go(func() error {
 		var err error
 		if llm != "" {
-			if l, err = NewLLMInstruct(ctx, cache, llm); err != nil {
+			if l, err = NewLLM(ctx, cache, llm); err != nil {
 				slog.Info("llm", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
 			}
 		}

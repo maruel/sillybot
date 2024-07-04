@@ -19,7 +19,7 @@ func TestLLM(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	l, err := NewLLMInstruct(ctx, cache, "Meta-Llama-3-8B-Instruct.Q5_K_M")
+	l, err := NewLLM(ctx, cache, "Meta-Llama-3-8B-Instruct.Q5_K_M")
 	if err != nil {
 		t.Fatal(err)
 	}

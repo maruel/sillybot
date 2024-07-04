@@ -18,12 +18,12 @@ import (
 
 type discordBot struct {
 	dg *discordgo.Session
-	l  *sillybot.LLMInstruct
+	l  *sillybot.LLM
 	s  *sillybot.ImageGen
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(token string, verbose bool, l *sillybot.LLMInstruct, s *sillybot.ImageGen) (*discordBot, error) {
+func newDiscordBot(token string, verbose bool, l *sillybot.LLM, s *sillybot.ImageGen) (*discordBot, error) {
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
