@@ -61,7 +61,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
   # , disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature"
 
   def do_POST(self):
-    logging.info("Got request")
+    logging.info("Got request", self.path)
     start = time.time()
     content_length = int(self.headers['Content-Length'])
     post_data = self.rfile.read(content_length)

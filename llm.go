@@ -72,7 +72,8 @@ var KnownLLMs = []KnownLLM{
 // requirement.
 type LLM struct {
 	c            *exec.Cmd
-	done         chan error
+	done         <-chan error
+	cancel       func() error
 	port         int
 	systemPrompt string
 	loading      bool
@@ -82,107 +83,134 @@ type LLM struct {
 
 // NewLLM instantiates a llamafile server.
 func NewLLM(ctx context.Context, cache, model string) (*LLM, error) {
-	execSuffix := ""
-	if runtime.GOOS == "windows" {
-		execSuffix = ".exe"
-	}
-	llamafile := filepath.Join(cache, "llamafile"+execSuffix)
-	if _, err := os.Stat(llamafile); err != nil {
-		slog.Info("llm", "llamafile", "", "state", "missing")
-		// Download llamafile from GitHub. We always want the latest and greatest
-		// as it is very actively developed and the model we download likely use an
-		// older version.
-		url, name, err := getGitHubLatestRelease("Mozilla-Ocho", "llamafile", "application/octet-stream")
-		if err != nil {
-			return nil, err
-		}
-		slog.Info("llm", "llamafile_release", name)
-		versioned := filepath.Join(cache, name+execSuffix)
-		if err = downloadExec(ctx, url, versioned); err != nil {
-			return nil, err
-		}
-		// Copy it as the default executable to use.
-		if err = copyFile(llamafile, versioned); err != nil {
-			return nil, err
-		}
-	}
-
-	switch filepath.Ext(model) {
-	case ".BF16":
-		if runtime.GOOS == "darwin" {
-			slog.Warn("llm", "message", "bfloat16 is likely not supported on your Apple Silicon system")
-		}
-	case ".F16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
-	case "":
-		return nil, errors.New("you forgot to add a quantization suffix like '.BF16' or '.Q5_K_M'")
-	default:
-		return nil, errors.New("unknown quantization, did you forget a suffix like '.BF16' or '.Q5_K_M'?")
-	}
-
-	modelFile := filepath.Join(cache, model+".gguf")
-	if _, err := os.Stat(modelFile); err != nil {
-		slog.Info("llm", "model", model, "state", "missing")
-		url := ""
-		for _, k := range KnownLLMs {
-			if strings.HasPrefix(model, k.BaseName) {
-				url = k.URL
-				break
-			}
-		}
-		if url == "" {
-			return nil, errors.New("can't guess model's huggingface repo")
-		}
-		hf := "https://huggingface.co/"
-		if strings.HasPrefix(url, hf) {
-			repo := url[len(hf):]
-			if err = getHfModelGGUFFromLlamafile(ctx, cache, repo, model); err != nil {
+	usePy := false
+	llamafile := ""
+	modelFile := ""
+	if usePy {
+		if pyNeedRecreate(cache) {
+			if err := pyRecreate(ctx, cache); err != nil {
 				return nil, err
 			}
-		} else {
-			return nil, errors.New("can't guess model's source")
+		}
+	} else {
+		execSuffix := ""
+		if runtime.GOOS == "windows" {
+			execSuffix = ".exe"
+		}
+		llamafile = filepath.Join(cache, "llamafile"+execSuffix)
+		if _, err := os.Stat(llamafile); err != nil {
+			slog.Info("llm", "llamafile", "", "state", "missing")
+			// Download llamafile from GitHub. We always want the latest and greatest
+			// as it is very actively developed and the model we download likely use an
+			// older version.
+			url, name, err := getGitHubLatestRelease("Mozilla-Ocho", "llamafile", "application/octet-stream")
+			if err != nil {
+				return nil, err
+			}
+			slog.Info("llm", "llamafile_release", name)
+			versioned := filepath.Join(cache, name+execSuffix)
+			if err = downloadExec(ctx, url, versioned); err != nil {
+				return nil, err
+			}
+			// Copy it as the default executable to use.
+			if err = copyFile(llamafile, versioned); err != nil {
+				return nil, err
+			}
+		}
+
+		switch filepath.Ext(model) {
+		case ".BF16":
+			if runtime.GOOS == "darwin" {
+				slog.Warn("llm", "message", "bfloat16 is likely not supported on your Apple Silicon system")
+			}
+		case ".F16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
+		case "":
+			return nil, errors.New("you forgot to add a quantization suffix like '.BF16' or '.Q5_K_M'")
+		default:
+			return nil, errors.New("unknown quantization, did you forget a suffix like '.BF16' or '.Q5_K_M'?")
+		}
+
+		modelFile = filepath.Join(cache, model+".gguf")
+		if _, err := os.Stat(modelFile); err != nil {
+			slog.Info("llm", "model", model, "state", "missing")
+			url := ""
+			for _, k := range KnownLLMs {
+				if strings.HasPrefix(model, k.BaseName) {
+					url = k.URL
+					break
+				}
+			}
+			if url == "" {
+				return nil, errors.New("can't guess model's huggingface repo")
+			}
+			hf := "https://huggingface.co/"
+			if strings.HasPrefix(url, hf) {
+				repo := url[len(hf):]
+				if err = getHfModelGGUFFromLlamafile(ctx, cache, repo, model); err != nil {
+					return nil, err
+				}
+			} else {
+				return nil, errors.New("can't guess model's source")
+			}
 		}
 	}
 
 	// Create the log file to redirect llamafile's output which is quite verbose.
-	log, err := os.OpenFile(filepath.Join(cache, "llm.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
-	if err != nil {
-		return nil, err
-	}
-	defer log.Close()
 	l := &LLM{
-		done:    make(chan error),
 		port:    findFreePort(),
 		loading: true,
 	}
-	cmd := []string{llamafile, "--model", modelFile, "-ngl", "9999", "--nobrowser", "--port", strconv.Itoa(l.port)}
-	single := strings.Join(cmd, " ")
-	slog.Debug("llm", "command", single, "cwd", cache, "log", log.Name())
-	if runtime.GOOS == "windows" {
-		l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+	if usePy {
+		cmd := []string{filepath.Join(cache, "llm.py"), "--port", strconv.Itoa(l.port)}
+		done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "llm.log"))
+		if err != nil {
+			return nil, err
+		}
+		l.done = done
+		l.cancel = cancel
 	} else {
-		l.c = exec.CommandContext(ctx, "/bin/sh", "-c", single)
+		done := make(chan error)
+		l.done = done
+		log, err := os.OpenFile(filepath.Join(cache, "llm.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+		if err != nil {
+			return nil, err
+		}
+		defer log.Close()
+		cmd := []string{llamafile, "--model", modelFile, "-ngl", "9999", "--nobrowser", "--port", strconv.Itoa(l.port)}
+		single := strings.Join(cmd, " ")
+		slog.Debug("llm", "command", single, "cwd", cache, "log", log.Name())
+		if runtime.GOOS == "windows" {
+			l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+		} else {
+			l.c = exec.CommandContext(ctx, "/bin/sh", "-c", single)
+		}
+		l.c.Dir = cache
+		l.c.Stdout = log
+		l.c.Stderr = log
+		l.c.Cancel = func() error {
+			slog.Debug("llm", "state", "killing")
+			return l.c.Process.Kill()
+		}
+		if err = l.c.Start(); err != nil {
+			return nil, err
+		}
+		go func() {
+			done <- l.c.Wait()
+			slog.Info("llm", "state", "terminated")
+		}()
+		slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
 	}
-	l.c.Dir = cache
-	l.c.Stdout = log
-	l.c.Stderr = log
-	l.c.Cancel = func() error {
-		slog.Debug("llm", "state", "killing")
-		return l.c.Process.Kill()
-	}
-	if err = l.c.Start(); err != nil {
-		return nil, err
-	}
-	go func() {
-		l.done <- l.c.Wait()
-		slog.Info("llm", "state", "terminated")
-	}()
-	slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
 	msgs := []Message{
 		{Role: System, Content: "You are an AI assistant. You strictly follow orders."},
 		{Role: User, Content: "reply with \"ok\""},
 	}
 	for ctx.Err() == nil {
-		if _, err = l.Prompt(ctx, msgs); err == nil {
+		if resp, err := l.Prompt(ctx, msgs); err == nil {
+			// Phi-3 can't follow orders properly.
+			if strings.ToLower(resp) != "ok" {
+				l.Close()
+				return nil, fmt.Errorf("unexpected response from llm. expected \"ok\", got %q", resp)
+			}
 			break
 		}
 		select {
@@ -199,7 +227,11 @@ func NewLLM(ctx context.Context, cache, model string) (*LLM, error) {
 
 func (l *LLM) Close() error {
 	slog.Info("llm", "state", "terminating")
-	l.c.Cancel()
+	if l.cancel != nil {
+		l.cancel()
+	} else {
+		l.c.Cancel()
+	}
 	err := <-l.done
 	var er *exec.ExitError
 	if errors.As(err, &er) {
@@ -279,14 +311,16 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message) (string, erro
 	reply := ""
 	for {
 		line, err := r.ReadBytes('\n')
+		line = bytes.TrimSpace(line)
 		if err == io.EOF {
 			err = nil
-			break
+			if len(line) == 0 {
+				return reply, nil
+			}
 		}
 		if err != nil {
 			return "", err
 		}
-		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
 		}
@@ -296,8 +330,7 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message) (string, erro
 		d := json.NewDecoder(bytes.NewReader(line[len("data: "):]))
 		d.DisallowUnknownFields()
 		msg := openAIChatCompletionsStreamResponse{}
-		err = d.Decode(&msg)
-		if err != nil {
+		if err = d.Decode(&msg); err != nil {
 			slog.Error("llm", "data", string(line))
 			return "", err
 		}
@@ -308,7 +341,6 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message) (string, erro
 		slog.Debug("llm", "word", word)
 		reply += word
 	}
-	return reply, nil
 }
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
@@ -373,9 +405,9 @@ type openAIChatCompletionsStreamResponse struct {
 type openAIStreamChoices struct {
 	Delta openAIStreamDelta `json:"delta"`
 	// FinishReason is one of null, "stop", "length", "content_filter" or "tool_calls".
-	FinishReason string  `json:"finish_reason"`
-	Index        int     `json:"index"`
-	Message      Message `json:"message"`
+	FinishReason string `json:"finish_reason"`
+	Index        int    `json:"index"`
+	//Message      Message `json:"message"`
 }
 
 type openAIStreamDelta struct {
@@ -422,6 +454,7 @@ func downloadExec(ctx context.Context, url, dst string) error {
 	if _, err := os.Stat(dst); err == nil || !os.IsNotExist(err) {
 		return err
 	}
+	// TODO: When authenticated the bandwidth saturates to 1Gbps.
 	slog.Info("llm", "downloading", url)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

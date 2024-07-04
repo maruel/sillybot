@@ -12,5 +12,6 @@ fi
 source venv/bin/activate
 
 pip install -U pip
+# flash_attn ?
 pip install -U accelerate diffusers peft protobuf sentencepiece setuptools torch transformers
 pip freeze > requirements-$(uname).txt
