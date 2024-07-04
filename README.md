@@ -26,6 +26,8 @@ Diffusion (in python for now).
       Medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
       which is too slow on a M3 Max IMO.
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/maruel/sillybot/.svg)](https://pkg.go.dev/github.com/maruel/sillybot/)
+
 
 ## Installation
 
