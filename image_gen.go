@@ -11,18 +11,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"time"
 )
 
 // ImageGen manages an image generation server.
 type ImageGen struct {
-	c       *exec.Cmd
-	done    chan error
+	done    <-chan error
+	cancel  func() error
 	port    int
 	steps   int
 	loading bool
@@ -30,53 +27,20 @@ type ImageGen struct {
 
 // NewImageGen initializes a new image generation server.
 func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
-	log, err := os.OpenFile(filepath.Join(cache, "imagegen.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+	port := findFreePort()
+	cmd := []string{filepath.Join("py", "main.py"), "--port", strconv.Itoa(port)}
+	done, cancel, err := runPython(ctx, filepath.Join("py", "venv"), cmd, cache, filepath.Join(cache, "imagegen.log"))
 	if err != nil {
 		return nil, err
 	}
-	defer log.Close()
 	ig := &ImageGen{
-		done:    make(chan error),
-		port:    findFreePort(),
+		done:    done,
+		cancel:  cancel,
+		port:    port,
 		steps:   1,
 		loading: true,
 	}
-	bin := "bin"
-	pythonexe := "python3"
-	if runtime.GOOS == "windows" {
-		bin = "Scripts"
-		// They don't put a python3.exe in the virtualenv... Seriously.
-		pythonexe = "python.exe"
-	}
-	python3, err := filepath.Abs(filepath.Join("py", "venv", bin, pythonexe))
-	if err != nil {
-		return nil, err
-	}
-	main, err := filepath.Abs(filepath.Join("py", "main.py"))
-	if err != nil {
-		return nil, err
-	}
-	ig.c = exec.CommandContext(ctx, python3, main, "--port", strconv.Itoa(ig.port))
-	ig.c.Dir = cache
-	ig.c.Stdout = log
-	ig.c.Stderr = log
-	ig.c.Cancel = func() error {
-		slog.Debug("ig", "state", "killing")
-		if runtime.GOOS != "windows" {
-			// TODO: Poll for 30s then kill.
-			return ig.c.Process.Signal(os.Interrupt)
-		}
-		return ig.c.Process.Kill()
-	}
-	slog.Debug("ig", "command", ig.c.Args, "cwd", cache, "log", log.Name())
-	if err := ig.c.Start(); err != nil {
-		return nil, err
-	}
-	go func() {
-		ig.done <- ig.c.Wait()
-		slog.Info("ig", "state", "terminated")
-	}()
-	slog.Info("ig", "state", "started", "pid", ig.c.Process.Pid, "port", ig.port, "message", "Please be patient, it can take several minutes to download everything")
+	slog.Info("ig", "state", "started", "port", ig.port, "message", "Please be patient, it can take several minutes to download everything")
 	for ctx.Err() == nil {
 		if _, err = ig.GenImage("cat"); err == nil {
 			break
@@ -96,8 +60,11 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 
 func (ig *ImageGen) Close() error {
 	slog.Info("ig", "state", "terminating")
-	ig.c.Cancel()
-	return <-ig.done
+	err := ig.cancel()
+	if err2 := <-ig.done; err2 != nil {
+		err = err2
+	}
+	return err
 }
 
 // GenImage returns a PNG encoded image based on the prompt.
