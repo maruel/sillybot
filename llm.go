@@ -201,7 +201,7 @@ func NewLLM(ctx context.Context, cache, model string) (*LLM, error) {
 		slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
 	}
 	msgs := []Message{
-		{Role: System, Content: "You are an AI assistant. You strictly follow orders."},
+		{Role: System, Content: "You are an AI assistant. You strictly follow orders. Do not add punctuation. Do not use uppercase letters."},
 		{Role: User, Content: "reply with \"ok\""},
 	}
 	for ctx.Err() == nil {
@@ -253,8 +253,7 @@ func (l *LLM) Prompt(ctx context.Context, msgs []Message) (string, error) {
 		lvl = slog.LevelDebug
 	}
 	slog.Log(ctx, lvl, "llm", "msgs", msgs)
-	//reply, err := l.promptBlocking(ctx, msgs)
-	reply, err := l.promptStreaming(ctx, msgs)
+	reply, err := l.promptBlocking(ctx, msgs)
 	if err != nil {
 		lvl := slog.LevelDebug
 		if !l.loading || err == context.Canceled {
@@ -267,9 +266,34 @@ func (l *LLM) Prompt(ctx context.Context, msgs []Message) (string, error) {
 	reply = strings.TrimSuffix(reply, "<|eot_id|>")
 	// Gemma-2
 	reply = strings.TrimSuffix(reply, "<end_of_turn>")
+	// Phi-3
+	reply = strings.TrimSuffix(reply, "<|end|>")
+	reply = strings.TrimSuffix(reply, "<|endoftext|>")
 	reply = strings.TrimSpace(reply)
 	slog.Info("llm", "msgs", msgs, "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
 	return reply, nil
+}
+
+// PromptStreaming prompts the LLM and returns the reply in the supplied channel.
+func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, words chan<- string) error {
+	start := time.Now()
+	lvl := slog.LevelInfo
+	if l.loading {
+		// Otherwise it storms on startup.
+		lvl = slog.LevelDebug
+	}
+	slog.Log(ctx, lvl, "llm", "msgs", msgs)
+	err := l.promptStreaming(ctx, msgs, words)
+	if err != nil {
+		lvl := slog.LevelDebug
+		if !l.loading || err == context.Canceled {
+			lvl = slog.LevelError
+		}
+		slog.Log(ctx, lvl, "llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		return err
+	}
+	slog.Info("llm", "msgs", msgs, "duration", time.Since(start).Round(time.Millisecond))
+	return nil
 }
 
 func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error) {
@@ -296,7 +320,7 @@ func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *LLM) promptStreaming(ctx context.Context, msgs []Message) (string, error) {
+func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, words chan<- string) error {
 	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs, Stream: true}
 	b, _ := json.Marshal(data)
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
@@ -304,42 +328,48 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message) (string, erro
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer resp.Body.Close()
 	r := bufio.NewReader(resp.Body)
-	reply := ""
 	for {
 		line, err := r.ReadBytes('\n')
 		line = bytes.TrimSpace(line)
 		if err == io.EOF {
 			err = nil
 			if len(line) == 0 {
-				return reply, nil
+				return err
 			}
 		}
 		if err != nil {
-			return "", err
+			return err
 		}
 		if len(line) == 0 {
 			continue
 		}
 		if !bytes.HasPrefix(line, []byte("data: ")) {
-			panic(line)
+			return fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
 		}
 		d := json.NewDecoder(bytes.NewReader(line[len("data: "):]))
 		d.DisallowUnknownFields()
 		msg := openAIChatCompletionsStreamResponse{}
 		if err = d.Decode(&msg); err != nil {
 			slog.Error("llm", "data", string(line))
-			return "", err
+			return err
 		}
 		if len(msg.Choices) != 1 {
-			return "", errors.New("unexpected number of choices")
+			return errors.New("unexpected number of choices")
 		}
 		word := msg.Choices[0].Delta.Content
 		slog.Debug("llm", "word", word)
-		reply += word
+		switch word {
+		// Llama-3, Gemma-2, Phi-3
+		case "<|eot_id|>", "<end_of_turn>", "<|end|>", "<|endoftext|>":
+			return nil
+		case "":
+		default:
+			words <- word
+		}
 	}
 }
 
@@ -348,9 +378,10 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message) (string, erro
 // openAIChatCompletionRequest is documented at
 // https://platform.openai.com/docs/api-reference/chat/create
 type openAIChatCompletionRequest struct {
-	Model    string    `json:"model"`
-	Stream   bool      `json:"stream"`
-	Messages []Message `json:"messages"`
+	Model       string    `json:"model"`
+	Stream      bool      `json:"stream"`
+	Messages    []Message `json:"messages"`
+	Temperature float64   `json:"temperature"`
 }
 
 // Role is one of the LLM known roles.
