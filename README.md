@@ -12,7 +12,11 @@ Diffusion (in python for now).
     - [Gemma-2-27B
       instruct](https://huggingface.co/jartine/gemma-2-27b-it-llamafile) in
       Q6_K.
-- Runs as an image generator. Tested to work with:
+    - [Phi-3-mini-4k-instruct](https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile)
+      and
+      [Phi-3-medium-128k-instruct](https://huggingface.co/Mozilla/Phi-3-medium-128k-instruct-llamafile)
+      are currently broken, probably a misconfiguration. Help is appreciated! 🙋
+- Runs as an image generator. Tested to work wwith:
     - [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B) coupled with [LCM
       Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) which is
       super fast. Segmind SSD-1B renders under 5s on a MacBook Pro M3 Max, under
