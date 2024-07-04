@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestSD(t *testing.T) {
+func TestImageGen(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test case in short mode")
 	}

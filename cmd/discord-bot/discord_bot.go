@@ -17,13 +17,14 @@ import (
 )
 
 type discordBot struct {
-	dg *discordgo.Session
-	l  *sillybot.LLM
-	s  *sillybot.ImageGen
+	dg           *discordgo.Session
+	l            *sillybot.LLM
+	ig           *sillybot.ImageGen
+	systemPrompt string
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(token string, verbose bool, l *sillybot.LLM, s *sillybot.ImageGen) (*discordBot, error) {
+func newDiscordBot(token string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen) (*discordBot, error) {
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
@@ -49,7 +50,12 @@ func newDiscordBot(token string, verbose bool, l *sillybot.LLM, s *sillybot.Imag
 		dg.Close()
 		return nil, err
 	}
-	d := &discordBot{dg: dg, l: l, s: s}
+	d := &discordBot{
+		dg:           dg,
+		l:            l,
+		ig:           ig,
+		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
+	}
 	_ = dg.AddHandler(d.guildCreate)
 	_ = dg.AddHandler(d.messageCreate)
 	_ = dg.AddHandler(d.ready)
@@ -89,12 +95,12 @@ func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCre
 	default:
 		if strings.HasPrefix(content, "image:") {
 			content := strings.TrimSpace(strings.TrimPrefix(content, "image:"))
-			if d.s == nil {
+			if d.ig == nil {
 				err = errors.New("image generation is not enabled")
 			} else {
 				// TODO: insert a stand-in, then replace it.
 				var p []byte
-				if p, err = d.s.GenImage(content); err == nil {
+				if p, err = d.ig.GenImage(content); err == nil {
 					data := discordgo.MessageSend{
 						Files: []*discordgo.File{
 							{
@@ -112,8 +118,12 @@ func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCre
 				err = errors.New("text generation is not enabled")
 			} else {
 				reply := ""
-				// TODO: Flow context.
-				if reply, err = d.l.Prompt(context.Background(), content); err == nil {
+				msgs := []sillybot.Message{
+					{Role: sillybot.System, Content: d.systemPrompt},
+					{Role: sillybot.User, Content: content},
+				}
+				// TODO: Flow ctx.
+				if reply, err = d.l.Prompt(context.Background(), msgs); err == nil {
 					_, err = s.ChannelMessageSend(m.ChannelID, reply)
 				}
 			}

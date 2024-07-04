@@ -21,6 +21,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/schollz/progressbar/v3"
@@ -149,10 +150,9 @@ func NewLLM(ctx context.Context, cache, model string) (*LLM, error) {
 	}
 	defer log.Close()
 	l := &LLM{
-		done:         make(chan error),
-		port:         findFreePort(),
-		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
-		loading:      true,
+		done:    make(chan error),
+		port:    findFreePort(),
+		loading: true,
 	}
 	cmd := []string{llamafile, "--model", modelFile, "-ngl", "9999", "--nobrowser", "--port", strconv.Itoa(l.port)}
 	single := strings.Join(cmd, " ")
@@ -177,8 +177,12 @@ func NewLLM(ctx context.Context, cache, model string) (*LLM, error) {
 		slog.Info("llm", "state", "terminated")
 	}()
 	slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
+	msgs := []Message{
+		{Role: System, Content: "You are an AI assistant. You strictly follow orders."},
+		{Role: User, Content: "reply with \"ok\""},
+	}
 	for ctx.Err() == nil {
-		if _, err = l.Prompt(ctx, "reply with \"ok\""); err == nil {
+		if _, err = l.Prompt(ctx, msgs); err == nil {
 			break
 		}
 		select {
@@ -196,22 +200,27 @@ func NewLLM(ctx context.Context, cache, model string) (*LLM, error) {
 func (l *LLM) Close() error {
 	slog.Info("llm", "state", "terminating")
 	l.c.Cancel()
-	return <-l.done
+	err := <-l.done
+	var er *exec.ExitError
+	if errors.As(err, &er) {
+		s, ok := er.ProcessState.Sys().(syscall.WaitStatus)
+		if ok && s.Signaled() {
+			// It was simply killed.
+			err = nil
+		}
+	}
+	return err
 }
 
 // Prompt prompts the LLM and returns the reply.
-func (l *LLM) Prompt(ctx context.Context, prompt string) (string, error) {
+func (l *LLM) Prompt(ctx context.Context, msgs []Message) (string, error) {
 	start := time.Now()
 	lvl := slog.LevelInfo
 	if l.loading {
 		// Otherwise it storms on startup.
 		lvl = slog.LevelDebug
 	}
-	slog.Log(ctx, lvl, "llm", "prompt", prompt)
-	msgs := []message{
-		{system, l.systemPrompt},
-		{user, prompt},
-	}
+	slog.Log(ctx, lvl, "llm", "msgs", msgs)
 	//reply, err := l.promptBlocking(ctx, msgs)
 	reply, err := l.promptStreaming(ctx, msgs)
 	if err != nil {
@@ -219,7 +228,7 @@ func (l *LLM) Prompt(ctx context.Context, prompt string) (string, error) {
 		if !l.loading || err == context.Canceled {
 			lvl = slog.LevelError
 		}
-		slog.Log(ctx, lvl, "llm", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		slog.Log(ctx, lvl, "llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return reply, err
 	}
 	// Llama-3
@@ -227,11 +236,11 @@ func (l *LLM) Prompt(ctx context.Context, prompt string) (string, error) {
 	// Gemma-2
 	reply = strings.TrimSuffix(reply, "<end_of_turn>")
 	reply = strings.TrimSpace(reply)
-	slog.Info("llm", "prompt", prompt, "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
+	slog.Info("llm", "msgs", msgs, "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
 	return reply, nil
 }
 
-func (l *LLM) promptBlocking(ctx context.Context, msgs []message) (string, error) {
+func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error) {
 	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs}
 	b, _ := json.Marshal(data)
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
@@ -255,7 +264,7 @@ func (l *LLM) promptBlocking(ctx context.Context, msgs []message) (string, error
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *LLM) promptStreaming(ctx context.Context, msgs []message) (string, error) {
+func (l *LLM) promptStreaming(ctx context.Context, msgs []Message) (string, error) {
 	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs, Stream: true}
 	b, _ := json.Marshal(data)
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
@@ -309,20 +318,25 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []message) (string, erro
 type openAIChatCompletionRequest struct {
 	Model    string    `json:"model"`
 	Stream   bool      `json:"stream"`
-	Messages []message `json:"messages"`
+	Messages []Message `json:"messages"`
 }
 
-type role string
+// Role is one of the LLM known roles.
+type Role string
 
+// LLM known roles.
 const (
-	system    role = "system"
-	user      role = "user"
-	assistant role = "assistant"
+	System    Role = "system"
+	User      Role = "user"
+	Assistant Role = "assistant"
 )
 
-type message struct {
-	Role    role   `json:"role"`
+// Message is a message to send to the LLM as part of the exchange.
+type Message struct {
+	Role    Role   `json:"role"`
 	Content string `json:"content"`
+
+	_ struct{}
 }
 
 // openAIChatCompletionsResponse is documented at
@@ -344,7 +358,7 @@ type openAIChoices struct {
 	// FinishReason is one of "stop", "length", "content_filter" or "tool_calls".
 	FinishReason string  `json:"finish_reason"`
 	Index        int     `json:"index"`
-	Message      message `json:"message"`
+	Message      Message `json:"message"`
 }
 
 // openAIChatCompletionsStreamResponse is not documented?
@@ -361,7 +375,7 @@ type openAIStreamChoices struct {
 	// FinishReason is one of null, "stop", "length", "content_filter" or "tool_calls".
 	FinishReason string  `json:"finish_reason"`
 	Index        int     `json:"index"`
-	Message      message `json:"message"`
+	Message      Message `json:"message"`
 }
 
 type openAIStreamDelta struct {

@@ -20,12 +20,13 @@ import (
 )
 
 type slackBot struct {
-	api    *slack.Client
-	sc     *socketmode.Client
-	l      *sillybot.LLM
-	s      *sillybot.ImageGen
-	botID  string
-	userID string
+	api          *slack.Client
+	sc           *socketmode.Client
+	l            *sillybot.LLM
+	ig           *sillybot.ImageGen
+	botID        string
+	userID       string
+	systemPrompt string
 }
 
 type slackLogger struct {
@@ -41,7 +42,7 @@ type ilog interface {
 	Output(int, string) error
 }
 
-func newSlackBot(apptoken, bottoken string, verbose bool, l *sillybot.LLM, sd *sillybot.ImageGen) (*slackBot, error) {
+func newSlackBot(apptoken, bottoken string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen) (*slackBot, error) {
 	if !strings.HasPrefix(apptoken, "xapp-") {
 		return nil, errors.New("slack apptoken must have the prefix \"xapp-\"")
 	}
@@ -63,7 +64,13 @@ func newSlackBot(apptoken, bottoken string, verbose bool, l *sillybot.LLM, sd *s
 		out = &slackLogger{p: "slack/socketmode"}
 	}
 	sc := socketmode.New(api, socketmode.OptionDebug(verbose), socketmode.OptionLog(out))
-	s := &slackBot{api: api, sc: sc, l: l, s: sd}
+	s := &slackBot{
+		api:          api,
+		sc:           sc,
+		l:            l,
+		ig:           ig,
+		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
+	}
 	return s, nil
 }
 
@@ -129,12 +136,12 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 				msg := strings.TrimSpace(strings.TrimPrefix(ev.Text, "<@"+s.userID+">"))
 				var err error
 				if strings.HasPrefix(msg, "image:") {
-					if s.s == nil {
+					if s.ig == nil {
 						_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText("Image generation is not enabled. ", false))
 					} else {
 						msg = strings.TrimSpace(strings.TrimPrefix(msg, "image:"))
 						var p []byte
-						if p, err = s.s.GenImage(msg); err == nil {
+						if p, err = s.ig.GenImage(msg); err == nil {
 							param := slack.UploadFileV2Parameters{
 								Title:    "Image",
 								Filename: "image.png",
@@ -150,7 +157,11 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 						_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText("LLM is not enabled. ", false))
 					} else {
 						reply := ""
-						if reply, err = s.l.Prompt(ctx, msg); err == nil {
+						msgs := []sillybot.Message{
+							{Role: sillybot.System, Content: s.systemPrompt},
+							{Role: sillybot.User, Content: msg},
+						}
+						if reply, err = s.l.Prompt(ctx, msgs); err == nil {
 							_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText(reply, false))
 						} else {
 							_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText("ERROR: "+err.Error(), false))

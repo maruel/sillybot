@@ -60,11 +60,8 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 
 func (ig *ImageGen) Close() error {
 	slog.Info("ig", "state", "terminating")
-	err := ig.cancel()
-	if err2 := <-ig.done; err2 != nil {
-		err = err2
-	}
-	return err
+	ig.cancel()
+	return <-ig.done
 }
 
 // GenImage returns a PNG encoded image based on the prompt.
