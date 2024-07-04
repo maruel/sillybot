@@ -97,7 +97,7 @@ func mainImpl() error {
 		return err
 	}
 
-	d, err := newDiscordBot(*bottoken, *verbose, l, sd)
+	d, err := newDiscordBot(ctx, *bottoken, *verbose, l, sd)
 	if err != nil {
 		return err
 	}

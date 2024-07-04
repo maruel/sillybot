@@ -11,12 +11,15 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/maruel/sillybot"
 )
 
 type discordBot struct {
+	ctx          context.Context
 	dg           *discordgo.Session
 	l            *sillybot.LLM
 	ig           *sillybot.ImageGen
@@ -24,7 +27,7 @@ type discordBot struct {
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(token string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen) (*discordBot, error) {
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
@@ -51,6 +54,7 @@ func newDiscordBot(token string, verbose bool, l *sillybot.LLM, ig *sillybot.Ima
 		return nil, err
 	}
 	d := &discordBot{
+		ctx:          ctx,
 		dg:           dg,
 		l:            l,
 		ig:           ig,
@@ -59,7 +63,7 @@ func newDiscordBot(token string, verbose bool, l *sillybot.LLM, ig *sillybot.Ima
 	_ = dg.AddHandler(d.guildCreate)
 	_ = dg.AddHandler(d.messageCreate)
 	_ = dg.AddHandler(d.ready)
-	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentGuildPresences | discordgo.IntentDirectMessages
+	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentGuildPresences | discordgo.IntentDirectMessages | discordgo.IntentGuildMessageTyping | discordgo.IntentDirectMessageTyping
 	slog.Info("discord", "state", "running", "info", "Press CTRL-C to exit.")
 	return d, nil
 }
@@ -98,6 +102,9 @@ func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCre
 			if d.ig == nil {
 				err = errors.New("image generation is not enabled")
 			} else {
+				if err = s.ChannelTyping(m.ChannelID); err != nil {
+					break
+				}
 				// TODO: insert a stand-in, then replace it.
 				var p []byte
 				if p, err = d.ig.GenImage(content); err == nil {
@@ -117,15 +124,43 @@ func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCre
 			if d.l == nil {
 				err = errors.New("text generation is not enabled")
 			} else {
-				reply := ""
+				if err = s.ChannelTyping(m.ChannelID); err != nil {
+					break
+				}
 				msgs := []sillybot.Message{
 					{Role: sillybot.System, Content: d.systemPrompt},
 					{Role: sillybot.User, Content: content},
 				}
-				// TODO: Flow ctx.
-				if reply, err = d.l.Prompt(context.Background(), msgs); err == nil {
-					_, err = s.ChannelMessageSend(m.ChannelID, reply)
-				}
+				words := make(chan string, 10)
+				wg := sync.WaitGroup{}
+				wg.Add(1)
+				go func() {
+					text := ""
+					t := time.NewTicker(5 * time.Second)
+					for {
+						select {
+						case w, ok := <-words:
+							if !ok {
+								if text != "" {
+									_, _ = s.ChannelMessageSend(m.ChannelID, text)
+								}
+								t.Stop()
+								wg.Done()
+								return
+							}
+							text += w
+						case <-t.C:
+							if text != "" {
+								_, _ = s.ChannelMessageSend(m.ChannelID, text)
+								_ = s.ChannelTyping(m.ChannelID)
+								text = ""
+							}
+						}
+					}
+				}()
+				err = d.l.PromptStreaming(d.ctx, msgs, words)
+				close(words)
+				wg.Wait()
 			}
 		}
 		if err != nil {
