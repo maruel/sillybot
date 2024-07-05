@@ -41,7 +41,7 @@ server (Discord or Slack) is different:
 
 ## Acknowledgements
 
-This projects wouldn't have been as easy to make if it weren't for
+This project greatly benefit from
 [llamafile](https://github.com/Mozilla-Ocho/llamafile) by [Justine
 Tunney](https://github.com/jart) and all the companies providing open-weights
 models.
