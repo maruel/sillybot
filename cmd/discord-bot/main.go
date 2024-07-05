@@ -66,6 +66,7 @@ func mainImpl() error {
 	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
 	llmModel := flag.String("llm", sillybot.KnownLLMs[0].BaseName+".Q5_K_M", "Enable LLM output")
+	usePy := flag.Bool("llm-use-python", false, "Ignored llmafile and use py/llm.py instead")
 	igUse := flag.Bool("ig", false, "Enable Image Generation output")
 	flag.Parse()
 
@@ -86,7 +87,7 @@ func mainImpl() error {
 	if err = os.MkdirAll(*cache, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	l, ig, err := sillybot.LoadModels(ctx, *cache, *llmModel, *igUse)
+	l, ig, err := sillybot.LoadModels(ctx, *cache, *llmModel, *usePy, *igUse)
 	if l != nil {
 		defer l.Close()
 	}

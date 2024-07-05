@@ -81,12 +81,17 @@ type LLM struct {
 	_ struct{}
 }
 
-// NewLLM instantiates a llamafile server.
-func NewLLM(ctx context.Context, cache, model string) (*LLM, error) {
-	usePy := false
+// NewLLM instantiates a llamafile server or optionally uses python instead.
+//
+// llamafile is really fast so it's preferred. The latest version is downloaded
+// automatically if not found in cache. It uses GGUF quantized and packed models.
+//
+// If usePython is true, llamafile is not used, instead py/llm.py is used. In
+// this case, model is ignored.
+func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, error) {
 	llamafile := ""
 	modelFile := ""
-	if usePy {
+	if usePython {
 		if pyNeedRecreate(cache) {
 			if err := pyRecreate(ctx, cache); err != nil {
 				return nil, err
@@ -118,7 +123,9 @@ func NewLLM(ctx context.Context, cache, model string) (*LLM, error) {
 			}
 		}
 
-		switch filepath.Ext(model) {
+		switch strings.ToUpper(filepath.Ext(model)) {
+		case ".GGUF":
+			return nil, errors.New("do not include the .gguf suffix")
 		case ".BF16":
 			if runtime.GOOS == "darwin" {
 				slog.Warn("llm", "message", "bfloat16 is likely not supported on your Apple Silicon system")
@@ -160,7 +167,7 @@ func NewLLM(ctx context.Context, cache, model string) (*LLM, error) {
 		port:    findFreePort(),
 		loading: true,
 	}
-	if usePy {
+	if usePython {
 		cmd := []string{filepath.Join(cache, "llm.py"), "--port", strconv.Itoa(l.port)}
 		done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "llm.log"))
 		if err != nil {

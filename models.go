@@ -22,7 +22,7 @@ import (
 // LoadModels loads the LLM and ImageGen models.
 //
 // Both take a while to start, so load them in parallel for faster initialization.
-func LoadModels(ctx context.Context, cache string, llm string, ig bool) (*LLM, *ImageGen, error) {
+func LoadModels(ctx context.Context, cache string, llm string, llmUsePython, ig bool) (*LLM, *ImageGen, error) {
 	start := time.Now()
 	slog.Info("models", "state", "initializing")
 	eg := errgroup.Group{}
@@ -30,8 +30,8 @@ func LoadModels(ctx context.Context, cache string, llm string, ig bool) (*LLM, *
 	var s *ImageGen
 	eg.Go(func() error {
 		var err error
-		if llm != "" {
-			if l, err = NewLLM(ctx, cache, llm); err != nil {
+		if llm != "" || llmUsePython {
+			if l, err = NewLLM(ctx, cache, llm, llmUsePython); err != nil {
 				slog.Info("llm", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
 			}
 		}

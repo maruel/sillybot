@@ -56,7 +56,7 @@ func testModel(t *testing.T, model string) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	l, err := NewLLM(ctx, cache, model)
+	l, err := NewLLM(ctx, cache, model, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func testModelStreaming(t *testing.T, model string) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	l, err := NewLLM(ctx, cache, model)
+	l, err := NewLLM(ctx, cache, model, false)
 	if err != nil {
 		t.Fatal(err)
 	}
