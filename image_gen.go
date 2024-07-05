@@ -62,7 +62,7 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	ig.steps = 4
+	ig.steps = 8
 	slog.Info("ig", "state", "ready")
 	ig.loading = false
 	return ig, nil

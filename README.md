@@ -19,9 +19,9 @@ Diffusion (in python for now).
 - Runs as an image generator. Tested to work wwith:
     - [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B) coupled with [LCM
       Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) which is
-      super fast. Segmind SSD-1B renders under 5s on a MacBook Pro M3 Max, under
-      50s on an Intel i7-13700 on Ubuntu and under 80s on a i9-13900H on Windows
-      11.
+      super fast. Segmind SSD-1B renders under 10s on a MacBook Pro M3 Max, under
+      100s on an Intel i7-13700 on Ubuntu and under 160s on a i9-13900H on Windows
+      11. (Depends on the number of steps selected)
     - [Stable Diffusion 3
       Medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
       which is too slow on a M3 Max IMO.
