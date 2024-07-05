@@ -5,13 +5,15 @@
 package sillybot
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
-func TestMemory(t *testing.T) {
+func TestMemory_Forget(t *testing.T) {
 	m := Memory{}
 	m.Forget()
 	now := time.Now()
@@ -29,6 +31,32 @@ func TestMemory(t *testing.T) {
 	// LRU:
 	want := []*Conversation{c3, c1}
 	if diff := cmp.Diff(want, m.conversations); diff != "" {
+		t.Fatal(diff)
+	}
+}
+
+func TestMemory_Serialize(t *testing.T) {
+	m1 := Memory{}
+	now := time.Now()
+	twodaysago := now.Add(-48 * time.Hour)
+	m1.Get("user1", "channel1")
+	c2 := m1.Get("user2", "channel1")
+	m1.Get("user1", "channel2")
+	c4 := m1.Get("user2", "channel2")
+	c2.LastUpdate = twodaysago
+	c4.LastUpdate = twodaysago
+
+	b := bytes.Buffer{}
+	if err := m1.Save(&b); err != nil {
+		t.Fatal(err)
+	}
+
+	m2 := Memory{}
+	if err := m2.Load(&b); err != nil {
+		t.Fatal(err)
+	}
+
+	if diff := cmp.Diff(m1, m2, cmpopts.IgnoreUnexported(Memory{})); diff != "" {
 		t.Fatal(diff)
 	}
 }

@@ -104,12 +104,40 @@ func mainImpl() error {
 	if err != nil {
 		return err
 	}
+	// Load memory.
+	mem := &sillybot.Memory{}
+	memcache := filepath.Join(*cache, "slack_memory.json")
+	f, err := os.Open(memcache)
+	if err == nil {
+		err = mem.Load(f)
+		f.Close()
+		if err != nil {
+			slog.Error("main", "message", "failed to load memory", "error", err)
+			// Continue anyway.
+		}
+	} else {
+		slog.Info("main", "memory", "no memory to load", "error", err)
+	}
 
-	s, err := newSlackBot(*apptoken, *bottoken, *verbose, l, ig)
+	s, err := newSlackBot(*apptoken, *bottoken, *verbose, l, ig, mem)
 	if err != nil {
 		return err
 	}
-	return s.Run(ctx)
+	err = s.Run(ctx)
+	// Save memory.
+	f, err2 := os.Create(memcache)
+	if err2 != nil {
+		return err2
+	}
+	err2 = mem.Save(f)
+	err3 := f.Close()
+	if err2 != nil {
+		return err2
+	}
+	if err3 != nil {
+		return err3
+	}
+	return err
 }
 
 func main() {

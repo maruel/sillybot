@@ -22,12 +22,12 @@ type discordBot struct {
 	dg           *discordgo.Session
 	l            *sillybot.LLM
 	ig           *sillybot.ImageGen
-	mem          sillybot.Memory
+	mem          *sillybot.Memory
 	systemPrompt string
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen, mem *sillybot.Memory) (*discordBot, error) {
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
@@ -58,6 +58,7 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 		dg:           dg,
 		l:            l,
 		ig:           ig,
+		mem:          mem,
 		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
 	}
 	_ = dg.AddHandler(d.guildCreate)
