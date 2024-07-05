@@ -22,6 +22,7 @@ type discordBot struct {
 	dg           *discordgo.Session
 	l            *sillybot.LLM
 	ig           *sillybot.ImageGen
+	mem          sillybot.Memory
 	systemPrompt string
 }
 
@@ -109,37 +110,36 @@ func (d *discordBot) handlePrompt(s *discordgo.Session, m *discordgo.MessageCrea
 		slog.Error("discord", "event", "failed posting 'user typing'", "error", err)
 		// Continue anyway.
 	}
-
-	// TODO: Keep log of previous messages.
-	msgs := []sillybot.Message{
-		{Role: sillybot.System, Content: d.systemPrompt},
-		{Role: sillybot.User, Content: msg},
+	c := d.mem.Get(m.Author.ID, m.ChannelID)
+	if len(c.Messages) == 0 {
+		c.Messages = []sillybot.Message{{Role: sillybot.System, Content: d.systemPrompt}}
 	}
+	c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.User, Content: msg})
 	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		t := time.NewTicker(3 * time.Second)
-		var msg *discordgo.Message
+		var msg *discordgo.Message = m.Message
 		var err error
+		text := ""
 		pending := ""
 		for {
 			select {
 			case w, ok := <-words:
 				if !ok {
 					if pending != "" {
-						if msg != nil {
-							msg, err = s.ChannelMessageSendComplex(m.ChannelID, &discordgo.MessageSend{
-								Content:   pending,
-								Reference: &discordgo.MessageReference{MessageID: msg.ID, ChannelID: msg.ChannelID, GuildID: msg.GuildID},
-							})
-						} else {
-							msg, err = s.ChannelMessageSend(m.ChannelID, pending)
-						}
+						text += pending
+						msg, err = s.ChannelMessageSendComplex(m.ChannelID, &discordgo.MessageSend{
+							Content:   pending,
+							Reference: &discordgo.MessageReference{MessageID: msg.ID, ChannelID: msg.ChannelID, GuildID: msg.GuildID},
+						})
 						if err != nil {
 							slog.Error("discord", "event", "failed posting message", "error", err)
 						}
 					}
+					// Remember our own answer.
+					c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.Assistant, Content: text})
 					t.Stop()
 					wg.Done()
 					return
@@ -147,14 +147,11 @@ func (d *discordBot) handlePrompt(s *discordgo.Session, m *discordgo.MessageCrea
 				pending += w
 			case <-t.C:
 				if pending != "" {
-					if msg != nil {
-						msg, err = s.ChannelMessageSendComplex(m.ChannelID, &discordgo.MessageSend{
-							Content:   pending + " (...continued)",
-							Reference: &discordgo.MessageReference{MessageID: msg.ID, ChannelID: msg.ChannelID, GuildID: msg.GuildID},
-						})
-					} else {
-						msg, err = s.ChannelMessageSend(m.ChannelID, pending+" (...continued)")
-					}
+					text += pending
+					msg, err = s.ChannelMessageSendComplex(m.ChannelID, &discordgo.MessageSend{
+						Content:   pending + " (...continued)",
+						Reference: &discordgo.MessageReference{MessageID: msg.ID, ChannelID: msg.ChannelID, GuildID: msg.GuildID},
+					})
 					pending = ""
 					if err != nil {
 						slog.Error("discord", "event", "failed posting message", "error", err)
@@ -167,7 +164,7 @@ func (d *discordBot) handlePrompt(s *discordgo.Session, m *discordgo.MessageCrea
 			}
 		}
 	}()
-	err := d.l.PromptStreaming(d.ctx, msgs, words)
+	err := d.l.PromptStreaming(d.ctx, c.Messages, words)
 	close(words)
 	wg.Wait()
 

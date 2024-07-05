@@ -26,6 +26,7 @@ type slackBot struct {
 	sc           *socketmode.Client
 	l            *sillybot.LLM
 	ig           *sillybot.ImageGen
+	mem          sillybot.Memory
 	botID        string
 	userID       string
 	systemPrompt string
@@ -201,11 +202,11 @@ func (s *slackBot) handlePrompt(ctx context.Context, ev *slackevents.AppMentionE
 		slog.Error("slack", "event", "failed posting message", "error", err)
 	}
 
-	// TODO: Keep log of previous messages.
-	msgs := []sillybot.Message{
-		{Role: sillybot.System, Content: s.systemPrompt},
-		{Role: sillybot.User, Content: msg},
+	c := s.mem.Get(ev.User, ev.Channel)
+	if len(c.Messages) == 0 {
+		c.Messages = []sillybot.Message{{Role: sillybot.System, Content: s.systemPrompt}}
 	}
+	c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.User, Content: msg})
 	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -225,6 +226,8 @@ func (s *slackBot) handlePrompt(ctx context.Context, ev *slackevents.AppMentionE
 							slog.Error("slack", "event", "failed posting message", "error", err)
 						}
 					}
+					// Remember our own answer.
+					c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.Assistant, Content: text})
 					t.Stop()
 					wg.Done()
 					return
@@ -241,7 +244,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, ev *slackevents.AppMentionE
 			}
 		}
 	}()
-	err = s.l.PromptStreaming(ctx, msgs, words)
+	err = s.l.PromptStreaming(ctx, c.Messages, words)
 	close(words)
 	wg.Wait()
 
