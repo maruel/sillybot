@@ -29,7 +29,7 @@ Install the [Go toolchain](https://go.dev/dl/)
 
 ```
 go install github.com/maruel/sillybot/cmd/discord-bot@latest
-discord-bot -sd -token <bot-token>
+discord-bot -ig -token <bot-token>
 ```
 
 Warning: it takes a while (several minutes, more if you don't have a 1Gbps

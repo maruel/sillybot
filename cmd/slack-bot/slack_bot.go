@@ -83,7 +83,9 @@ func (s *slackBot) Run(ctx context.Context) error {
 func (s *slackBot) socketEventLoop(ctx context.Context) {
 	slog.Info("slack", "state", "eventloop")
 	for evt := range s.sc.Events {
-		s.handleSocketEvent(ctx, evt)
+		// Acknowledge the message even before processing it otherwise Slack will
+		// resend the message if we take more [unknown but less than 5] seconds or
+		// so to process it.
 		if evt.Request != nil {
 			slog.Debug("slack", "type", "ack", "envelopeid", evt.Request.EnvelopeID)
 			if evt.Request.EnvelopeID != "" {
@@ -95,13 +97,16 @@ func (s *slackBot) socketEventLoop(ctx context.Context) {
 		} else {
 			slog.Debug("slack", "type", "no_ack")
 		}
+		s.handleSocketEvent(ctx, evt)
 	}
 }
 
 func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) {
 	switch evt.Type {
 	case "incoming_error":
-		slog.Error("slack", "event", evt.Type, "payload", evt)
+		// It's generally when the websocket is turned down on shutdown so log as
+		// info.
+		slog.Info("slack", "event", evt.Type, "payload", evt)
 	case "connecting", "connection_error":
 		slog.Info("slack", "state", evt.Type)
 	case "hello":
@@ -133,44 +138,7 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 					// We posted something.
 					return
 				}
-				msg := strings.TrimSpace(strings.TrimPrefix(ev.Text, "<@"+s.userID+">"))
-				var err error
-				if strings.HasPrefix(msg, "image:") {
-					if s.ig == nil {
-						_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText("Image generation is not enabled. ", false))
-					} else {
-						msg = strings.TrimSpace(strings.TrimPrefix(msg, "image:"))
-						var p []byte
-						if p, err = s.ig.GenImage(msg); err == nil {
-							param := slack.UploadFileV2Parameters{
-								Title:    "Image",
-								Filename: "image.png",
-								FileSize: len(p),
-								Reader:   bytes.NewReader(p),
-								Channel:  ev.Channel,
-							}
-							_, err = s.sc.UploadFileV2Context(ctx, param)
-						}
-					}
-				} else {
-					if s.l == nil {
-						_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText("LLM is not enabled. ", false))
-					} else {
-						reply := ""
-						msgs := []sillybot.Message{
-							{Role: sillybot.System, Content: s.systemPrompt},
-							{Role: sillybot.User, Content: msg},
-						}
-						if reply, err = s.l.Prompt(ctx, msgs); err == nil {
-							_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText(reply, false))
-						} else {
-							_, _, err = s.sc.PostMessage(ev.Channel, slack.MsgOptionText("ERROR: "+err.Error(), false))
-						}
-					}
-				}
-				if err != nil {
-					slog.Error("slack", "event", "failed posting message", "error", err)
-				}
+				s.handleAppMention(ctx, ev)
 			case *slackevents.MemberJoinedChannelEvent:
 				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel)
 			case *slackevents.MessageEvent:
@@ -202,5 +170,82 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 		slog.Info("slack", "event", evt.Type, "user", cmd.UserID, "channel", cmd.ChannelID, "command", cmd.Command)
 	default:
 		slog.Error("slack", "event", evt.Type, "error", "unknown event", "payload", evt)
+	}
+}
+
+// handleAppMention handles a message where the bot is explicitly mentioned in
+// the message.
+func (s *slackBot) handleAppMention(ctx context.Context, ev *slackevents.AppMentionEvent) {
+	user := "<@" + s.userID + ">"
+	msg := strings.TrimSpace(strings.ReplaceAll(ev.Text, user, ""))
+	if strings.HasPrefix(msg, "image:") {
+		s.handleImage(ctx, ev, strings.TrimSpace(msg[len("image:"):]))
+		return
+	}
+	s.handlePrompt(ctx, ev, msg)
+}
+
+// handlePrompt uses the LLM to generate a response.
+func (s *slackBot) handlePrompt(ctx context.Context, ev *slackevents.AppMentionEvent, msg string) {
+	if s.l == nil {
+		if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("LLM is not enabled.", false)); err != nil {
+			slog.Error("slack", "event", "failed posting message", "error", err)
+		}
+		return
+	}
+
+	// TODO: Keep log of previous messages.
+	msgs := []sillybot.Message{
+		{Role: sillybot.System, Content: s.systemPrompt},
+		{Role: sillybot.User, Content: msg},
+	}
+	reply, err := s.l.Prompt(ctx, msgs)
+	if err != nil {
+		_, _, err = s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Prompt generation failed: "+err.Error(), false))
+		if err != nil {
+			slog.Error("slack", "event", "failed posting message", "error", err)
+		}
+		return
+	}
+
+	if _, _, err = s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText(reply, false)); err != nil {
+		slog.Error("slack", "event", "failed posting message", "error", err)
+	}
+}
+
+// handleImage generates an image based on the user prompt.
+func (s *slackBot) handleImage(ctx context.Context, ev *slackevents.AppMentionEvent, msg string) {
+	if s.ig == nil {
+		if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Image generation is not enabled. Restart with flag \"-ig\"", false)); err != nil {
+			slog.Error("slack", "event", "failed posting message", "error", err)
+		}
+		return
+	}
+	// Slack doesn't have a way to have a bot give feedback that it is processing
+	// the input. https://api.slack.com/events/user_typing is only available in
+	// the old deprecated API.
+	// Ref:
+	// - https://github.com/slackapi/bolt-js/issues/885
+	// - https://forums.slackcommunity.com/s/question/0D53a00008OS6wqCAD
+	//
+	// TODO: Insert a stand-in, then replace it.
+	// TODO: Generate multiple images.
+	p, err := s.ig.GenImage(msg)
+	if err != nil {
+		if _, _, err = s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Image generation failed: "+err.Error(), false)); err != nil {
+			slog.Error("slack", "event", "failed posting message", "error", err)
+		}
+		return
+	}
+
+	param := slack.UploadFileV2Parameters{
+		Title:    "Image",
+		Filename: "image.png",
+		FileSize: len(p),
+		Reader:   bytes.NewReader(p),
+		Channel:  ev.Channel,
+	}
+	if _, err = s.sc.UploadFileV2Context(ctx, param); err != nil {
+		slog.Error("slack", "event", "failed posting message", "error", err)
 	}
 }

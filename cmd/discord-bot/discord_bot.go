@@ -7,7 +7,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -77,102 +76,126 @@ func (d *discordBot) Close() error {
 // access to.
 func (d *discordBot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	slog.Debug("discord", "event", "messageCreate", "message", m.Message, "state", s.State)
-	// Ignore all messages created by the bot itself. This isn't required in this
-	// specific example but it's a good practice.
 	botid := s.State.User.ID
 	if m.Author.ID == botid {
 		return
 	}
 	user := fmt.Sprintf("<@%s>", botid)
-	if !strings.HasPrefix(m.Content, user) {
-		// Ignore.
+	if !strings.Contains(m.Content, user) {
+		// Ignore if the bot is not explicitly referenced to.
 		return
 	}
-	content := strings.TrimSpace(strings.TrimPrefix(m.Content, user))
-	slog.Info("discord", "event", "messageCreate", "author", m.Author.Username, "message", content)
-	var err error
-	switch content {
-	case "ping":
-		_, err = s.ChannelMessageSend(m.ChannelID, "Pong!")
-	case "pong":
-		_, err = s.ChannelMessageSend(m.ChannelID, "Ping!")
-	default:
-		if strings.HasPrefix(content, "image:") {
-			content := strings.TrimSpace(strings.TrimPrefix(content, "image:"))
-			if d.ig == nil {
-				err = errors.New("image generation is not enabled")
-			} else {
-				if err = s.ChannelTyping(m.ChannelID); err != nil {
-					break
-				}
-				// TODO: insert a stand-in, then replace it.
-				var p []byte
-				if p, err = d.ig.GenImage(content); err == nil {
-					data := discordgo.MessageSend{
-						Files: []*discordgo.File{
-							{
-								Name:        "prompt.png",
-								ContentType: "image/png",
-								Reader:      bytes.NewReader(p),
-							},
-						},
-					}
-					_, err = s.ChannelMessageSendComplex(m.ChannelID, &data)
-				}
-			}
-		} else {
-			if d.l == nil {
-				err = errors.New("text generation is not enabled")
-			} else {
-				if err = s.ChannelTyping(m.ChannelID); err != nil {
-					break
-				}
-				msgs := []sillybot.Message{
-					{Role: sillybot.System, Content: d.systemPrompt},
-					{Role: sillybot.User, Content: content},
-				}
-				words := make(chan string, 10)
-				wg := sync.WaitGroup{}
-				wg.Add(1)
-				go func() {
-					text := ""
-					t := time.NewTicker(5 * time.Second)
-					for {
-						select {
-						case w, ok := <-words:
-							if !ok {
-								if text != "" {
-									_, _ = s.ChannelMessageSend(m.ChannelID, text)
-								}
-								t.Stop()
-								wg.Done()
-								return
-							}
-							text += w
-						case <-t.C:
-							if text != "" {
-								_, _ = s.ChannelMessageSend(m.ChannelID, text)
-								_ = s.ChannelTyping(m.ChannelID)
-								text = ""
-							}
+	msg := strings.TrimSpace(strings.ReplaceAll(m.Content, user, ""))
+	slog.Info("discord", "event", "messageCreate", "author", m.Author.Username, "message", msg)
+	if strings.HasPrefix(msg, "image:") {
+		d.handleImage(s, m, strings.TrimSpace(strings.TrimPrefix(msg, "image:")))
+		return
+	}
+	d.handlePrompt(s, m, msg)
+}
+
+// handlePrompt uses the LLM to generate a response.
+func (d *discordBot) handlePrompt(s *discordgo.Session, m *discordgo.MessageCreate, msg string) {
+	if d.l == nil {
+		if _, err := s.ChannelMessageSend(m.ChannelID, "LLM is not enabled."); err != nil {
+			slog.Error("discord", "event", "failed posting message", "error", err)
+		}
+		return
+	}
+
+	// Immediately signal the user that the bot is preparing a reply.
+	if err := s.ChannelTyping(m.ChannelID); err != nil {
+		slog.Error("discord", "event", "failed posting 'user typing'", "error", err)
+		// Continue anyway.
+	}
+
+	// TODO: Keep log of previous messages.
+	msgs := []sillybot.Message{
+		{Role: sillybot.System, Content: d.systemPrompt},
+		{Role: sillybot.User, Content: msg},
+	}
+	words := make(chan string, 10)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		text := ""
+		t := time.NewTicker(5 * time.Second)
+		for {
+			select {
+			case w, ok := <-words:
+				if !ok {
+					if text != "" {
+						if _, err := s.ChannelMessageSend(m.ChannelID, text); err != nil {
+							slog.Error("discord", "event", "failed posting message", "error", err)
 						}
 					}
-				}()
-				err = d.l.PromptStreaming(d.ctx, msgs, words)
-				close(words)
-				wg.Wait()
+					t.Stop()
+					wg.Done()
+					return
+				}
+				text += w
+			case <-t.C:
+				if text != "" {
+					if _, err := s.ChannelMessageSend(m.ChannelID, text); err != nil {
+						slog.Error("discord", "event", "failed posting message", "error", err)
+					}
+					if err := s.ChannelTyping(m.ChannelID); err != nil {
+						slog.Error("discord", "event", "failed posting 'user typing'", "error", err)
+						// Continue anyway.
+					}
+					text = ""
+				}
 			}
 		}
-		if err != nil {
-			_, _ = s.ChannelMessageSend(m.ChannelID, "ERROR: "+err.Error())
+	}()
+	err := d.l.PromptStreaming(d.ctx, msgs, words)
+	close(words)
+	wg.Wait()
+
+	if err != nil {
+		if _, err = s.ChannelMessageSend(m.ChannelID, "Prompt generation failed: "+err.Error()); err != nil {
+			slog.Error("discord", "event", "failed posting message", "error", err)
 		}
 	}
+}
+
+// handleImage generates an image based on the user prompt.
+func (d *discordBot) handleImage(s *discordgo.Session, m *discordgo.MessageCreate, msg string) {
+	if d.ig == nil {
+		if _, err := s.ChannelMessageSend(m.ChannelID, "Image generation is not enabled. Restart with flag \"-ig\""); err != nil {
+			slog.Error("discord", "event", "failed posting message", "error", err)
+		}
+		return
+	}
+
+	if err := s.ChannelTyping(m.ChannelID); err != nil {
+		slog.Error("discord", "event", "failed posting 'user typing'", "error", err)
+		// Continue anyway.
+	}
+
+	// TODO: Insert a stand-in, then replace it.
+	// TODO: Generate multiple images.
+	p, err := d.ig.GenImage(msg)
 	if err != nil {
-		// If an error occurred, we failed to send the message. It may occur either
-		// when we do not share a server with the user (highly unlikely as we just
-		// received a message) or the user disabled DM in their settings (more
-		// likely).
-		slog.Error("discord", "message", content, "error", err)
+		if _, err := s.ChannelMessageSend(m.ChannelID, "Image generation failed: "+err.Error()); err != nil {
+			if err != nil {
+				slog.Error("discord", "event", "failed posting message", "error", err)
+			}
+			return
+		}
+	}
+
+	data := discordgo.MessageSend{
+		Files: []*discordgo.File{
+			{
+				Name:        "prompt.png",
+				ContentType: "image/png",
+				Reader:      bytes.NewReader(p),
+			},
+		},
+	}
+	if _, err = s.ChannelMessageSendComplex(m.ChannelID, &data); err != nil {
+		slog.Error("discord", "event", "failed posting message", "error", err)
 	}
 }
 
@@ -183,12 +206,14 @@ func (d *discordBot) guildCreate(s *discordgo.Session, event *discordgo.GuildCre
 	if event.Guild.Unavailable {
 		return
 	}
-	for _, channel := range event.Guild.Channels {
-		if channel.ID == event.Guild.ID {
-			_, _ = s.ChannelMessageSend(channel.ID, "Coucou!")
-			return
+	/*
+		for _, channel := range event.Guild.Channels {
+			if channel.ID == event.Guild.ID {
+				_, _ = s.ChannelMessageSend(channel.ID, "Coucou!")
+				return
+			}
 		}
-	}
+	*/
 }
 
 func (d *discordBot) ready(s *discordgo.Session, r *discordgo.Ready) {

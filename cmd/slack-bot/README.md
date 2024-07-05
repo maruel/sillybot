@@ -62,7 +62,7 @@ Install the [Go toolchain](https://go.dev/dl/)
 
 ```
 go install github.com/maruel/sillybot/cmd/slack-bot@latest
-slack-bot -sd -bottoken <bot-token> -apptoken <app-token>
+slack-bot -ig -bottoken <bot-token> -apptoken <app-token>
 ```
 
 Warning: it takes a while (several minutes, more if you don't have a 1Gbps

@@ -96,7 +96,7 @@ func runPython(ctx context.Context, venv string, cmd []string, cwd, log string) 
 	c.Dir = cwd
 	c.Stdout = l
 	c.Stderr = l
-	doneErr := make(chan error)
+	doneErr := make(chan error, 1)
 	isDone := make(chan struct{}, 1)
 	c.Cancel = func() error {
 		if runtime.GOOS != "windows" {

@@ -66,7 +66,7 @@ func mainImpl() error {
 	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
 	llmModel := flag.String("llm", sillybot.KnownLLMs[0].BaseName+".Q5_K_M", "Enable LLM output")
-	sdUse := flag.Bool("sd", false, "Enable Stable Diffusion output")
+	igUse := flag.Bool("ig", false, "Enable Image Generation output")
 	flag.Parse()
 
 	if len(flag.Args()) != 0 {
@@ -86,18 +86,18 @@ func mainImpl() error {
 	if err = os.MkdirAll(*cache, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	l, sd, err := sillybot.LoadModels(ctx, *cache, *llmModel, *sdUse)
+	l, ig, err := sillybot.LoadModels(ctx, *cache, *llmModel, *igUse)
 	if l != nil {
 		defer l.Close()
 	}
-	if sd != nil {
-		defer sd.Close()
+	if ig != nil {
+		defer ig.Close()
 	}
 	if err != nil {
 		return err
 	}
 
-	d, err := newDiscordBot(ctx, *bottoken, *verbose, l, sd)
+	d, err := newDiscordBot(ctx, *bottoken, *verbose, l, ig)
 	if err != nil {
 		return err
 	}
