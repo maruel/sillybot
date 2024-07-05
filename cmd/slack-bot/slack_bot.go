@@ -12,6 +12,8 @@ import (
 	"log"
 	"log/slog"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/maruel/sillybot"
 	"github.com/slack-go/slack"
@@ -194,22 +196,59 @@ func (s *slackBot) handlePrompt(ctx context.Context, ev *slackevents.AppMentionE
 		return
 	}
 
+	_, ts, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("(generating)", false))
+	if err != nil {
+		slog.Error("slack", "event", "failed posting message", "error", err)
+	}
+
 	// TODO: Keep log of previous messages.
 	msgs := []sillybot.Message{
 		{Role: sillybot.System, Content: s.systemPrompt},
 		{Role: sillybot.User, Content: msg},
 	}
-	reply, err := s.l.Prompt(ctx, msgs)
+	words := make(chan string, 10)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		pending := ""
+		text := ""
+		// The API is Tier 3, which means the limit is 50 times per minutes. Limit
+		// ourselves to 30/min plus the other messages.
+		t := time.NewTicker(2 * time.Second)
+		for {
+			select {
+			case w, ok := <-words:
+				if !ok {
+					if pending != "" {
+						text += pending
+						if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text, false)); err != nil {
+							slog.Error("slack", "event", "failed posting message", "error", err)
+						}
+					}
+					t.Stop()
+					wg.Done()
+					return
+				}
+				pending += w
+			case <-t.C:
+				if pending != "" {
+					text += pending
+					if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text+" (...generating)", false)); err != nil {
+						slog.Error("slack", "event", "failed posting message", "error", err)
+					}
+					pending = ""
+				}
+			}
+		}
+	}()
+	err = s.l.PromptStreaming(ctx, msgs, words)
+	close(words)
+	wg.Wait()
+
 	if err != nil {
-		_, _, err = s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Prompt generation failed: "+err.Error(), false))
-		if err != nil {
+		if _, _, err = s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText("Prompt generation failed: "+err.Error(), false)); err != nil {
 			slog.Error("slack", "event", "failed posting message", "error", err)
 		}
-		return
-	}
-
-	if _, _, err = s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText(reply, false)); err != nil {
-		slog.Error("slack", "event", "failed posting message", "error", err)
 	}
 }
 
