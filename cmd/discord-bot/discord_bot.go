@@ -62,6 +62,7 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 	_ = dg.AddHandler(d.guildCreate)
 	_ = dg.AddHandler(d.messageCreate)
 	_ = dg.AddHandler(d.ready)
+	//dg.Identify.Intents = discordgo.IntentsAllWithoutPrivileged
 	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentGuildPresences | discordgo.IntentDirectMessages | discordgo.IntentGuildMessageTyping | discordgo.IntentDirectMessageTyping
 	slog.Info("discord", "state", "running", "info", "Press CTRL-C to exit.")
 	return d, nil
@@ -118,14 +119,24 @@ func (d *discordBot) handlePrompt(s *discordgo.Session, m *discordgo.MessageCrea
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		text := ""
-		t := time.NewTicker(5 * time.Second)
+		t := time.NewTicker(3 * time.Second)
+		var msg *discordgo.Message
+		var err error
+		pending := ""
 		for {
 			select {
 			case w, ok := <-words:
 				if !ok {
-					if text != "" {
-						if _, err := s.ChannelMessageSend(m.ChannelID, text); err != nil {
+					if pending != "" {
+						if msg != nil {
+							msg, err = s.ChannelMessageSendComplex(m.ChannelID, &discordgo.MessageSend{
+								Content:   pending,
+								Reference: &discordgo.MessageReference{MessageID: msg.ID, ChannelID: msg.ChannelID, GuildID: msg.GuildID},
+							})
+						} else {
+							msg, err = s.ChannelMessageSend(m.ChannelID, pending)
+						}
+						if err != nil {
 							slog.Error("discord", "event", "failed posting message", "error", err)
 						}
 					}
@@ -133,17 +144,25 @@ func (d *discordBot) handlePrompt(s *discordgo.Session, m *discordgo.MessageCrea
 					wg.Done()
 					return
 				}
-				text += w
+				pending += w
 			case <-t.C:
-				if text != "" {
-					if _, err := s.ChannelMessageSend(m.ChannelID, text); err != nil {
+				if pending != "" {
+					if msg != nil {
+						msg, err = s.ChannelMessageSendComplex(m.ChannelID, &discordgo.MessageSend{
+							Content:   pending + " (...continued)",
+							Reference: &discordgo.MessageReference{MessageID: msg.ID, ChannelID: msg.ChannelID, GuildID: msg.GuildID},
+						})
+					} else {
+						msg, err = s.ChannelMessageSend(m.ChannelID, pending+" (...continued)")
+					}
+					pending = ""
+					if err != nil {
 						slog.Error("discord", "event", "failed posting message", "error", err)
 					}
 					if err := s.ChannelTyping(m.ChannelID); err != nil {
 						slog.Error("discord", "event", "failed posting 'user typing'", "error", err)
 						// Continue anyway.
 					}
-					text = ""
 				}
 			}
 		}
