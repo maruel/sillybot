@@ -70,7 +70,7 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 
 func (ig *ImageGen) Close() error {
 	slog.Info("ig", "state", "terminating")
-	ig.cancel()
+	_ = ig.cancel()
 	return <-ig.done
 }
 

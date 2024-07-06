@@ -75,15 +75,15 @@ func mainImpl() error {
 		return errors.New("unexpected argument")
 	}
 	if *bottoken == "" {
-		b, err := os.ReadFile("token_slack_bot.txt")
-		if err != nil || len(b) < 10 {
+		b, err2 := os.ReadFile("token_slack_bot.txt")
+		if err2 != nil || len(b) < 10 {
 			return errors.New("-bot-token or a 'token_slack_bot.txt' is required")
 		}
 		*bottoken = strings.TrimSpace(string(b))
 	}
 	if *apptoken == "" {
-		a, err := os.ReadFile("token_slack_app.txt")
-		if err != nil || len(a) < 10 {
+		a, err2 := os.ReadFile("token_slack_app.txt")
+		if err2 != nil || len(a) < 10 {
 			return errors.New("-app-token or a 'token_slack_app.txt' is required")
 		}
 		*apptoken = strings.TrimSpace(string(a))
@@ -111,7 +111,7 @@ func mainImpl() error {
 	f, err := os.Open(memcache)
 	if err == nil {
 		err = mem.Load(f)
-		f.Close()
+		_ = f.Close()
 		if err != nil {
 			slog.Error("main", "message", "failed to load memory", "error", err)
 			// Continue anyway.

@@ -71,12 +71,11 @@ var KnownLLMs = []KnownLLM{
 // While it is expected that the model is an Instruct form, it is not a
 // requirement.
 type LLM struct {
-	c            *exec.Cmd
-	done         <-chan error
-	cancel       func() error
-	port         int
-	systemPrompt string
-	loading      bool
+	c       *exec.Cmd
+	done    <-chan error
+	cancel  func() error
+	port    int
+	loading bool
 
 	_ struct{}
 }
@@ -167,7 +166,7 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 		if resp, err := l.Prompt(ctx, msgs); err == nil {
 			// Phi-3 can't follow orders properly.
 			if strings.ToLower(resp) != "ok" {
-				l.Close()
+				_ = l.Close()
 				return nil, fmt.Errorf("failed to get initial query from llm server: unexpected response from llm. expected \"ok\", got %q", resp)
 			}
 			break
@@ -187,9 +186,9 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 func (l *LLM) Close() error {
 	slog.Info("llm", "state", "terminating")
 	if l.cancel != nil {
-		l.cancel()
+		_ = l.cancel()
 	} else {
-		l.c.Cancel()
+		_ = l.c.Cancel()
 	}
 	err := <-l.done
 	var er *exec.ExitError
@@ -257,9 +256,15 @@ func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, words chan<- 
 
 func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error) {
 	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs}
-	b, _ := json.Marshal(data)
+	b, err := json.Marshal(data)
+	if err != nil {
+		return "", fmt.Errorf("internal error: %w", err)
+	}
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+	if err != nil {
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -281,9 +286,15 @@ func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error
 
 func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, words chan<- string) error {
 	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs, Stream: true}
-	b, _ := json.Marshal(data)
+	b, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("internal error: %w", err)
+	}
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+	if err != nil {
+		return fmt.Errorf("failed to get llama server response: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -429,7 +440,7 @@ func getGitHubLatestRelease(owner, repo, contentType string) (string, string, er
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return "", "", err
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	for _, l := range data {
 		if l.Prerelease {
 			continue

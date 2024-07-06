@@ -74,8 +74,8 @@ func mainImpl() error {
 		return errors.New("unexpected argument")
 	}
 	if *bottoken == "" {
-		b, err := os.ReadFile("token_discord.txt")
-		if err != nil || len(b) < 10 {
+		b, err2 := os.ReadFile("token_discord.txt")
+		if err2 != nil || len(b) < 10 {
 			return errors.New("-bot-token or a 'token_discord.txt' is required")
 		}
 		*bottoken = strings.TrimSpace(string(b))
@@ -103,7 +103,7 @@ func mainImpl() error {
 	f, err := os.Open(memcache)
 	if err == nil {
 		err = mem.Load(f)
-		f.Close()
+		_ = f.Close()
 		if err != nil {
 			slog.Error("main", "message", "failed to load memory", "error", err)
 			// Continue anyway.

@@ -51,9 +51,10 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 	if verbose {
 		// It's very verbose.
 		//dg.LogLevel = discordgo.LogDebug
+		dg.LogLevel = discordgo.LogInformational
 	}
 	if err = dg.Open(); err != nil {
-		dg.Close()
+		_ = dg.Close()
 		return nil, err
 	}
 	d := &discordBot{
@@ -197,14 +198,12 @@ func (d *discordBot) handlePrompt(req msgReq) {
 				if !ok {
 					if pending != "" {
 						text += pending
-						msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
+						_, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
 							Content:   pending,
 							Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
 						})
 						if err != nil {
 							slog.Error("discord", "event", "failed posting message", "error", err)
-						} else {
-							replyToID = msg.ID
 						}
 					}
 					// Remember our own answer.
@@ -252,12 +251,12 @@ func (d *discordBot) handleImage(req msgReq) {
 	// TODO: Generate multiple images.
 	p, err := d.ig.GenImage(req.msg)
 	if err != nil {
-		if _, err := d.dg.ChannelMessageSend(req.channelID, "Image generation failed: "+err.Error()); err != nil {
+		if _, err = d.dg.ChannelMessageSend(req.channelID, "Image generation failed: "+err.Error()); err != nil {
 			if err != nil {
 				slog.Error("discord", "event", "failed posting message", "error", err)
 			}
-			return
 		}
+		return
 	}
 
 	data := discordgo.MessageSend{

@@ -61,8 +61,8 @@ func testModel(t *testing.T, model string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := l.Close(); err != nil {
-			t.Error(err)
+		if err2 := l.Close(); err2 != nil {
+			t.Error(err2)
 		}
 	})
 	msgs := []Message{
@@ -93,8 +93,8 @@ func testModelStreaming(t *testing.T, model string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := l.Close(); err != nil {
-			t.Error(err)
+		if err2 := l.Close(); err2 != nil {
+			t.Error(err2)
 		}
 	})
 	msgs := []Message{

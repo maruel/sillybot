@@ -25,6 +25,7 @@ func TestMemory_Forget(t *testing.T) {
 	if len(m.conversations) != 4 {
 		t.Fatal(len(m.conversations))
 	}
+	c1.LastUpdate = now.Add(-time.Hour)
 	c2.LastUpdate = twodaysago
 	c4.LastUpdate = twodaysago
 	m.Forget()
@@ -56,7 +57,7 @@ func TestMemory_Serialize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if diff := cmp.Diff(m1, m2, cmpopts.IgnoreUnexported(Memory{})); diff != "" {
+	if diff := cmp.Diff(&m1, &m2, cmpopts.IgnoreUnexported(Memory{})); diff != "" {
 		t.Fatal(diff)
 	}
 }

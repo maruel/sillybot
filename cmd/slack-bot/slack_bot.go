@@ -310,8 +310,8 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 				if !ok {
 					if pending != "" {
 						text += pending
-						if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text, false), slack.MsgOptionTS(req.ts)); err != nil {
-							slog.Error("slack", "event", "failed posting message", "error", err)
+						if _, _, err2 := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text, false), slack.MsgOptionTS(req.ts)); err2 != nil {
+							slog.Error("slack", "event", "failed posting message", "error", err2)
 						}
 					}
 					// Remember our own answer.
@@ -324,8 +324,8 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 			case <-t.C:
 				if pending != "" {
 					text += pending
-					if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text+" (...generating)", false), slack.MsgOptionTS(req.ts)); err != nil {
-						slog.Error("slack", "event", "failed posting message", "error", err)
+					if _, _, err2 := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text+" (...generating)", false), slack.MsgOptionTS(req.ts)); err2 != nil {
+						slog.Error("slack", "event", "failed posting message", "error", err2)
 					}
 					pending = ""
 				}
