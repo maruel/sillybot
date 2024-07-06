@@ -89,76 +89,30 @@ type LLM struct {
 // If usePython is true, llamafile is not used, instead py/llm.py is used. In
 // this case, model is ignored.
 func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, error) {
-	llamafile := ""
+	llamasrv := ""
+	isLlamafile := false
 	modelFile := ""
 	if usePython {
 		if pyNeedRecreate(cache) {
 			if err := pyRecreate(ctx, cache); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to load llm: %w", err)
 			}
 		}
+		slog.Info("llm", "message", "using python")
 	} else {
-		execSuffix := ""
-		if runtime.GOOS == "windows" {
-			execSuffix = ".exe"
+		var err error
+		if llamasrv, isLlamafile, err = getLlama(ctx, cache); err != nil {
+			return nil, fmt.Errorf("failed to load llm: %w", err)
 		}
-		llamafile = filepath.Join(cache, "llamafile"+execSuffix)
-		if _, err := os.Stat(llamafile); err != nil {
-			slog.Info("llm", "llamafile", "", "state", "missing")
-			// Download llamafile from GitHub. We always want the latest and greatest
-			// as it is very actively developed and the model we download likely use an
-			// older version.
-			url, name, err := getGitHubLatestRelease("Mozilla-Ocho", "llamafile", "application/octet-stream")
-			if err != nil {
-				return nil, err
-			}
-			slog.Info("llm", "llamafile_release", name)
-			versioned := filepath.Join(cache, name+execSuffix)
-			if err = downloadExec(ctx, url, versioned); err != nil {
-				return nil, err
-			}
-			// Copy it as the default executable to use.
-			if err = copyFile(llamafile, versioned); err != nil {
-				return nil, err
-			}
+		cmd := mangle(isLlamafile, llamasrv, "--version")
+		c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+		d, err := c.CombinedOutput()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get llm version: %w", err)
 		}
-
-		switch strings.ToUpper(filepath.Ext(model)) {
-		case ".GGUF":
-			return nil, errors.New("do not include the .gguf suffix")
-		case ".BF16":
-			if runtime.GOOS == "darwin" {
-				slog.Warn("llm", "message", "bfloat16 is likely not supported on your Apple Silicon system")
-			}
-		case ".F16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
-		case "":
-			return nil, errors.New("you forgot to add a quantization suffix like '.BF16' or '.Q5_K_M'")
-		default:
-			return nil, errors.New("unknown quantization, did you forget a suffix like '.BF16' or '.Q5_K_M'?")
-		}
-
-		modelFile = filepath.Join(cache, model+".gguf")
-		if _, err := os.Stat(modelFile); err != nil {
-			slog.Info("llm", "model", model, "state", "missing")
-			url := ""
-			for _, k := range KnownLLMs {
-				if strings.HasPrefix(model, k.BaseName) {
-					url = k.URL
-					break
-				}
-			}
-			if url == "" {
-				return nil, errors.New("can't guess model's huggingface repo")
-			}
-			hf := "https://huggingface.co/"
-			if strings.HasPrefix(url, hf) {
-				repo := url[len(hf):]
-				if err = getHfModelGGUFFromLlamafile(ctx, cache, repo, model); err != nil {
-					return nil, err
-				}
-			} else {
-				return nil, errors.New("can't guess model's source")
-			}
+		slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
+		if modelFile, err = getModel(ctx, cache, model); err != nil {
+			return nil, fmt.Errorf("failed to get llm model: %w", err)
 		}
 	}
 
@@ -171,7 +125,7 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 		cmd := []string{filepath.Join(cache, "llm.py"), "--port", strconv.Itoa(l.port)}
 		done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "llm.log"))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to start python llm server: %w", err)
 		}
 		l.done = done
 		l.cancel = cancel
@@ -180,17 +134,15 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 		l.done = done
 		log, err := os.OpenFile(filepath.Join(cache, "llm.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create llm server log file: %w", err)
 		}
 		defer log.Close()
-		cmd := []string{llamafile, "--model", modelFile, "-ngl", "9999", "--nobrowser", "--port", strconv.Itoa(l.port)}
-		single := strings.Join(cmd, " ")
-		slog.Debug("llm", "command", single, "cwd", cache, "log", log.Name())
-		if runtime.GOOS == "windows" {
-			l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
-		} else {
-			l.c = exec.CommandContext(ctx, "/bin/sh", "-c", single)
+		cmd := mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(l.port), "--nobrowser")
+		if !isLlamafile {
+			cmd = mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(l.port))
 		}
+		slog.Debug("llm", "command", cmd, "cwd", cache, "log", log.Name())
+		l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 		l.c.Dir = cache
 		l.c.Stdout = log
 		l.c.Stderr = log
@@ -199,7 +151,7 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 			return l.c.Process.Kill()
 		}
 		if err = l.c.Start(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to start llm server: %w", err)
 		}
 		go func() {
 			done <- l.c.Wait()
@@ -216,13 +168,13 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 			// Phi-3 can't follow orders properly.
 			if strings.ToLower(resp) != "ok" {
 				l.Close()
-				return nil, fmt.Errorf("unexpected response from llm. expected \"ok\", got %q", resp)
+				return nil, fmt.Errorf("failed to get initial query from llm server: unexpected response from llm. expected \"ok\", got %q", resp)
 			}
 			break
 		}
 		select {
 		case err := <-l.done:
-			return nil, fmt.Errorf("failed to start: %w", err)
+			return nil, fmt.Errorf("context canceled while starting llm server: %w", err)
 		case <-ctx.Done():
 		case <-time.After(100 * time.Millisecond):
 		}
@@ -311,7 +263,7 @@ func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
 	d := json.NewDecoder(resp.Body)
 	d.DisallowUnknownFields()
@@ -319,10 +271,10 @@ func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error
 	err = d.Decode(&msg)
 	_ = resp.Body.Close()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
 	if len(msg.Choices) != 1 {
-		return "", errors.New("unexpected number of choices")
+		return "", fmt.Errorf("llama server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
 	}
 	return msg.Choices[0].Message.Content, nil
 }
@@ -345,11 +297,11 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, words chan<- 
 		if err == io.EOF {
 			err = nil
 			if len(line) == 0 {
-				return err
+				return nil
 			}
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get llama server response: %w", err)
 		}
 		if len(line) == 0 {
 			continue
@@ -361,11 +313,10 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, words chan<- 
 		d.DisallowUnknownFields()
 		msg := openAIChatCompletionsStreamResponse{}
 		if err = d.Decode(&msg); err != nil {
-			slog.Error("llm", "data", string(line))
-			return err
+			return fmt.Errorf("failed to decode llama server response %q: %w", string(line), err)
 		}
 		if len(msg.Choices) != 1 {
-			return errors.New("unexpected number of choices")
+			return fmt.Errorf("llama server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
 		}
 		word := msg.Choices[0].Delta.Content
 		slog.Debug("llm", "word", word)
@@ -438,6 +389,11 @@ type openAIChatCompletionsStreamResponse struct {
 	ID      string                `json:"id"`
 	Model   string                `json:"model"`
 	Object  string                `json:"object"`
+	Usage   struct {
+		CompletionTokens int64 `json:"completion_tokens"`
+		PromptTokens     int64 `json:"prompt_tokens"`
+		TotalTokens      int64 `json:"total_tokens"`
+	} `json:"usage"`
 }
 
 type openAIStreamChoices struct {
@@ -534,6 +490,9 @@ func copyFile(dst, src string) error {
 }
 
 // getHfModelGGUFFromLlamafile retrieves a file from an HuggingFace repository.
+//
+// TODO: We should use the package so authentication works, this would speed up
+// download.
 func getHfModelGGUFFromLlamafile(ctx context.Context, cache, repo, model string) error {
 	url := "https://huggingface.co/" + repo + "/resolve/main/" + model + ".llamafile?download=true"
 	dst := filepath.Join(cache, model+".llamafile")
@@ -567,4 +526,102 @@ func getHfModelGGUFFromLlamafile(ctx context.Context, cache, repo, model string)
 		}
 	}
 	return errors.New("gguf not found")
+}
+
+// getLlama returns the file path to llama.cpp/llamafile executable.
+//
+// Returns the file path to the executable and true if it is llamafile, false
+// if it is llama-server from llama.cpp.
+//
+// It first look for llama-server or llamafile if one of them is PATH. Then it
+// checks if one of them is s in the cache directory, otherwise downloads the
+// latest version of llamafile.
+func getLlama(ctx context.Context, cache string) (string, bool, error) {
+	if s, err := exec.LookPath("llama-server"); err == nil {
+		return s, false, nil
+	}
+	if s, err := exec.LookPath("llamafile"); err == nil {
+		return s, true, nil
+	}
+	execSuffix := ""
+	if runtime.GOOS == "windows" {
+		execSuffix = ".exe"
+	}
+	llamaserver := filepath.Join(cache, "llama-server"+execSuffix)
+	if i, err := os.Stat(llamaserver); err == nil && i.Size() > 100000 {
+		return llamaserver, false, nil
+	}
+	llamafile := filepath.Join(cache, "llamafile"+execSuffix)
+	if i, err := os.Stat(llamaserver); err == nil && i.Size() > 100000 {
+		return llamafile, true, nil
+	}
+
+	// Time to download.
+	// Download llamafile from GitHub. We always want the latest and greatest
+	// as it is very actively developed and the model we download likely use an
+	// older version.
+	url, name, err := getGitHubLatestRelease("Mozilla-Ocho", "llamafile", "application/octet-stream")
+	if err != nil {
+		return "", false, fmt.Errorf("failed to find latest llamafile release from github: %w", err)
+	}
+	versioned := filepath.Join(cache, name+execSuffix)
+	if err = downloadExec(ctx, url, versioned); err != nil {
+		return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
+	}
+	// Copy it as the default executable to use.
+	if err = copyFile(llamafile, versioned); err != nil {
+		return "", false, fmt.Errorf("failed to copy llamafile in cache: %w", err)
+	}
+	return llamafile, true, nil
+}
+
+// getModel gets and Verifies the model.
+func getModel(ctx context.Context, cache, model string) (string, error) {
+	switch strings.ToUpper(filepath.Ext(model)) {
+	case ".GGUF":
+		return "", fmt.Errorf("do not include the .gguf suffix for model %q", model)
+	case ".BF16":
+		if runtime.GOOS == "darwin" {
+			slog.Warn("llm", "message", "As of July 2024, bfloat16 was not fully supported on Apple Silicon system. Remove this warning once this is fixed.")
+		}
+		// Well known quantizations.
+	case ".F16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
+	case "":
+		return "", fmt.Errorf("you forgot to add a quantization suffix like '.BF16', '.F16', '.Q8_0' or '.Q5_K_M' when specifying model %q", model)
+	default:
+		return "", fmt.Errorf("unknown quantization for model %q, did you forget a suffix like '.BF16' or '.Q5_K_M'?", model)
+	}
+	modelFile := filepath.Join(cache, model+".gguf")
+	if _, err := os.Stat(modelFile); err != nil {
+		slog.Info("llm", "model", model, "state", "missing")
+		url := ""
+		for _, k := range KnownLLMs {
+			if strings.HasPrefix(model, k.BaseName) {
+				url = k.URL
+				break
+			}
+		}
+		if url == "" {
+			return "", fmt.Errorf("can't guess model %q huggingface repo", model)
+		}
+		hf := "https://huggingface.co/"
+		if strings.HasPrefix(url, hf) {
+			repo := url[len(hf):]
+			if err = getHfModelGGUFFromLlamafile(ctx, cache, repo, model); err != nil {
+				return "", fmt.Errorf("failed to retrieve model %q: %w", model, err)
+			}
+		} else {
+			return "", fmt.Errorf("can't guess model %q source", model)
+		}
+	}
+	return modelFile, nil
+}
+
+func mangle(isLlamafile bool, cmd ...string) []string {
+	// This hack is only needed for llamafile, not llama-server.
+	if runtime.GOOS == "windows" || !isLlamafile {
+		return cmd
+	}
+	// TODO: Proper escaping.
+	return []string{"/bin/sh", "-c", strings.Join(cmd, " ")}
 }

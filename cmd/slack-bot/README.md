@@ -71,3 +71,8 @@ slack-bot -ig -bottoken <bot-token> -apptoken <app-token>
 
 Warning: it takes a while (several minutes, more if you don't have a 1Gbps
 network) to download the models on first run, be patient.
+
+
+### Optional
+
+Install `llama-server` from [llama.cpp](https://github.com/ggerganov/llama.cpp).

@@ -6,8 +6,10 @@ Diffusion (in python for now).
 - Uses WebSocket so no need to setup a web server! 🎉
 - Keeps memory of past conversations.
 - Works on Ubuntu (linux), macOS and Windows! 🪟
-- Runs as a chat bot LLM instructs via [Mozilla's excellent
-  llamafile](https://github.com/Mozilla-Ocho/llamafile): Tested to work with:
+- Uses [llama.cpp](https://github.com/ggerganov/llama.cpp)'s `llama-server` if
+  in `PATH`, defaults to [llamafile](https://github.com/Mozilla-Ocho/llamafile)
+  otherwise.
+- Runs as a chat bot LLM instructs. Tested to work with:
     - [Meta-Llama3-8B-instruct](https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile)
       at various quantization levels
     - [Gemma-2-27B
@@ -16,8 +18,9 @@ Diffusion (in python for now).
     - [Phi-3-mini-4k-instruct](https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile)
       and
       [Phi-3-medium-128k-instruct](https://huggingface.co/Mozilla/Phi-3-medium-128k-instruct-llamafile)
-      are currently broken, probably a misconfiguration. Help is appreciated! 🙋
-- Runs as an image generator. Tested to work wwith:
+      are currently only supported when using llama.cpp llama-server, waiting
+      for llamafile to be fixed upstream.
+- Runs as an image generator. Tested to work with:
     - [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B) coupled with [LCM
       Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) which is
       super fast. Segmind SSD-1B renders under 10s on a MacBook Pro M3 Max, under
@@ -43,8 +46,10 @@ server (Discord or Slack) is different:
 
 This project greatly benefit from
 [llamafile](https://github.com/Mozilla-Ocho/llamafile) by [Justine
-Tunney](https://github.com/jart) and all the companies providing open-weights
-models.
+Tunney](https://github.com/jart),
+[llama.cpp](https://github.com/ggerganov/llama.cpp) by [Georgi
+Gerganov](https://github.com/ggerganov), all open source contributors and all
+the companies providing open-weights models.
 
 
 ## Author
