@@ -223,14 +223,14 @@ func (s *slackBot) handleAppMention(ctx context.Context, ev *slackevents.AppMent
 	if imgreq {
 		msg = strings.TrimSpace(msg[len("image:"):])
 		if s.ig == nil {
-			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Image generation is not enabled. Restart with flag \"-ig\"", false)); err != nil {
+			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Image generation is not enabled. Restart with flag \"-ig\"", false), slack.MsgOptionTS(ev.ThreadTimeStamp)); err != nil {
 				slog.Error("slack", "event", "failed posting message", "error", err)
 			}
 			return
 		}
 	} else {
 		if s.l == nil {
-			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("LLM is not enabled.", false)); err != nil {
+			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("LLM is not enabled.", false), slack.MsgOptionTS(ev.ThreadTimeStamp)); err != nil {
 				slog.Error("slack", "event", "failed posting message", "error", err)
 			}
 			return
@@ -252,7 +252,7 @@ func (s *slackBot) handleAppMention(ctx context.Context, ev *slackevents.AppMent
 		select {
 		case s.image <- req:
 		default:
-			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Sorry! I have too many pending image requests. Please retry in a moment.", false)); err != nil {
+			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Sorry! I have too many pending image requests. Please retry in a moment.", false), slack.MsgOptionTS(ev.ThreadTimeStamp)); err != nil {
 				slog.Error("slack", "event", "failed posting message", "error", err)
 			}
 		}
@@ -260,7 +260,7 @@ func (s *slackBot) handleAppMention(ctx context.Context, ev *slackevents.AppMent
 		select {
 		case s.chat <- req:
 		default:
-			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Sorry! I have too many pending chat requests. Please retry in a moment.", false)); err != nil {
+			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Sorry! I have too many pending chat requests. Please retry in a moment.", false), slack.MsgOptionTS(ev.ThreadTimeStamp)); err != nil {
 				slog.Error("slack", "event", "failed posting message", "error", err)
 			}
 		}
@@ -269,7 +269,7 @@ func (s *slackBot) handleAppMention(ctx context.Context, ev *slackevents.AppMent
 
 // handlePrompt uses the LLM to generate a response.
 func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
-	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false))
+	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false), slack.MsgOptionTS(req.ts))
 	if err != nil {
 		slog.Error("slack", "event", "failed posting message", "error", err)
 	}
@@ -294,7 +294,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 				if !ok {
 					if pending != "" {
 						text += pending
-						if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text, false)); err != nil {
+						if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text, false), slack.MsgOptionTS(req.ts)); err != nil {
 							slog.Error("slack", "event", "failed posting message", "error", err)
 						}
 					}
@@ -308,7 +308,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 			case <-t.C:
 				if pending != "" {
 					text += pending
-					if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text+" (...generating)", false)); err != nil {
+					if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text+" (...generating)", false), slack.MsgOptionTS(req.ts)); err != nil {
 						slog.Error("slack", "event", "failed posting message", "error", err)
 					}
 					pending = ""
@@ -321,7 +321,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	wg.Wait()
 
 	if err != nil {
-		if _, _, err = s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText("Prompt generation failed: "+err.Error(), false)); err != nil {
+		if _, _, err = s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText("Prompt generation failed: "+err.Error(), false), slack.MsgOptionTS(req.ts)); err != nil {
 			slog.Error("slack", "event", "failed posting message", "error", err)
 		}
 	}
@@ -332,18 +332,19 @@ func (s *slackBot) handleImage(ctx context.Context, req msgReq) {
 	// TODO: Generate multiple images.
 	p, err := s.ig.GenImage(req.msg)
 	if err != nil {
-		if _, _, err = s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("Image generation failed: "+err.Error(), false)); err != nil {
+		if _, _, err = s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("Image generation failed: "+err.Error(), false), slack.MsgOptionTS(req.ts)); err != nil {
 			slog.Error("slack", "event", "failed posting message", "error", err)
 		}
 		return
 	}
 
 	param := slack.UploadFileV2Parameters{
-		Title:    "Image",
-		Filename: "image.png",
-		FileSize: len(p),
-		Reader:   bytes.NewReader(p),
-		Channel:  req.channel,
+		Title:           "Image",
+		Filename:        "image.png",
+		FileSize:        len(p),
+		Reader:          bytes.NewReader(p),
+		Channel:         req.channel,
+		ThreadTimestamp: req.ts,
 	}
 	if _, err = s.sc.UploadFileV2Context(ctx, param); err != nil {
 		slog.Error("slack", "event", "failed posting message", "error", err)
