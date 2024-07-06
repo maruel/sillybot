@@ -44,9 +44,13 @@ Do this first. Configure the Slack App at https://api.slack.com/apps:
     - Enable Events
     - Subscript to bot events. _This is which events the bot receives. This more
       it receives, the more spam it gets._
+        - app_home_opened
         - app_mention
+        - app_uninstalled
         - member_joined_channel
         - message.channels
+        - message.groups
+        - message.im
         - message.mpim
 5. Install App
     - Install to a workspace you are admin of

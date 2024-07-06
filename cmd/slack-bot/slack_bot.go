@@ -173,17 +173,39 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 		switch eventsAPIEvent.Type {
 		case "event_callback":
 			switch ev := eventsAPIEvent.InnerEvent.Data.(type) {
+			case *slackevents.AppHomeOpenedEvent:
+				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", ev.Type, "user", ev.User, "channel", ev.Channel, "tab", ev.Tab)
 			case *slackevents.AppMentionEvent:
+				// Public message where the app is @ mentioned.
 				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "text", ev.Text, "channel", ev.Channel)
 				if ev.User == s.userID {
 					// We posted something.
 					return
 				}
-				s.handleAppMention(ctx, ev)
+				req := msgReq{
+					msg:     ev.Text,
+					user:    ev.User,
+					channel: ev.Channel,
+					ts:      ev.TimeStamp,
+				}
+				s.handleAppMention(ctx, req)
 			case *slackevents.MemberJoinedChannelEvent:
 				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel)
 			case *slackevents.MessageEvent:
+				// Private message.
 				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel, "text", ev.Text)
+				if ev.User == s.userID {
+					// We posted something.
+					return
+				}
+				req := msgReq{
+					msg:     ev.Text,
+					user:    ev.User,
+					channel: ev.Channel,
+					// Don't set TS so it's not threaded for direct messages.
+					//ts:      ev.TimeStamp,
+				}
+				s.handleAppMention(ctx, req)
 			default:
 				slog.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "error", "unknown", "payload", evt)
 			}
@@ -216,21 +238,21 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 
 // handleAppMention handles a message where the bot is explicitly mentioned in
 // the message.
-func (s *slackBot) handleAppMention(ctx context.Context, ev *slackevents.AppMentionEvent) {
+func (s *slackBot) handleAppMention(ctx context.Context, req msgReq) {
 	user := "<@" + s.userID + ">"
-	msg := strings.TrimSpace(strings.ReplaceAll(ev.Text, user, ""))
-	imgreq := strings.HasPrefix(msg, "image:")
+	req.msg = strings.TrimSpace(strings.ReplaceAll(req.msg, user, ""))
+	imgreq := strings.HasPrefix(req.msg, "image:")
 	if imgreq {
-		msg = strings.TrimSpace(msg[len("image:"):])
+		req.msg = strings.TrimSpace(req.msg[len("image:"):])
 		if s.ig == nil {
-			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Image generation is not enabled. Restart with flag \"-ig\"", false), slack.MsgOptionTS(ev.ThreadTimeStamp)); err != nil {
+			if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("Image generation is not enabled. Restart with flag \"-ig\"", false), slack.MsgOptionTS(req.ts)); err != nil {
 				slog.Error("slack", "event", "failed posting message", "error", err)
 			}
 			return
 		}
 	} else {
 		if s.l == nil {
-			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("LLM is not enabled.", false), slack.MsgOptionTS(ev.ThreadTimeStamp)); err != nil {
+			if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("LLM is not enabled.", false), slack.MsgOptionTS(req.ts)); err != nil {
 				slog.Error("slack", "event", "failed posting message", "error", err)
 			}
 			return
@@ -242,17 +264,11 @@ func (s *slackBot) handleAppMention(ctx context.Context, ev *slackevents.AppMent
 	// Ref:
 	// - https://github.com/slackapi/bolt-js/issues/885
 	// - https://forums.slackcommunity.com/s/question/0D53a00008OS6wqCAD
-	req := msgReq{
-		msg:     msg,
-		user:    ev.User,
-		channel: ev.Channel,
-		ts:      ev.TimeStamp,
-	}
 	if imgreq {
 		select {
 		case s.image <- req:
 		default:
-			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Sorry! I have too many pending image requests. Please retry in a moment.", false), slack.MsgOptionTS(ev.ThreadTimeStamp)); err != nil {
+			if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("Sorry! I have too many pending image requests. Please retry in a moment.", false), slack.MsgOptionTS(req.ts)); err != nil {
 				slog.Error("slack", "event", "failed posting message", "error", err)
 			}
 		}
@@ -260,7 +276,7 @@ func (s *slackBot) handleAppMention(ctx context.Context, ev *slackevents.AppMent
 		select {
 		case s.chat <- req:
 		default:
-			if _, _, err := s.sc.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText("Sorry! I have too many pending chat requests. Please retry in a moment.", false), slack.MsgOptionTS(ev.ThreadTimeStamp)); err != nil {
+			if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("Sorry! I have too many pending chat requests. Please retry in a moment.", false), slack.MsgOptionTS(req.ts)); err != nil {
 				slog.Error("slack", "event", "failed posting message", "error", err)
 			}
 		}
