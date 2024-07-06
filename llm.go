@@ -178,7 +178,15 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	slog.Info("llm", "state", "ready")
+	x := ""
+	if usePython {
+		x = "llm.py"
+	} else if isLlamafile {
+		x = "llamafile"
+	} else {
+		x = "llama-server"
+	}
+	slog.Info("llm", "state", "ready", "model", model, "using", x)
 	l.loading = false
 	return l, nil
 }
