@@ -7,15 +7,11 @@ package sillybot
 import (
 	"bytes"
 	"context"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"time"
 )
@@ -109,61 +105,4 @@ func (ig *ImageGen) GenImage(prompt string) ([]byte, error) {
 	}
 	slog.Info("ig", "prompt", prompt, "duration", time.Since(start).Round(time.Millisecond))
 	return r.Image, nil
-}
-
-//
-
-var (
-	//go:embed py/image_gen.py
-	imageGenPy []byte
-	//go:embed py/llm.py
-	llmPy []byte
-	//go:embed py/setup.bat
-	setupBat []byte
-	//go:embed py/setup.sh
-	setupSh []byte
-)
-
-func pyNeedRecreate(cache string) bool {
-	if _, err := os.Stat(filepath.Join(cache, "venv", "pyvenv.cfg")); err != nil {
-		return true
-	}
-	if b, err := os.ReadFile(filepath.Join(cache, "image_gen.py")); err != nil || !bytes.Equal(b, imageGenPy) {
-		return true
-	}
-	if b, err := os.ReadFile(filepath.Join(cache, "llm.py")); err != nil || !bytes.Equal(b, llmPy) {
-		return true
-	}
-	name := "setup.sh"
-	content := setupSh
-	if runtime.GOOS == "windows" {
-		name = "setup.bat"
-		content = setupBat
-	}
-	if b, err := os.ReadFile(filepath.Join(cache, name)); err != nil || !bytes.Equal(b, content) {
-		return true
-	}
-	return false
-}
-
-func pyRecreate(ctx context.Context, cache string) error {
-	if err := os.WriteFile(filepath.Join(cache, "image_gen.py"), imageGenPy, 0o755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(cache, "llm.py"), llmPy, 0o755); err != nil {
-		return err
-	}
-	name := "setup.sh"
-	content := setupSh
-	if runtime.GOOS == "windows" {
-		name = "setup.bat"
-		content = setupBat
-	}
-	if err := os.WriteFile(filepath.Join(cache, name), content, 0o755); err != nil {
-		return err
-	}
-	c := exec.CommandContext(ctx, filepath.Join(cache, name))
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	return c.Run()
 }
