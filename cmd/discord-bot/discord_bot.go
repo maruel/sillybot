@@ -114,7 +114,7 @@ func (d *discordBot) messageCreate(dg *discordgo.Session, m *discordgo.MessageCr
 		return
 	}
 	user := fmt.Sprintf("<@%s>", botid)
-	if !strings.Contains(m.Content, user) {
+	if m.GuildID != "" && !strings.Contains(m.Content, user) {
 		// Ignore if the bot is not explicitly referenced to.
 		return
 	}
