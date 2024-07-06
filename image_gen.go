@@ -39,7 +39,7 @@ func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
 
 	port := findFreePort()
 	cmd := []string{filepath.Join(cache, "image_gen.py"), "--port", strconv.Itoa(port)}
-	done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "imagegen.log"))
+	done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "image_gen.log"))
 	if err != nil {
 		return nil, err
 	}

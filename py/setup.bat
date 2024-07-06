@@ -10,5 +10,7 @@ call venv\Scripts\activate.bat
 
 call python -m pip install -U pip
 :: flash_attn ?
-call pip3 install -U accelerate diffusers peft protobuf sentencepiece setuptools torch transformers
+:: Reinstall for CUDA. See https://pytorch.org/get-started/locally/
+call pip3 install torch --index-url https://download.pytorch.org/whl/cu121
+call pip3 install -U accelerate diffusers peft protobuf sentencepiece setuptools transformers
 call pip3 freeze > requirements-Windows.txt

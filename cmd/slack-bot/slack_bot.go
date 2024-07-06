@@ -285,14 +285,21 @@ func (s *slackBot) handleAppMention(ctx context.Context, req msgReq) {
 
 // handlePrompt uses the LLM to generate a response.
 func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
-	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false), slack.MsgOptionTS(req.ts))
-	if err != nil {
-		slog.Error("slack", "event", "failed posting message", "error", err)
-	}
-
 	c := s.mem.Get(req.user, req.channel)
 	if len(c.Messages) == 0 {
 		c.Messages = []sillybot.Message{{Role: sillybot.System, Content: s.systemPrompt}}
+	}
+	// TODO: Hack, implement proper commands.
+	if req.msg == "forget" {
+		c.Messages = c.Messages[:1]
+		if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("The memory of our past conversations just got zapped.", false), slack.MsgOptionTS(req.ts)); err != nil {
+			slog.Error("slack", "event", "failed posting message", "error", err)
+		}
+		return
+	}
+	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false), slack.MsgOptionTS(req.ts))
+	if err != nil {
+		slog.Error("slack", "event", "failed posting message", "error", err)
 	}
 	c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.User, Content: req.msg})
 	words := make(chan string, 10)
@@ -322,7 +329,8 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 				}
 				pending += w
 			case <-t.C:
-				if pending != "" {
+				// Don't send one word at a time.
+				if len(pending) > 30 {
 					text += pending
 					if _, _, err2 := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text+" (...generating)", false), slack.MsgOptionTS(req.ts)); err2 != nil {
 						slog.Error("slack", "event", "failed posting message", "error", err2)

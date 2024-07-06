@@ -134,6 +134,7 @@ def main():
   if DEVICE == "cuda":
     torch.backends.cuda.matmul.allow_tf32 = True
   Handler._pipe = load_phi_3_mini()
+  logging.info("Model loaded using %s", DEVICE)
   httpd = http.server.HTTPServer(("localhost", args.port), Handler)
   logging.info(f"Started server on port {args.port}")
 

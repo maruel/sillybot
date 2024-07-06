@@ -183,6 +183,19 @@ func (d *discordBot) handlePrompt(req msgReq) {
 	if len(c.Messages) == 0 {
 		c.Messages = []sillybot.Message{{Role: sillybot.System, Content: d.systemPrompt}}
 	}
+	// TODO: Hack, implement proper commands.
+	if req.msg == "forget" {
+		c.Messages = c.Messages[:1]
+		_, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
+			Content:   "The memory of our past conversations just got zapped.",
+			Reference: &discordgo.MessageReference{MessageID: req.replyToID, ChannelID: req.channelID, GuildID: req.guildID},
+		})
+		if err != nil {
+			slog.Error("discord", "event", "failed posting message", "error", err)
+		}
+		return
+	}
+
 	c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.User, Content: req.msg})
 	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
@@ -214,7 +227,8 @@ func (d *discordBot) handlePrompt(req msgReq) {
 				}
 				pending += w
 			case <-t.C:
-				if pending != "" {
+				// Don't send one word at a time.
+				if len(pending) > 30 {
 					text += pending
 					msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
 						Content:   pending + " (...continued)",

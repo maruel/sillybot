@@ -61,7 +61,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
   # , disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature"
 
   def do_POST(self):
-    logging.info("Got request", self.path)
+    logging.info("Got request %s", self.path)
     start = time.time()
     content_length = int(self.headers['Content-Length'])
     post_data = self.rfile.read(content_length)
@@ -106,6 +106,7 @@ def main():
   if DEVICE == "cuda":
     torch.backends.cuda.matmul.allow_tf32 = True
   Handler._pipe = load_segmind_ssd_1b_lcm_lora().to(DEVICE, dtype=DTYPE)
+  logging.info("Model loaded using %s", DEVICE)
   httpd = http.server.HTTPServer(("localhost", args.port), Handler)
   logging.info(f"Started server on port {args.port}")
 

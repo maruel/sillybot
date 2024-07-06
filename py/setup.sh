@@ -13,5 +13,6 @@ source venv/bin/activate
 
 pip install -U pip
 # flash_attn ?
+# See https://pytorch.org/get-started/locally/ for more information.
 pip install -U accelerate diffusers peft protobuf sentencepiece setuptools torch transformers
 pip freeze > requirements-$(uname).txt
