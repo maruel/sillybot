@@ -40,3 +40,5 @@ network) to download the models on first run, be patient.
 
 - Install `llama-server` from [llama.cpp](https://github.com/ggerganov/llama.cpp).
 - If you have nvidia hardware, install [CUDA](https://developer.nvidia.com/cuda-downloads).
+- On macOS, use [`mac_vram.sh`](/mac_vram.sh) to increase the amount of VRAM
+  usable for the model.
