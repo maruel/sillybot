@@ -6,9 +6,12 @@ Diffusion (in python for now).
 - Uses WebSocket so no need to setup a web server! 🎉
 - Keeps memory of past conversations.
 - Works on Ubuntu (linux), macOS and Windows! 🪟
-- Uses [llama.cpp](https://github.com/ggerganov/llama.cpp)'s `llama-server` if
-  in `PATH`, defaults to [llamafile](https://github.com/Mozilla-Ocho/llamafile)
-  otherwise.
+- Supported backends:
+    - Uses [llama.cpp](https://github.com/ggerganov/llama.cpp)'s `llama-server`
+      if in `PATH`
+    - Defaults to [llamafile](https://github.com/Mozilla-Ocho/llamafile)
+      otherwise.
+    - Optionally uses pytorch python backend for experiments.
 - Runs as a chat bot LLM instructs. Tested to work with:
     - [Meta-Llama3-8B-instruct](https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile)
       at various quantization levels
@@ -22,8 +25,8 @@ Diffusion (in python for now).
       for llamafile to be fixed upstream.
 - Runs as an image generator. Tested to work with:
     - [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B) coupled with [LCM
-      Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) which is
-      super fast. Segmind SSD-1B renders under 10s on a MacBook Pro M3 Max, under
+      Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) is super
+      fast. Segmind SSD-1B renders under 10s on a MacBook Pro M3 Max, under
       100s on an Intel i7-13700 on Ubuntu and under 160s on a i9-13900H on Windows
       11. (Depends on the number of steps selected)
     - [Stable Diffusion 3
