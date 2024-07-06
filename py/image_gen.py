@@ -55,10 +55,16 @@ def load_segmind_ssd_1b_lcm_lora():
   return pipe
 
 
+def load_segmind_moe():
+  import segmoe
+  return segmoe.SegMoEPipeline("segmind/SegMoE-2x1-v0", device=DEVICE)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
   _pipe = None
   _neg = "out of frame, lowers, text, error, cropped, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face"
   # , disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature"
+  #_neg = "bad quality, worse quality"
 
   def do_POST(self):
     logging.info("Got request %s", self.path)
@@ -68,17 +74,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
     data = json.loads(post_data)
     # TODO: Structured format and verifications.
     prompt = data["message"]
+    # Use 8 for Segmind + LCM Lora, 25 to 40 otherwise.
     steps = data["steps"]
     seed = data["seed"]
-    img = self._pipe(
-        prompt=prompt,
-        negative_prompt=self._neg,
-        num_inference_steps=steps,
-        generator=get_generator(seed),
-        # Use 1 when using LoRA.
-        #guidance_scale=7.0,
-        guidance_scale=1.0,
-    ).images[0]
+    img = self.gen_image(prompt, steps, seed)
     d = io.BytesIO()
     img.save(d, format="png")
     resp = {
@@ -88,8 +87,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
     self.send_header("Content-Type", "application/json")
     self.end_headers()
     self.wfile.write(json.dumps(resp).encode("ascii"))
-    logging.info(f"Generated image for {prompt} in {time.time()-start:.1f}s")
-    img.save(datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ".png")
+    name = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ".png"
+    logging.info(f"Generated image for {prompt} in {time.time()-start:.1f}s; saving as {name}")
+    img.save(name)
+
+  @classmethod
+  def gen_image(cls, prompt, steps, seed):
+    img = cls._pipe(
+        prompt=prompt,
+        negative_prompt=cls._neg,
+        num_inference_steps=steps,
+        generator=get_generator(seed),
+        # Use 1.0 when using Segmind + LCM LoRA, 9.0 for Segmind raw, 7.0 for SD3.
+        guidance_scale=1.0,
+    ).images[0]
+    return img
 
 
 def main():
@@ -97,6 +109,7 @@ def main():
   parser.add_argument("--token",
                       help="Create a read token at htps://huggingface.co/settings/tokens")
   parser.add_argument("--port", default=8032, type=int)
+  parser.add_argument("--prompt", help="Run once and exit")
   args = parser.parse_args()
   logging.basicConfig(level=logging.DEBUG)
 
@@ -106,7 +119,18 @@ def main():
   if DEVICE == "cuda":
     torch.backends.cuda.matmul.allow_tf32 = True
   Handler._pipe = load_segmind_ssd_1b_lcm_lora().to(DEVICE, dtype=DTYPE)
+  #Handler._pipe = load_segmind_moe()
   logging.info("Model loaded using %s", DEVICE)
+
+  if args.prompt:
+    start = time.time()
+    logging.info(f"Generating image for {args.prompt}")
+    img = Handler.gen_image(args.prompt, 25, 1)
+    name = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ".png"
+    logging.info(f"Generated image for {args.prompt} in {time.time()-start:.1f}s; saving as {name}")
+    img.save(name)
+    return 0
+
   httpd = http.server.HTTPServer(("localhost", args.port), Handler)
   logging.info(f"Started server on port {args.port}")
 
