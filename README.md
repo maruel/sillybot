@@ -13,16 +13,40 @@ Diffusion (in python for now).
       otherwise.
     - Optionally uses pytorch python backend for experiments.
 - Runs as a chat bot LLM instructs. Tested to work with:
-    - [Meta-Llama3-8B-instruct](https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile)
-      at various quantization levels
-    - [Gemma-2-27B
-      instruct](https://huggingface.co/jartine/gemma-2-27b-it-llamafile) in
-      Q6_K.
-    - [Phi-3-mini-4k-instruct](https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile)
-      and
-      [Phi-3-medium-128k-instruct](https://huggingface.co/Mozilla/Phi-3-medium-128k-instruct-llamafile)
-      are currently only supported when using llama.cpp llama-server, waiting
-      for llamafile to be fixed upstream.
+    - [Gemma-2-9B instruct](https://huggingface.co/google/gemma-2-9b-it) in
+      [quantized form](https://huggingface.co/jartine/gemma-2-9b-it-llamafile)
+      with 8K context window.
+    - [Gemma-2-27B instruct](https://huggingface.co/google/gemma-2-27b-it) in
+      [quantized form](https://huggingface.co/jartine/gemma-2-27b-it-llamafile)
+      with 8K context window.
+    - [Meta-Llama3-8B-instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)
+      in [quantized
+      form](https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile)
+      with 8K context window.
+    - [Meta-Llama3-70B-instruct](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct)
+      in [quantized
+      form](https://huggingface.co/Mozilla/Meta-Llama-3-70B-Instruct-llamafile)
+      with 8K context window.
+    - [Mistral-7B-Instruct-v0.3](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3)
+      in [quantized
+      form](https://huggingface.co/MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF)
+      with 32K (!) context window.
+    - [Mistral-8x7B-Instruct-v0.1](https://huggingface.co/mistralai/Mistral-8x7B-Instruct-v0.1)
+      in [quantized
+      form](https://huggingface.co/Mozilla/Mixtral-8x7B-Instruct-v0.1-llamafile)
+      with 32K (!) context window.
+    - [Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct)
+      in [quantized
+      form](https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile)
+      (currently only supported when using llama.cpp llama-server, waiting
+      for llamafile to be fixed upstream)
+      with 4K context window.
+    - [Phi-3-medium-128k-instruct](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct)
+      in [quantized
+      form](https://huggingface.co/Mozilla/Phi-3-medium-128k-instruct-llamafile)
+      (currently only supported when using llama.cpp llama-server, waiting
+      for llamafile to be fixed upstream)
+      with 128K (!!) context window. Requires a ton of RAM.
 - Runs as an image generator. Tested to work with:
     - [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B) coupled with [LCM
       Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) is super

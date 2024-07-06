@@ -30,8 +30,10 @@ import (
 // KnownLLM is a known model.
 type KnownLLM struct {
 	URL      string
+	Type     string
 	Upstream string
 	BaseName string
+	Context  int
 	// Most native format. Normally BF16 or F16 depending on the model. This is
 	// found in config.json in Upstream.
 	Native string
@@ -40,28 +42,75 @@ type KnownLLM struct {
 // KnownLLMs is a list of known models for ease of use. This is in no way
 // limits what can be used with this system.
 var KnownLLMs = []KnownLLM{
+	// Gemma 2 family
 	{
-		URL:      "https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile",
-		Upstream: "https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct",
-		BaseName: "Meta-Llama-3-8B-Instruct",
-		Native:   "BF16",
-	},
-	{
-		URL:      "https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile",
-		Upstream: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct",
-		BaseName: "Phi-3-mini-4k-instruct",
-		Native:   "BF16",
-	},
-	{
-		URL:      "https://huggingface.co/Mozilla/Phi-3-medium-128k-instruct-llamafile",
-		Upstream: "https://huggingface.co/microsoft/Phi-3-medium-128k-instruct",
-		BaseName: "Phi-3-medium-128k-instruct",
+		URL:      "https://huggingface.co/jartine/gemma-2-9b-it-llamafile",
+		Type:     "llamafile",
+		Upstream: "https://huggingface.co/google/gemma-2-9b-it",
+		BaseName: "gemma-2-9b-it",
+		Context:  8192,
 		Native:   "BF16",
 	},
 	{
 		URL:      "https://huggingface.co/jartine/gemma-2-27b-it-llamafile",
+		Type:     "llamafile",
 		Upstream: "https://huggingface.co/google/gemma-2-27b-it",
 		BaseName: "gemma-2-27b-it",
+		Context:  8192,
+		Native:   "BF16",
+	},
+
+	// Llama 3 family
+	{
+		URL:      "https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile",
+		Type:     "llamafile",
+		Upstream: "https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct",
+		BaseName: "Meta-Llama-3-8B-Instruct",
+		Context:  8192,
+		Native:   "BF16",
+	},
+	{
+		URL:      "https://huggingface.co/Mozilla/Meta-Llama-3-70B-Instruct-llamafile",
+		Type:     "llamafile",
+		Upstream: "https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct",
+		BaseName: "Meta-Llama-3-70B-Instruct",
+		Context:  8192,
+		Native:   "BF16",
+	},
+
+	// Mistral family
+	{
+		URL:      "https://huggingface.co/MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF",
+		Type:     "gguf",
+		Upstream: "https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3",
+		BaseName: "Mistral-7B-Instruct-v0.3",
+		Context:  32768,
+		Native:   "BF16",
+	},
+	{
+		URL:      "https://huggingface.co/Mozilla/Mixtral-8x7B-Instruct-v0.1-llamafile",
+		Type:     "llamafile",
+		Upstream: "https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1",
+		BaseName: "mixtral-8x7b-instruct-v0.1",
+		Context:  32768,
+		Native:   "BF16",
+	},
+
+	// Phi-3 family
+	{
+		URL:      "https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile",
+		Type:     "llamafile",
+		Upstream: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct",
+		BaseName: "Phi-3-mini-4k-instruct",
+		Context:  4096,
+		Native:   "BF16",
+	},
+	{
+		URL:      "https://huggingface.co/Mozilla/Phi-3-medium-128k-instruct-llamafile",
+		Type:     "llamafile",
+		Upstream: "https://huggingface.co/microsoft/Phi-3-medium-128k-instruct",
+		BaseName: "Phi-3-medium-128k-instruct",
+		Context:  131072,
 		Native:   "BF16",
 	},
 }
@@ -462,8 +511,8 @@ func getGitHubLatestRelease(owner, repo, contentType string) (string, string, er
 	return "", "", nil
 }
 
-// downloadExec downloads an executable.
-func downloadExec(ctx context.Context, url, dst string) error {
+// downloadFile downloads a file.
+func downloadFile(ctx context.Context, url, dst string, mode os.FileMode) error {
 	if _, err := os.Stat(dst); err == nil || !os.IsNotExist(err) {
 		return err
 	}
@@ -478,7 +527,7 @@ func downloadExec(ctx context.Context, url, dst string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0o755)
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, mode)
 	if err != nil {
 		return err
 	}
@@ -513,9 +562,8 @@ func copyFile(dst, src string) error {
 // TODO: We should use the package so authentication works, this would speed up
 // download.
 func getHfModelGGUFFromLlamafile(ctx context.Context, cache, repo, model string) error {
-	url := "https://huggingface.co/" + repo + "/resolve/main/" + model + ".llamafile?download=true"
-	dst := filepath.Join(cache, model+".llamafile")
-	if err := downloadExec(ctx, url, dst); err != nil {
+	dst, err := getHfFile(ctx, cache, repo, model+".llamafile", 0o755)
+	if err != nil {
 		return err
 	}
 	gguf := model + ".gguf"
@@ -545,6 +593,12 @@ func getHfModelGGUFFromLlamafile(ctx context.Context, cache, repo, model string)
 		}
 	}
 	return errors.New("gguf not found")
+}
+
+func getHfFile(ctx context.Context, cache, repo, file string, mode os.FileMode) (string, error) {
+	url := "https://huggingface.co/" + repo + "/resolve/main/" + file + "?download=true"
+	dst := filepath.Join(cache, file)
+	return dst, downloadFile(ctx, url, dst, mode)
 }
 
 // getLlama returns the file path to llama.cpp/llamafile executable.
@@ -584,7 +638,7 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		return "", false, fmt.Errorf("failed to find latest llamafile release from github: %w", err)
 	}
 	versioned := filepath.Join(cache, name+execSuffix)
-	if err = downloadExec(ctx, url, versioned); err != nil {
+	if err = downloadFile(ctx, url, versioned, 0o755); err != nil {
 		return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
 	}
 	// Copy it as the default executable to use.
@@ -614,9 +668,11 @@ func getModel(ctx context.Context, cache, model string) (string, error) {
 	if _, err := os.Stat(modelFile); err != nil {
 		slog.Info("llm", "model", model, "state", "missing")
 		url := ""
+		t := ""
 		for _, k := range KnownLLMs {
 			if strings.HasPrefix(model, k.BaseName) {
 				url = k.URL
+				t = k.Type
 				break
 			}
 		}
@@ -626,8 +682,17 @@ func getModel(ctx context.Context, cache, model string) (string, error) {
 		hf := "https://huggingface.co/"
 		if strings.HasPrefix(url, hf) {
 			repo := url[len(hf):]
-			if err = getHfModelGGUFFromLlamafile(ctx, cache, repo, model); err != nil {
-				return "", fmt.Errorf("failed to retrieve model %q: %w", model, err)
+			switch t {
+			case "gguf":
+				if _, err = getHfFile(ctx, cache, repo, model+".gguf", 0o644); err != nil {
+					return "", fmt.Errorf("failed to retrieve model %q: %w", model, err)
+				}
+			case "llamafile":
+				if err = getHfModelGGUFFromLlamafile(ctx, cache, repo, model); err != nil {
+					return "", fmt.Errorf("failed to retrieve model %q: %w", model, err)
+				}
+			default:
+				return "", errors.New("internal error: unknown type")
 			}
 		} else {
 			return "", fmt.Errorf("can't guess model %q source", model)
