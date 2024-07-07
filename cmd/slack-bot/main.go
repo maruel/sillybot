@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +25,21 @@ import (
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 )
+
+func commit() string {
+	rev := ""
+	suffix := ""
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" {
+				rev = s.Value
+			} else if s.Key == "vcs.modified" && s.Value == "true" {
+				suffix = "-tainted"
+			}
+		}
+	}
+	return rev + suffix
+}
 
 func mainImpl() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
@@ -69,10 +85,15 @@ func mainImpl() error {
 	llmModel := flag.String("llm", sillybot.KnownLLMs[0].BaseName+".Q5_K_M", "Enable LLM output")
 	usePy := flag.Bool("llm-use-python", false, "Ignored llmafile and use py/llm.py instead")
 	igUse := flag.Bool("ig", false, "Enable Stable Diffusion output")
+	version := flag.Bool("version", false, "Print version then exit")
 	flag.Parse()
 
 	if len(flag.Args()) != 0 {
 		return errors.New("unexpected argument")
+	}
+	if *version {
+		fmt.Printf("discord-bot %s\n", commit())
+		return nil
 	}
 	if *bottoken == "" {
 		b, err2 := os.ReadFile("token_slack_bot.txt")
