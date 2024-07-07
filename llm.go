@@ -222,7 +222,7 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 		}
 		select {
 		case err := <-l.done:
-			return nil, fmt.Errorf("context canceled while starting llm server: %w", err)
+			return nil, fmt.Errorf("starting llm server failed: %w", err)
 		case <-ctx.Done():
 		case <-time.After(100 * time.Millisecond):
 		}
@@ -513,23 +513,24 @@ func getGitHubLatestRelease(owner, repo, contentType string) (string, string, er
 
 // downloadFile downloads a file.
 func downloadFile(ctx context.Context, url, dst string, mode os.FileMode) error {
-	if _, err := os.Stat(dst); err == nil || !os.IsNotExist(err) {
+	// Work around "Entry not found"
+	if i, err := os.Stat(dst); (err == nil && i.Size() >= 1024) || (err != nil && !os.IsNotExist(err)) {
 		return err
 	}
 	// TODO: When authenticated the bandwidth saturates to 1Gbps.
 	slog.Info("llm", "downloading", url)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to download %q: %w", dst, err)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to download %q: %w", dst, err)
 	}
 	defer resp.Body.Close()
 	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, mode)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to download %q: %w", dst, err)
 	}
 	defer f.Close()
 	bar := progressbar.DefaultBytes(resp.ContentLength, "downloading")
@@ -568,7 +569,8 @@ func getHfModelGGUFFromLlamafile(ctx context.Context, cache, repo, model string)
 	}
 	gguf := model + ".gguf"
 	dstgguf := filepath.Join(cache, gguf)
-	if _, err := os.Stat(dstgguf); err == nil || !os.IsNotExist(err) {
+	// It can happen that the file only contains "Entry not found"
+	if i, err := os.Stat(dstgguf); (err == nil && i.Size() >= 1024) || (err != nil && !os.IsNotExist(err)) {
 		return err
 	}
 	z, err := zip.OpenReader(dst)
@@ -665,7 +667,8 @@ func getModel(ctx context.Context, cache, model string) (string, error) {
 		return "", fmt.Errorf("unknown quantization for model %q, did you forget a suffix like '.BF16' or '.Q5_K_M'?", model)
 	}
 	modelFile := filepath.Join(cache, model+".gguf")
-	if _, err := os.Stat(modelFile); err != nil {
+	// It can happen that the file only contains "Entry not found"
+	if i, err := os.Stat(modelFile); (err == nil && i.Size() < 1048576) || err != nil {
 		slog.Info("llm", "model", model, "state", "missing")
 		url := ""
 		t := ""
