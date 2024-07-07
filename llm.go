@@ -660,7 +660,7 @@ func getModel(ctx context.Context, cache, model string) (string, error) {
 			slog.Warn("llm", "message", "As of July 2024, bfloat16 was not fully supported on Apple Silicon system. Remove this warning once this is fixed.")
 		}
 		// Well known quantizations.
-	case ".F16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
+	case ".F16", ".FP16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
 	case "":
 		return "", fmt.Errorf("you forgot to add a quantization suffix like '.BF16', '.F16', '.Q8_0' or '.Q5_K_M' when specifying model %q", model)
 	default:
