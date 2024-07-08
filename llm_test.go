@@ -29,7 +29,7 @@ func TestLLM_Gemma_2(t *testing.T) {
 }
 
 func TestLLM_Phi_3_Mini(t *testing.T) {
-	t.Skip("skipping because it's broken; the model doesn't follow orders")
+	t.Skip("skipping because it's broken when using llamafile")
 	testModel(t, "Phi-3-mini-4k-instruct.Q5_K_M")
 }
 
@@ -43,7 +43,7 @@ func TestLLM_Stream_Gemma_2(t *testing.T) {
 }
 
 func TestLLM_Stream_Phi_3_Mini(t *testing.T) {
-	t.Skip("skipping because it's broken; the model doesn't follow orders")
+	t.Skip("skipping because it's broken when using llamafile")
 	testModelStreaming(t, "Phi-3-mini-4k-instruct.Q5_K_M")
 }
 
@@ -56,7 +56,10 @@ func testModel(t *testing.T, model string) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	l, err := NewLLM(ctx, cache, model, false)
+	opts := LLMOptions{
+		Model: model,
+	}
+	l, err := NewLLM(ctx, cache, &opts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +91,10 @@ func testModelStreaming(t *testing.T, model string) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	l, err := NewLLM(ctx, cache, model, false)
+	opts := LLMOptions{
+		Model: model,
+	}
+	l, err := NewLLM(ctx, cache, &opts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

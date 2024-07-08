@@ -24,6 +24,7 @@ import (
 	"github.com/maruel/sillybot"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"gopkg.in/yaml.v3"
 )
 
 func commit() string {
@@ -62,29 +63,33 @@ func mainImpl() error {
 		return err
 	}
 
+	bottoken := flag.String("bot-token", "", "Bot Token; get one at https://discord.com/developers/applications or https://api.slack.com/apps")
+	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
+	verbose := flag.Bool("v", false, "Enable verbose logging")
+	config := flag.String("config", "config.yml", "Configuration file. If not present, it is automatically created.")
+	version := flag.Bool("version", false, "Print version then exit")
 	flag.Usage = func() {
 		o := flag.CommandLine.Output()
 		fmt.Fprintf(o, "Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
-		fmt.Fprintf(o, "\nAvailable LLM models:\n")
-		l := 0
-		for _, k := range sillybot.KnownLLMs {
-			if m := len(k.BaseName); m > l {
-				l = m
+		if *config != "" {
+			if b, err := os.ReadFile(*config); err == nil {
+				cfg := sillybot.Config{}
+				if err = yaml.Unmarshal(b, &cfg); err == nil {
+					fmt.Fprintf(o, "\nAvailable LLM models:\n")
+					l := 0
+					for _, k := range cfg.KnownLLMs {
+						if m := len(k.Basename) + 1; m > l {
+							l = m
+						}
+					}
+					for _, k := range cfg.KnownLLMs {
+						fmt.Fprintf(o, "  %-*s: %s\n", l, k.Basename+"*", k.URL)
+					}
+				}
 			}
 		}
-		for _, k := range sillybot.KnownLLMs {
-			fmt.Fprintf(o, "  %-*s: %s\n", l, k.BaseName, k.URL)
-		}
 	}
-
-	bottoken := flag.String("bot-token", "", "Bot Token; get one at https://discord.com/developers/applications or https://api.slack.com/apps")
-	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
-	verbose := flag.Bool("v", false, "Enable verbose logging")
-	llmModel := flag.String("llm", sillybot.KnownLLMs[0].BaseName+".Q5_K_M", "Enable LLM output")
-	usePy := flag.Bool("llm-use-python", false, "Ignored llmafile and use py/llm.py instead")
-	igUse := flag.Bool("ig", false, "Enable Image Generation output")
-	version := flag.Bool("version", false, "Print version then exit")
 	flag.Parse()
 
 	if len(flag.Args()) != 0 {
@@ -108,7 +113,7 @@ func mainImpl() error {
 	if err = os.MkdirAll(*cache, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	l, ig, err := sillybot.LoadModels(ctx, *cache, *llmModel, *usePy, *igUse)
+	l, ig, err := sillybot.LoadModels(ctx, *cache, *config)
 	if l != nil {
 		defer l.Close()
 	}

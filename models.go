@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -19,21 +20,49 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v3"
 )
+
+// Default configuration with well known models and sane presets.
+//
+//go:embed config.yml
+var DefaultConfig []byte
+
+// Config defines the configuration format.
+type Config struct {
+	Bot struct {
+		LLM      LLMOptions
+		ImageGen ImageGenOptions
+	}
+	KnownLLMs []KnownLLM
+}
 
 // LoadModels loads the LLM and ImageGen models.
 //
 // Both take a while to start, so load them in parallel for faster initialization.
-func LoadModels(ctx context.Context, cache string, llm string, llmUsePython, ig bool) (*LLM, *ImageGen, error) {
+func LoadModels(ctx context.Context, cache string, config string) (*LLM, *ImageGen, error) {
 	start := time.Now()
 	slog.Info("models", "state", "initializing")
+
+	b, err := os.ReadFile(config)
+	if os.IsNotExist(err) {
+		if err = os.WriteFile(config, DefaultConfig, 0o644); err != nil {
+			return nil, nil, fmt.Errorf("failed to write default config: %w", err)
+		}
+		b = DefaultConfig
+	}
+	cfg := Config{}
+	if err = yaml.Unmarshal(b, &cfg); err != nil {
+		return nil, nil, fmt.Errorf("failed to read %q: %w", config, err)
+	}
+
 	eg := errgroup.Group{}
 	var l *LLM
 	var s *ImageGen
 	eg.Go(func() error {
 		var err error
-		if llm != "" || llmUsePython {
-			if l, err = NewLLM(ctx, cache, llm, llmUsePython); err != nil {
+		if cfg.Bot.LLM.Model != "" {
+			if l, err = NewLLM(ctx, cache, &cfg.Bot.LLM, cfg.KnownLLMs); err != nil {
 				slog.Info("llm", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
 			}
 		}
@@ -41,15 +70,14 @@ func LoadModels(ctx context.Context, cache string, llm string, llmUsePython, ig 
 	})
 	eg.Go(func() error {
 		var err error
-		if ig {
-			if s, err = NewImageGen(ctx, cache); err != nil {
-				slog.Info("ig", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/imagegen.log'")
+		if cfg.Bot.ImageGen.Model != "" {
+			if s, err = NewImageGen(ctx, cache, &cfg.Bot.ImageGen); err != nil {
+				slog.Info("ig", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/image_gen.log'")
 			}
 		}
 		return err
 	})
-	err := eg.Wait()
-	if err == nil {
+	if err = eg.Wait(); err == nil {
 		err = ctx.Err()
 	}
 	slog.Info("models", "state", "ready", "error", err, "duration", time.Since(start).Round(time.Millisecond))

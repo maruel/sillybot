@@ -27,92 +27,31 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
+// LLMOptions for NewLLM.
+type LLMOptions struct {
+	// Model specifies a model to use. Use "python" to use the python backend.
+	Model        string
+	SystemPrompt string
+
+	_ struct{}
+}
+
 // KnownLLM is a known model.
 type KnownLLM struct {
 	URL      string
 	Type     string
+	Basename string
 	Upstream string
-	BaseName string
 	Context  int
-	// Most native format. Normally BF16 or F16 depending on the model. This is
+	// Native is the native quantization of the weight. Normally BF16. This is
 	// found in config.json in Upstream.
 	Native string
-}
+	// License is the license of the weights, for whatever that means. Use the
+	// name for well known licences (e.g. "Apache v2.0" or "MIT") or an URL for
+	// custom licenses.
+	License string
 
-// KnownLLMs is a list of known models for ease of use. This is in no way
-// limits what can be used with this system.
-var KnownLLMs = []KnownLLM{
-	// Gemma 2 family
-	{
-		URL:      "https://huggingface.co/jartine/gemma-2-9b-it-llamafile",
-		Type:     "llamafile",
-		Upstream: "https://huggingface.co/google/gemma-2-9b-it",
-		BaseName: "gemma-2-9b-it",
-		Context:  8192,
-		Native:   "BF16",
-	},
-	{
-		URL:      "https://huggingface.co/jartine/gemma-2-27b-it-llamafile",
-		Type:     "llamafile",
-		Upstream: "https://huggingface.co/google/gemma-2-27b-it",
-		BaseName: "gemma-2-27b-it",
-		Context:  8192,
-		Native:   "BF16",
-	},
-
-	// Llama 3 family
-	{
-		URL:      "https://huggingface.co/Mozilla/Meta-Llama-3-8B-Instruct-llamafile",
-		Type:     "llamafile",
-		Upstream: "https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct",
-		BaseName: "Meta-Llama-3-8B-Instruct",
-		Context:  8192,
-		Native:   "BF16",
-	},
-	{
-		URL:      "https://huggingface.co/Mozilla/Meta-Llama-3-70B-Instruct-llamafile",
-		Type:     "llamafile",
-		Upstream: "https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct",
-		BaseName: "Meta-Llama-3-70B-Instruct",
-		Context:  8192,
-		Native:   "BF16",
-	},
-
-	// Mistral family
-	{
-		URL:      "https://huggingface.co/MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF",
-		Type:     "gguf",
-		Upstream: "https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3",
-		BaseName: "Mistral-7B-Instruct-v0.3",
-		Context:  32768,
-		Native:   "BF16",
-	},
-	{
-		URL:      "https://huggingface.co/Mozilla/Mixtral-8x7B-Instruct-v0.1-llamafile",
-		Type:     "llamafile",
-		Upstream: "https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1",
-		BaseName: "mixtral-8x7b-instruct-v0.1",
-		Context:  32768,
-		Native:   "BF16",
-	},
-
-	// Phi-3 family
-	{
-		URL:      "https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile",
-		Type:     "llamafile",
-		Upstream: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct",
-		BaseName: "Phi-3-mini-4k-instruct",
-		Context:  4096,
-		Native:   "BF16",
-	},
-	{
-		URL:      "https://huggingface.co/Mozilla/Phi-3-medium-128k-instruct-llamafile",
-		Type:     "llamafile",
-		Upstream: "https://huggingface.co/microsoft/Phi-3-medium-128k-instruct",
-		BaseName: "Phi-3-medium-128k-instruct",
-		Context:  131072,
-		Native:   "BF16",
-	},
+	_ struct{}
 }
 
 // LLM runs a llamafile server and runs queries on it.
@@ -129,18 +68,13 @@ type LLM struct {
 	_ struct{}
 }
 
-// NewLLM instantiates a llamafile server or optionally uses python instead.
-//
-// llamafile is really fast so it's preferred. The latest version is downloaded
-// automatically if not found in cache. It uses GGUF quantized and packed models.
-//
-// If usePython is true, llamafile is not used, instead py/llm.py is used. In
-// this case, model is ignored.
-func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, error) {
+// NewLLM instantiates a llama.cpp or llamafile server, or optionally uses
+// python instead.
+func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []KnownLLM) (*LLM, error) {
 	llamasrv := ""
 	isLlamafile := false
 	modelFile := ""
-	if usePython {
+	if opts.Model == "python" {
 		if pyNeedRecreate(cache) {
 			if err := pyRecreate(ctx, cache); err != nil {
 				return nil, fmt.Errorf("failed to load llm: %w", err)
@@ -148,6 +82,7 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 		}
 		slog.Info("llm", "message", "using python")
 	} else {
+		// Make sure the server is available.
 		var err error
 		if llamasrv, isLlamafile, err = getLlama(ctx, cache); err != nil {
 			return nil, fmt.Errorf("failed to load llm: %w", err)
@@ -159,7 +94,9 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 			return nil, fmt.Errorf("failed to get llm version: %w", err)
 		}
 		slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
-		if modelFile, err = getModel(ctx, cache, model); err != nil {
+
+		// Make sure the model is available.
+		if modelFile, err = getModel(ctx, cache, opts.Model, knownLLMs); err != nil {
 			return nil, fmt.Errorf("failed to get llm model: %w", err)
 		}
 	}
@@ -169,7 +106,7 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 		port:    findFreePort(),
 		loading: true,
 	}
-	if usePython {
+	if opts.Model == "python" {
 		cmd := []string{filepath.Join(cache, "llm.py"), "--port", strconv.Itoa(l.port)}
 		done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "llm.log"))
 		if err != nil {
@@ -228,14 +165,14 @@ func NewLLM(ctx context.Context, cache, model string, usePython bool) (*LLM, err
 		}
 	}
 	x := ""
-	if usePython {
+	if opts.Model == "python" {
 		x = "llm.py"
 	} else if isLlamafile {
 		x = "llamafile"
 	} else {
 		x = "llama-server"
 	}
-	slog.Info("llm", "state", "ready", "model", model, "using", x)
+	slog.Info("llm", "state", "ready", "model", opts.Model, "using", x)
 	l.loading = false
 	return l, nil
 }
@@ -653,7 +590,7 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 }
 
 // getModel gets and Verifies the model.
-func getModel(ctx context.Context, cache, model string) (string, error) {
+func getModel(ctx context.Context, cache, model string, knownLLMs []KnownLLM) (string, error) {
 	switch strings.ToUpper(filepath.Ext(model)) {
 	case ".GGUF":
 		return "", fmt.Errorf("do not include the .gguf suffix for model %q", model)
@@ -674,8 +611,8 @@ func getModel(ctx context.Context, cache, model string) (string, error) {
 		slog.Info("llm", "model", model, "state", "missing")
 		url := ""
 		t := ""
-		for _, k := range KnownLLMs {
-			if strings.HasPrefix(model, k.BaseName) {
+		for _, k := range knownLLMs {
+			if strings.HasPrefix(model, k.Basename) {
 				url = k.URL
 				t = k.Type
 				break

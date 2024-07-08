@@ -16,6 +16,15 @@ import (
 	"time"
 )
 
+// ImageGenOptions for NewImageGen.
+type ImageGenOptions struct {
+	// Model specifies a model to use. Use "python" to use the python backend.
+	// "python" is currently the only supported value.
+	Model string
+
+	_ struct{}
+}
+
 // ImageGen manages an image generation server.
 type ImageGen struct {
 	done    <-chan error
@@ -26,7 +35,10 @@ type ImageGen struct {
 }
 
 // NewImageGen initializes a new image generation server.
-func NewImageGen(ctx context.Context, cache string) (*ImageGen, error) {
+func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*ImageGen, error) {
+	if opts.Model != "python" {
+		return nil, fmt.Errorf("unknown model %q", opts.Model)
+	}
 	if pyNeedRecreate(cache) {
 		if err := pyRecreate(ctx, cache); err != nil {
 			return nil, err

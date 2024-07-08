@@ -18,7 +18,8 @@ func TestImageGen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := NewImageGen(context.Background(), cache)
+	opts := ImageGenOptions{Model: "python"}
+	s, err := NewImageGen(context.Background(), cache, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
