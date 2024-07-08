@@ -285,7 +285,7 @@ func (l *LLM) Prompt(ctx context.Context, msgs []Message) (string, error) {
 	reply = strings.TrimSuffix(reply, "<|end|>")
 	reply = strings.TrimSuffix(reply, "<|endoftext|>")
 	reply = strings.TrimSpace(reply)
-	slog.Info("llm", "msgs", msgs, "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
+	slog.Info("llm", "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
 	return reply, nil
 }
 
@@ -298,16 +298,16 @@ func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, words chan<- 
 		lvl = slog.LevelDebug
 	}
 	slog.Log(ctx, lvl, "llm", "msgs", msgs)
-	err := l.promptStreaming(ctx, msgs, words)
+	reply, err := l.promptStreaming(ctx, msgs, words)
 	if err != nil {
 		lvl := slog.LevelDebug
 		if !l.loading || err == context.Canceled {
 			lvl = slog.LevelError
 		}
-		slog.Log(ctx, lvl, "llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		slog.Log(ctx, lvl, "llm", "reply", reply, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return err
 	}
-	slog.Info("llm", "msgs", msgs, "duration", time.Since(start).Round(time.Millisecond))
+	slog.Info("llm", "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
@@ -341,60 +341,62 @@ func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, words chan<- string) error {
+func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, words chan<- string) (string, error) {
 	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs, Stream: true}
 	b, err := json.Marshal(data)
 	if err != nil {
-		return fmt.Errorf("internal error: %w", err)
+		return "", fmt.Errorf("internal error: %w", err)
 	}
 	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
 	if err != nil {
-		return fmt.Errorf("failed to get llama server response: %w", err)
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 	r := bufio.NewReader(resp.Body)
+	reply := ""
 	for {
 		line, err := r.ReadBytes('\n')
 		line = bytes.TrimSpace(line)
 		if err == io.EOF {
 			err = nil
 			if len(line) == 0 {
-				return nil
+				return reply, nil
 			}
 		}
 		if err != nil {
-			return fmt.Errorf("failed to get llama server response: %w", err)
+			return reply, fmt.Errorf("failed to get llama server response: %w", err)
 		}
 		if len(line) == 0 {
 			continue
 		}
 		if !bytes.HasPrefix(line, []byte("data: ")) {
-			return fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
+			return reply, fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
 		}
 		d := json.NewDecoder(bytes.NewReader(line[len("data: "):]))
 		d.DisallowUnknownFields()
 		msg := openAIChatCompletionsStreamResponse{}
 		if err = d.Decode(&msg); err != nil {
-			return fmt.Errorf("failed to decode llama server response %q: %w", string(line), err)
+			return reply, fmt.Errorf("failed to decode llama server response %q: %w", string(line), err)
 		}
 		if len(msg.Choices) != 1 {
-			return fmt.Errorf("llama server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
+			return reply, fmt.Errorf("llama server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
 		}
 		word := msg.Choices[0].Delta.Content
 		slog.Debug("llm", "word", word)
 		switch word {
 		// Llama-3, Gemma-2, Phi-3
 		case "<|eot_id|>", "<end_of_turn>", "<|end|>", "<|endoftext|>":
-			return nil
+			return reply, nil
 		case "":
 		default:
 			words <- word
+			reply += word
 		}
 	}
 }

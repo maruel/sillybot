@@ -17,6 +17,10 @@ import (
 	"github.com/maruel/sillybot"
 )
 
+// discordBot is the live instance of the bot talking to the Discord API.
+//
+// Throughout the code, a Discord Server is called a "Guild". See
+// https://discord.com/developers/docs/quick-start/overview-of-apps#where-are-apps-installed
 type discordBot struct {
 	ctx          context.Context
 	dg           *discordgo.Session
@@ -53,6 +57,15 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 		//dg.LogLevel = discordgo.LogDebug
 		dg.LogLevel = discordgo.LogInformational
 	}
+	// We want to receive as few messages as possible.
+	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentDirectMessages
+	// The events are listed at
+	// https://discord.com/developers/docs/topics/gateway-events#receive-events
+	// Note that all messages are called asynchronously.
+	_ = dg.AddHandler(d.guildCreate)
+	_ = dg.AddHandler(d.messageCreate)
+	_ = dg.AddHandler(d.ready)
+
 	if err = dg.Open(); err != nil {
 		_ = dg.Close()
 		return nil, err
@@ -67,31 +80,10 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 		chat:         make(chan msgReq, 5),
 		image:        make(chan msgReq, 3),
 	}
-	_ = dg.AddHandler(d.guildCreate)
-	_ = dg.AddHandler(d.messageCreate)
-	_ = dg.AddHandler(d.ready)
-	//dg.Identify.Intents = discordgo.IntentsAllWithoutPrivileged
-	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentGuildPresences | discordgo.IntentDirectMessages | discordgo.IntentGuildMessageTyping | discordgo.IntentDirectMessageTyping
 	slog.Info("discord", "state", "running", "info", "Press CTRL-C to exit.")
 	d.wg.Add(2)
-	go func() {
-		for req := range d.chat {
-			if req.authorID == "" {
-				d.wg.Done()
-				return
-			}
-			d.handlePrompt(req)
-		}
-	}()
-	go func() {
-		for req := range d.image {
-			if req.authorID == "" {
-				d.wg.Done()
-				return
-			}
-			d.handleImage(req)
-		}
-	}()
+	go d.chatRoutine()
+	go d.imageRoutine()
 	return d, nil
 }
 
@@ -104,10 +96,39 @@ func (d *discordBot) Close() error {
 	return err
 }
 
-// A new message is created on any channel that the authenticated bot has
-// access to.
+// Handlers
+
+// ready is received right after the initial handshake.
 //
-// Check if it should be serviced and enqueue the request.
+// It's the very first message. At this point, guilds are not yet available.
+// See https://discord.com/developers/docs/topics/gateway-events#ready
+func (d *discordBot) ready(dg *discordgo.Session, r *discordgo.Ready) {
+	slog.Debug("discord", "event", "ready", "session", dg, "event", r)
+	slog.Info("discord", "event", "ready", "user", r.User.String())
+}
+
+// guildCreate is received when new guild (server) is joined or becomes
+// available right after connecting.
+//
+// https://discord.com/developers/docs/topics/gateway-events#guild-create
+func (d *discordBot) guildCreate(dg *discordgo.Session, event *discordgo.GuildCreate) {
+	slog.Debug("discord", "event", "guildCreate", "event", event.Guild)
+	slog.Info("discord", "event", "guildCreate", "name", event.Guild.Name)
+	if event.Guild.Unavailable {
+		return
+	}
+	for _, channel := range event.Guild.Channels {
+		if channel.ID == event.Guild.ID {
+			_, _ = dg.ChannelMessageSend(channel.ID, "Hi!")
+			return
+		}
+	}
+}
+
+// messageCreate is received when new message is created on any channel that
+// the authenticated bot has access to.
+//
+// See https://discord.com/developers/docs/topics/gateway-events#message-create
 func (d *discordBot) messageCreate(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	slog.Debug("discord", "event", "messageCreate", "message", m.Message, "state", dg.State)
 	botid := dg.State.User.ID
@@ -174,6 +195,30 @@ func (d *discordBot) messageCreate(dg *discordgo.Session, m *discordgo.MessageCr
 				slog.Error("discord", "event", "failed posting message", "error", err)
 			}
 		}
+	}
+}
+
+// Internal
+
+// chatRoutine serializes the chat requests.
+func (d *discordBot) chatRoutine() {
+	for req := range d.chat {
+		if req.authorID == "" {
+			d.wg.Done()
+			return
+		}
+		d.handlePrompt(req)
+	}
+}
+
+// imageRoutine serializes the chat requests.
+func (d *discordBot) imageRoutine() {
+	for req := range d.image {
+		if req.authorID == "" {
+			d.wg.Done()
+			return
+		}
+		d.handleImage(req)
 	}
 }
 
@@ -288,29 +333,12 @@ func (d *discordBot) handleImage(req msgReq) {
 	}
 }
 
-// A new guild is joined.
-func (d *discordBot) guildCreate(dg *discordgo.Session, event *discordgo.GuildCreate) {
-	slog.Debug("discord", "event", "guildCreate", "event", event.Guild)
-	slog.Info("discord", "event", "guildCreate", "name", event.Guild.Name)
-	if event.Guild.Unavailable {
-		return
-	}
-	/*
-		for _, channel := range event.Guild.Channels {
-			if channel.ID == event.Guild.ID {
-				_, _ = dg.ChannelMessageSend(channel.ID, "Coucou!")
-				return
-			}
-		}
-	*/
-}
-
-func (d *discordBot) ready(dg *discordgo.Session, r *discordgo.Ready) {
-	slog.Debug("discord", "event", "ready", "session", dg, "event", r)
-	slog.Info("discord", "event", "ready", "user", r.User.String())
-}
-
+// msgReq is an incoming message pending to be processed.
 type msgReq struct {
+	// msg is the message received.
+	// See
+	// https://discord.com/developers/docs/reference#message-formatting-formats
+	// for the formatting of references.
 	msg       string
 	authorID  string
 	channelID string
