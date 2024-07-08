@@ -35,7 +35,7 @@ type discordBot struct {
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen, mem *sillybot.Memory) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen, mem *sillybot.Memory, systPrmpt string) (*discordBot, error) {
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
@@ -66,7 +66,7 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 		l:            l,
 		ig:           ig,
 		mem:          mem,
-		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
+		systemPrompt: systPrmpt,
 		chat:         make(chan msgReq, 5),
 		image:        make(chan msgReq, 3),
 	}
@@ -89,7 +89,9 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 
 func (d *discordBot) Close() error {
 	slog.Info("discord", "state", "terminating")
-	// TODO: Should we send a bye bye before closing?
+	// TODO: Send a bye bye before closing.
+	// TODO: Set presence to "away". It's already the case for channels but not
+	// for direct messages.
 	err := d.dg.Close()
 	d.chat <- msgReq{}
 	d.image <- msgReq{}

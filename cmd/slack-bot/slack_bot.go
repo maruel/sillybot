@@ -47,7 +47,7 @@ type ilog interface {
 	Output(int, string) error
 }
 
-func newSlackBot(apptoken, bottoken string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen, mem *sillybot.Memory) (*slackBot, error) {
+func newSlackBot(apptoken, bottoken string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen, mem *sillybot.Memory, systPrmpt string) (*slackBot, error) {
 	if !strings.HasPrefix(apptoken, "xapp-") {
 		return nil, errors.New("slack apptoken must have the prefix \"xapp-\"")
 	}
@@ -75,7 +75,7 @@ func newSlackBot(apptoken, bottoken string, verbose bool, l *sillybot.LLM, ig *s
 		l:            l,
 		ig:           ig,
 		mem:          mem,
-		systemPrompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic.",
+		systemPrompt: systPrmpt,
 		chat:         make(chan msgReq, 5),
 		image:        make(chan msgReq, 3),
 	}

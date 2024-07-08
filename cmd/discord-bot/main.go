@@ -24,7 +24,6 @@ import (
 	"github.com/maruel/sillybot"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
-	"gopkg.in/yaml.v3"
 )
 
 func commit() string {
@@ -63,6 +62,7 @@ func mainImpl() error {
 		return err
 	}
 
+	cfg := sillybot.Config{}
 	bottoken := flag.String("bot-token", "", "Bot Token; get one at https://discord.com/developers/applications or https://api.slack.com/apps")
 	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
@@ -73,19 +73,16 @@ func mainImpl() error {
 		fmt.Fprintf(o, "Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
 		if *config != "" {
-			if b, err := os.ReadFile(*config); err == nil {
-				cfg := sillybot.Config{}
-				if err = yaml.Unmarshal(b, &cfg); err == nil {
-					fmt.Fprintf(o, "\nAvailable LLM models:\n")
-					l := 0
-					for _, k := range cfg.KnownLLMs {
-						if m := len(k.Basename) + 1; m > l {
-							l = m
-						}
+			if cfg.LoadOrDefault(*config) == nil {
+				fmt.Fprintf(o, "\nAvailable LLM models:\n")
+				l := 0
+				for _, k := range cfg.KnownLLMs {
+					if m := len(k.Basename) + 1; m > l {
+						l = m
 					}
-					for _, k := range cfg.KnownLLMs {
-						fmt.Fprintf(o, "  %-*s: %s\n", l, k.Basename+"*", k.URL)
-					}
+				}
+				for _, k := range cfg.KnownLLMs {
+					fmt.Fprintf(o, "  %-*s: %s\n", l, k.Basename+"*", k.URL)
 				}
 			}
 		}
@@ -99,6 +96,12 @@ func mainImpl() error {
 		fmt.Printf("discord-bot %s\n", commit())
 		return nil
 	}
+	if *verbose {
+		programLevel.Set(slog.LevelDebug)
+	}
+	if err = cfg.LoadOrDefault(*config); err != nil {
+		return err
+	}
 	if *bottoken == "" {
 		b, err2 := os.ReadFile("token_discord.txt")
 		if err2 != nil || len(b) < 10 {
@@ -106,14 +109,10 @@ func mainImpl() error {
 		}
 		*bottoken = strings.TrimSpace(string(b))
 	}
-	if *verbose {
-		programLevel.Set(slog.LevelDebug)
-	}
-
 	if err = os.MkdirAll(*cache, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	l, ig, err := sillybot.LoadModels(ctx, *cache, *config)
+	l, ig, err := sillybot.LoadModels(ctx, *cache, &cfg)
 	if l != nil {
 		defer l.Close()
 	}
@@ -138,7 +137,7 @@ func mainImpl() error {
 		slog.Info("main", "memory", "no memory to load", "error", err)
 	}
 
-	d, err := newDiscordBot(ctx, *bottoken, *verbose, l, ig, mem)
+	d, err := newDiscordBot(ctx, *bottoken, *verbose, l, ig, mem, cfg.Bot.LLM.SystemPrompt)
 	if err != nil {
 		return err
 	}

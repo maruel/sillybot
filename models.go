@@ -37,24 +37,27 @@ type Config struct {
 	KnownLLMs []KnownLLM
 }
 
-// LoadModels loads the LLM and ImageGen models.
-//
-// Both take a while to start, so load them in parallel for faster initialization.
-func LoadModels(ctx context.Context, cache string, config string) (*LLM, *ImageGen, error) {
-	start := time.Now()
-	slog.Info("models", "state", "initializing")
-
+// LoadOrDefault loads a config or write the default to disk.
+func (c *Config) LoadOrDefault(config string) error {
 	b, err := os.ReadFile(config)
 	if os.IsNotExist(err) {
 		if err = os.WriteFile(config, DefaultConfig, 0o644); err != nil {
-			return nil, nil, fmt.Errorf("failed to write default config: %w", err)
+			return fmt.Errorf("failed to write default config: %w", err)
 		}
 		b = DefaultConfig
 	}
-	cfg := Config{}
-	if err = yaml.Unmarshal(b, &cfg); err != nil {
-		return nil, nil, fmt.Errorf("failed to read %q: %w", config, err)
+	if err = yaml.Unmarshal(b, c); err != nil {
+		return fmt.Errorf("failed to read %q: %w", config, err)
 	}
+	return nil
+}
+
+// LoadModels loads the LLM and ImageGen models.
+//
+// Both take a while to start, so load them in parallel for faster initialization.
+func LoadModels(ctx context.Context, cache string, cfg *Config) (*LLM, *ImageGen, error) {
+	start := time.Now()
+	slog.Info("models", "state", "initializing")
 
 	eg := errgroup.Group{}
 	var l *LLM
@@ -77,6 +80,7 @@ func LoadModels(ctx context.Context, cache string, config string) (*LLM, *ImageG
 		}
 		return err
 	})
+	var err error
 	if err = eg.Wait(); err == nil {
 		err = ctx.Err()
 	}
