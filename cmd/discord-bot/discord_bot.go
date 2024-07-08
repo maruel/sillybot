@@ -28,6 +28,7 @@ type discordBot struct {
 	ig           *sillybot.ImageGen
 	mem          *sillybot.Memory
 	systemPrompt string
+	selfRef      string
 	chat         chan msgReq
 	image        chan msgReq
 	wg           sync.WaitGroup
@@ -59,17 +60,6 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 	}
 	// We want to receive as few messages as possible.
 	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentDirectMessages
-	// The events are listed at
-	// https://discord.com/developers/docs/topics/gateway-events#receive-events
-	// Note that all messages are called asynchronously.
-	_ = dg.AddHandler(d.guildCreate)
-	_ = dg.AddHandler(d.messageCreate)
-	_ = dg.AddHandler(d.ready)
-
-	if err = dg.Open(); err != nil {
-		_ = dg.Close()
-		return nil, err
-	}
 	d := &discordBot{
 		ctx:          ctx,
 		dg:           dg,
@@ -80,10 +70,20 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 		chat:         make(chan msgReq, 5),
 		image:        make(chan msgReq, 3),
 	}
-	slog.Info("discord", "state", "running", "info", "Press CTRL-C to exit.")
+	// The events are listed at
+	// https://discord.com/developers/docs/topics/gateway-events#receive-events
+	// Note that all messages are called asynchronously.
+	_ = dg.AddHandler(d.onGuildCreate)
+	_ = dg.AddHandler(d.onMessageCreate)
+	_ = dg.AddHandler(d.onReady)
 	d.wg.Add(2)
 	go d.chatRoutine()
 	go d.imageRoutine()
+	if err = dg.Open(); err != nil {
+		_ = d.dg.Close()
+		return nil, err
+	}
+	slog.Info("discord", "state", "running", "info", "Press CTRL-C to exit.")
 	return d, nil
 }
 
@@ -98,38 +98,37 @@ func (d *discordBot) Close() error {
 
 // Handlers
 
-// ready is received right after the initial handshake.
+// onReady is received right after the initial handshake.
 //
 // It's the very first message. At this point, guilds are not yet available.
 // See https://discord.com/developers/docs/topics/gateway-events#ready
-func (d *discordBot) ready(dg *discordgo.Session, r *discordgo.Ready) {
+func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 	slog.Debug("discord", "event", "ready", "session", dg, "event", r)
 	slog.Info("discord", "event", "ready", "user", r.User.String())
+
+	// TODO: Get list of DMs and tell users "I'm back up!"
 }
 
-// guildCreate is received when new guild (server) is joined or becomes
+// onGuildCreate is received when new guild (server) is joined or becomes
 // available right after connecting.
 //
 // https://discord.com/developers/docs/topics/gateway-events#guild-create
-func (d *discordBot) guildCreate(dg *discordgo.Session, event *discordgo.GuildCreate) {
+func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.GuildCreate) {
 	slog.Debug("discord", "event", "guildCreate", "event", event.Guild)
 	slog.Info("discord", "event", "guildCreate", "name", event.Guild.Name)
 	if event.Guild.Unavailable {
 		return
 	}
 	for _, channel := range event.Guild.Channels {
-		if channel.ID == event.Guild.ID {
-			_, _ = dg.ChannelMessageSend(channel.ID, "Hi!")
-			return
-		}
+		_, _ = dg.ChannelMessageSend(channel.ID, "I'm back up!")
 	}
 }
 
-// messageCreate is received when new message is created on any channel that
+// onMessageCreate is received when new message is created on any channel that
 // the authenticated bot has access to.
 //
 // See https://discord.com/developers/docs/topics/gateway-events#message-create
-func (d *discordBot) messageCreate(dg *discordgo.Session, m *discordgo.MessageCreate) {
+func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	slog.Debug("discord", "event", "messageCreate", "message", m.Message, "state", dg.State)
 	botid := dg.State.User.ID
 	if m.Author.ID == botid {
