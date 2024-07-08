@@ -89,6 +89,7 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 
 func (d *discordBot) Close() error {
 	slog.Info("discord", "state", "terminating")
+	// TODO: Should we send a bye bye before closing?
 	err := d.dg.Close()
 	d.chat <- msgReq{}
 	d.image <- msgReq{}
@@ -119,8 +120,29 @@ func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.Guild
 	if event.Guild.Unavailable {
 		return
 	}
+	const welcome = "I'm back up!"
 	for _, channel := range event.Guild.Channels {
-		_, _ = dg.ChannelMessageSend(channel.ID, "I'm back up!")
+		if t := channel.Type; t == discordgo.ChannelTypeGuildVoice || t == discordgo.ChannelTypeGuildCategory {
+			continue
+		}
+		// Don't alert again if the last connection was recent, to not spam the
+		// channel.
+		msgs, err := dg.ChannelMessages(channel.ID, 5, "", "", "")
+		if err != nil {
+			slog.Error("discord", "error", err)
+		}
+		skip := false
+		for _, msg := range msgs {
+			if msg.Author.ID == dg.State.User.ID && msg.Content == welcome {
+				slog.Info("discord", "message", "skipping welcome to not spam", "channel", channel.Name)
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			slog.Info("discord", "message", "welcome", "channel", channel.Name)
+			_, _ = dg.ChannelMessageSend(channel.ID, welcome)
+		}
 	}
 }
 
