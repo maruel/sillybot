@@ -124,12 +124,25 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 					Description: "image to generate",
 					Required:    true,
 				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "text",
+					Description: "text to overlay on the image",
+					Required:    false,
+				},
 			},
 		},
 		{
 			Name:        "forget",
 			Type:        discordgo.ChatApplicationCommand,
-			Description: "Forget all the bot's memory of your conversation here with it.",
+			Description: "Forget our past conversation. Optionally overrides the system prompt.",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "system_prompt",
+					Description: "new system prompt to use",
+				},
+			},
 		},
 		{
 			Name: "forget",
@@ -246,14 +259,26 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 			u = event.Member.User
 		}
 		c := d.mem.Get(u.ID, event.ChannelID)
+		systemPrompt := d.systemPrompt
+		if len(data.Options) == 1 {
+			n, ok := data.Options[0].Value.(string)
+			if !ok {
+				if err := d.interactionRespond(event.Interaction, "internal error"); err != nil {
+					slog.Error("discord", "event", "failed handling interaction", "error", err)
+				}
+				return
+			}
+			systemPrompt = n
+		}
 		reply := "I don't know you. I can't wait to start our discussion so I can get to know you better!"
 		if len(c.Messages) > 1 {
 			reply = "The memory of our past conversations just got zapped."
-			c.Messages = c.Messages[:1]
 		}
+		c.Messages = []sillybot.Message{{Role: sillybot.System, Content: systemPrompt}}
 		if err := d.interactionRespond(event.Interaction, reply); err != nil {
 			slog.Error("discord", "event", "failed handling interaction", "error", err)
 		}
+
 	case "image":
 		if len(data.Options) != 1 {
 			if err := d.interactionRespond(event.Interaction, "internal error"); err != nil {
@@ -436,7 +461,7 @@ type msgReq struct {
 	replyToID string
 }
 
-// intReq is an interaction request.
+// intReq is an interaction request to generate an image.
 type intReq struct {
 	msg string
 	// Only there for ID and Token.
