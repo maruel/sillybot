@@ -31,7 +31,7 @@ Diffusion (in python for now).
       in [quantized
       form](https://huggingface.co/MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF)
       with 32K (!) context window.
-    - [Mistral-8x7B-Instruct-v0.1](https://huggingface.co/mistralai/Mistral-8x7B-Instruct-v0.1)
+    - [Mixtral-8x7B-Instruct-v0.1](https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1)
       in [quantized
       form](https://huggingface.co/Mozilla/Mixtral-8x7B-Instruct-v0.1-llamafile)
       with 32K (!) context window.
