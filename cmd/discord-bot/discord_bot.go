@@ -54,9 +54,9 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 		return nil, err
 	}
 	if verbose {
+		dg.LogLevel = discordgo.LogInformational
 		// It's very verbose.
 		//dg.LogLevel = discordgo.LogDebug
-		dg.LogLevel = discordgo.LogInformational
 	}
 	// We want to receive as few messages as possible.
 	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentDirectMessages
@@ -73,9 +73,10 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 	// The events are listed at
 	// https://discord.com/developers/docs/topics/gateway-events#receive-events
 	// Note that all messages are called asynchronously.
+	_ = dg.AddHandler(d.onReady)
 	_ = dg.AddHandler(d.onGuildCreate)
 	_ = dg.AddHandler(d.onMessageCreate)
-	_ = dg.AddHandler(d.onReady)
+	_ = dg.AddHandler(d.onInteractionCreate)
 	d.wg.Add(2)
 	go d.chatRoutine()
 	go d.imageRoutine()
@@ -110,6 +111,24 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 	slog.Info("discord", "event", "ready", "user", r.User.String())
 
 	// TODO: Get list of DMs and tell users "I'm back up!"
+
+	appid := r.Application.ID
+	cmd, err := dg.ApplicationCommand(appid, "", "forget")
+	if cmd == nil {
+		slog.Info("discord", "registering", "forget")
+		cmd = &discordgo.ApplicationCommand{
+			ID:          "forget",
+			Name:        "forget",
+			Type:        discordgo.ChatApplicationCommand,
+			Description: "Forget all the bot's memory of your conversation here with it.",
+		}
+		if cmd, err = dg.ApplicationCommandCreate(appid, "", cmd); err != nil {
+			slog.Error("discord", "failed to register command: %w", err)
+		}
+		slog.Info("discord", "message", "registered command", "command", cmd)
+	} else {
+		slog.Info("discord", "message", "command forget was already registered")
+	}
 }
 
 // onGuildCreate is received when new guild (server) is joined or becomes
@@ -221,6 +240,38 @@ func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.Message
 	}
 }
 
+func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo.InteractionCreate) {
+	slog.Info("discord", "event", "interactionCreate", "name", event.Data)
+	if t := event.Data.Type(); t != discordgo.InteractionApplicationCommand {
+		slog.Warn("discord", "message", "surprising interaction", "type", t.String())
+		return
+	}
+	data, ok := event.Data.(discordgo.ApplicationCommandInteractionData)
+	if !ok {
+		slog.Warn("discord", "message", "invalid type", "type", event.Data)
+		return
+	}
+	if data.Name == "forget" {
+		u := event.User
+		if event.Member != nil {
+			u = event.Member.User
+		}
+		c := d.mem.Get(u.ID, event.ChannelID)
+		c.Messages = c.Messages[:1]
+		err := d.dg.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "The memory of our past conversations just got zapped.",
+			},
+		})
+		if err != nil {
+			slog.Error("discord", "event", "failed handling interaction", "error", err)
+		}
+		return
+	}
+	slog.Warn("discord", "unexpected command", data.Name)
+}
+
 // Internal
 
 // chatRoutine serializes the chat requests.
@@ -251,19 +302,6 @@ func (d *discordBot) handlePrompt(req msgReq) {
 	if len(c.Messages) == 0 {
 		c.Messages = []sillybot.Message{{Role: sillybot.System, Content: d.systemPrompt}}
 	}
-	// TODO: Hack, implement proper commands.
-	if req.msg == "forget" {
-		c.Messages = c.Messages[:1]
-		_, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-			Content:   "The memory of our past conversations just got zapped.",
-			Reference: &discordgo.MessageReference{MessageID: req.replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-		})
-		if err != nil {
-			slog.Error("discord", "event", "failed posting message", "error", err)
-		}
-		return
-	}
-
 	c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.User, Content: req.msg})
 	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
