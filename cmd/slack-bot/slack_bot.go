@@ -219,48 +219,50 @@ func (s *slackBot) onHello(ctx context.Context, evt socketmode.Event) {
 	// }
 }
 
+// onEventsAPI handle an incoming event.
 func (s *slackBot) onEventsAPI(ctx context.Context, evt socketmode.Event, eventsAPIEvent slackevents.EventsAPIEvent) {
-	switch eventsAPIEvent.Type {
-	case "event_callback":
-		switch ev := eventsAPIEvent.InnerEvent.Data.(type) {
-		case *slackevents.AppHomeOpenedEvent:
-			slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", ev.Type, "user", ev.User, "channel", ev.Channel, "tab", ev.Tab)
-		case *slackevents.AppMentionEvent:
-			// Public message where the app is @ mentioned.
-			slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "text", ev.Text, "channel", ev.Channel)
-			if ev.User == s.userID {
-				// We posted something.
-				return
-			}
-			req := msgReq{
-				msg:     ev.Text,
-				user:    ev.User,
-				channel: ev.Channel,
-				ts:      ev.TimeStamp,
-			}
-			s.onAppMention(ctx, req)
-		case *slackevents.MemberJoinedChannelEvent:
-			slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel)
-		case *slackevents.MessageEvent:
-			// Private message.
-			slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel, "text", ev.Text)
-			if ev.User == s.userID {
-				// We posted something.
-				return
-			}
-			req := msgReq{
-				msg:     ev.Text,
-				user:    ev.User,
-				channel: ev.Channel,
-				// Don't set TS so it's not threaded for direct messages.
-				//ts:      ev.TimeStamp,
-			}
-			s.onAppMention(ctx, req)
-		default:
-			slog.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "error", "unknown", "payload", evt)
-		}
-	default:
+	if eventsAPIEvent.Type != "event_callback" {
 		slog.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "payload", evt)
+		return
+	}
+
+	// The list is at https://api.slack.com/events?filter=Events
+	switch ev := eventsAPIEvent.InnerEvent.Data.(type) {
+	case *slackevents.AppHomeOpenedEvent:
+		slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", ev.Type, "user", ev.User, "channel", ev.Channel, "tab", ev.Tab)
+	case *slackevents.AppMentionEvent:
+		// Public message where the app is @ mentioned.
+		slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "text", ev.Text, "channel", ev.Channel)
+		if ev.User == s.userID {
+			// We posted something.
+			return
+		}
+		req := msgReq{
+			msg:     ev.Text,
+			user:    ev.User,
+			channel: ev.Channel,
+			ts:      ev.TimeStamp,
+		}
+		s.onAppMention(ctx, req)
+	case *slackevents.MemberJoinedChannelEvent:
+		slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel)
+	case *slackevents.MessageEvent:
+		// Private message.
+		slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel, "text", ev.Text)
+		if ev.User == s.userID {
+			// We posted something.
+			return
+		}
+		req := msgReq{
+			msg:     ev.Text,
+			user:    ev.User,
+			channel: ev.Channel,
+			// Don't set TS so it's not threaded for direct messages.
+			//ts:      ev.TimeStamp,
+		}
+		s.onAppMention(ctx, req)
+	default:
+		slog.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "error", "unknown", "payload", evt)
 	}
 }
 
