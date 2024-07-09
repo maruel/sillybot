@@ -257,11 +257,15 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 			u = event.Member.User
 		}
 		c := d.mem.Get(u.ID, event.ChannelID)
-		c.Messages = c.Messages[:1]
+		reply := "I don't know you. I can't wait to start our discussion so I can get to know you better!"
+		if len(c.Messages) > 1 {
+			reply = "The memory of our past conversations just got zapped."
+			c.Messages = c.Messages[:1]
+		}
 		err := d.dg.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: "The memory of our past conversations just got zapped.",
+				Content: reply,
 			},
 		})
 		if err != nil {

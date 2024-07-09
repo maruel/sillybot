@@ -142,6 +142,7 @@ func (s *slackBot) socketEventLoop(ctx context.Context) {
 	}
 }
 
+// handleSocketEvent parses the event and route it to the right handler.
 func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) {
 	switch evt.Type {
 	case "incoming_error":
@@ -152,93 +153,98 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 		slog.Info("slack", "state", evt.Type)
 	case "hello":
 		slog.Info("slack", "payload", evt.Type)
+		// TODO: This number seems to be all over the place. Maybe we don't do
+		// teardown correctly?
 		if evt.Request.NumConnections != 1 {
 			slog.Warn("slack", "error", "more than one active connection!", "num_connections", evt.Request.NumConnections)
 		}
 	case "connected":
-		a, err := s.api.AuthTest()
-		if err != nil {
-			slog.Error("slack", "event", evt.Type, "error", err)
-			return
-		}
-		slog.Info("slack", "event", evt.Type, "user", a.User, "userid", a.UserID, "botid", a.BotID)
-		s.botID = a.BotID
-		s.userID = a.UserID
+		s.onConnected(ctx, evt)
 	case "events_api":
 		eventsAPIEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
 		if !ok {
 			slog.Error("slack", "event", evt.Type, "error", "unknown", "payload", evt)
 			return
 		}
-		switch eventsAPIEvent.Type {
-		case "event_callback":
-			switch ev := eventsAPIEvent.InnerEvent.Data.(type) {
-			case *slackevents.AppHomeOpenedEvent:
-				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", ev.Type, "user", ev.User, "channel", ev.Channel, "tab", ev.Tab)
-			case *slackevents.AppMentionEvent:
-				// Public message where the app is @ mentioned.
-				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "text", ev.Text, "channel", ev.Channel)
-				if ev.User == s.userID {
-					// We posted something.
-					return
-				}
-				req := msgReq{
-					msg:     ev.Text,
-					user:    ev.User,
-					channel: ev.Channel,
-					ts:      ev.TimeStamp,
-				}
-				s.handleAppMention(ctx, req)
-			case *slackevents.MemberJoinedChannelEvent:
-				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel)
-			case *slackevents.MessageEvent:
-				// Private message.
-				slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel, "text", ev.Text)
-				if ev.User == s.userID {
-					// We posted something.
-					return
-				}
-				req := msgReq{
-					msg:     ev.Text,
-					user:    ev.User,
-					channel: ev.Channel,
-					// Don't set TS so it's not threaded for direct messages.
-					//ts:      ev.TimeStamp,
-				}
-				s.handleAppMention(ctx, req)
-			default:
-				slog.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "error", "unknown", "payload", evt)
-			}
-		default:
-			slog.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "payload", evt)
-		}
+		s.onEventsAPI(ctx, evt, eventsAPIEvent)
 	case "interactive":
 		callback, ok := evt.Data.(slack.InteractionCallback)
 		if !ok {
 			slog.Error("slack", "event", evt.Type, "error", "unknown", "payload", evt)
 			return
 		}
-		switch callback.Type {
-		case "block_actions", "dialog_submission", "shortcut", "view_submission":
-			slog.Info("slack", "event", evt.Type, "callback", callback.Type)
-		default:
-			slog.Warn("slack", "event", evt.Type, "error", "unknown", "callback", callback.Type)
-		}
+		s.onInteractive(ctx, evt, callback)
 	case "slash_commands":
 		cmd, ok := evt.Data.(slack.SlashCommand)
 		if !ok {
 			slog.Error("slack", "event", evt.Type, "error", "unknown", "payload", evt)
 			return
 		}
-		slog.Info("slack", "event", evt.Type, "user", cmd.UserID, "channel", cmd.ChannelID, "command", cmd.Command)
+		s.onSlashCommand(ctx, evt, cmd)
 	default:
 		slog.Error("slack", "event", evt.Type, "error", "unknown event", "payload", evt)
 	}
 }
 
-// handleAppMention handles a message where the bot is explicitly mentioned in
-// the message.
-func (s *slackBot) handleAppMention(ctx context.Context, req msgReq) {
+func (s *slackBot) onConnected(ctx context.Context, evt socketmode.Event) {
+	a, err := s.api.AuthTest()
+	if err != nil {
+		slog.Error("slack", "event", evt.Type, "error", err)
+		return
+	}
+	slog.Info("slack", "event", evt.Type, "user", a.User, "userid", a.UserID, "botid", a.BotID)
+	s.botID = a.BotID
+	s.userID = a.UserID
+}
+
+func (s *slackBot) onEventsAPI(ctx context.Context, evt socketmode.Event, eventsAPIEvent slackevents.EventsAPIEvent) {
+	switch eventsAPIEvent.Type {
+	case "event_callback":
+		switch ev := eventsAPIEvent.InnerEvent.Data.(type) {
+		case *slackevents.AppHomeOpenedEvent:
+			slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", ev.Type, "user", ev.User, "channel", ev.Channel, "tab", ev.Tab)
+		case *slackevents.AppMentionEvent:
+			// Public message where the app is @ mentioned.
+			slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "text", ev.Text, "channel", ev.Channel)
+			if ev.User == s.userID {
+				// We posted something.
+				return
+			}
+			req := msgReq{
+				msg:     ev.Text,
+				user:    ev.User,
+				channel: ev.Channel,
+				ts:      ev.TimeStamp,
+			}
+			s.onAppMention(ctx, req)
+		case *slackevents.MemberJoinedChannelEvent:
+			slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel)
+		case *slackevents.MessageEvent:
+			// Private message.
+			slog.Info("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "user", ev.User, "channel", ev.Channel, "text", ev.Text)
+			if ev.User == s.userID {
+				// We posted something.
+				return
+			}
+			req := msgReq{
+				msg:     ev.Text,
+				user:    ev.User,
+				channel: ev.Channel,
+				// Don't set TS so it's not threaded for direct messages.
+				//ts:      ev.TimeStamp,
+			}
+			s.onAppMention(ctx, req)
+		default:
+			slog.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "subevent2", eventsAPIEvent.InnerEvent.Type, "error", "unknown", "payload", evt)
+		}
+	default:
+		slog.Warn("slack", "event", evt.Type, "subevent", eventsAPIEvent.Type, "payload", evt)
+	}
+}
+
+// onAppMention handles a message where the bot is explicitly mentioned in the
+// message.
+func (s *slackBot) onAppMention(ctx context.Context, req msgReq) {
 	user := "<@" + s.userID + ">"
 	req.msg = strings.TrimSpace(strings.ReplaceAll(req.msg, user, ""))
 	imgreq := strings.HasPrefix(req.msg, "image:")
@@ -288,14 +294,6 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	c := s.mem.Get(req.user, req.channel)
 	if len(c.Messages) == 0 {
 		c.Messages = []sillybot.Message{{Role: sillybot.System, Content: s.systemPrompt}}
-	}
-	// TODO: Hack, implement proper commands.
-	if req.msg == "forget" {
-		c.Messages = c.Messages[:1]
-		if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("The memory of our past conversations just got zapped.", false), slack.MsgOptionTS(req.ts)); err != nil {
-			slog.Error("slack", "event", "failed posting message", "error", err)
-		}
-		return
 	}
 	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false), slack.MsgOptionTS(req.ts))
 	if err != nil {
@@ -372,6 +370,42 @@ func (s *slackBot) handleImage(ctx context.Context, req msgReq) {
 	}
 	if _, err = s.sc.UploadFileV2Context(ctx, param); err != nil {
 		slog.Error("slack", "event", "failed posting message", "error", err)
+	}
+}
+
+// onSlashCommand handles a "/foo" style command.
+//
+// They are configured at https://api.slack.com/apps/<appid>/slash-commands
+func (s *slackBot) onSlashCommand(ctx context.Context, evt socketmode.Event, cmd slack.SlashCommand) {
+	slog.Info("slack", "event", evt.Type, "user", cmd.UserID, "channel", cmd.ChannelID, "command", cmd.Command)
+	switch cmd.Command {
+	case "/forget":
+		c := s.mem.Get(cmd.UserID, cmd.ChannelID)
+		reply := "I don't know you. I can't wait to start our discussion so I can get to know you better!"
+		slog.Info("slack", "user", cmd.UserID, "channel", cmd.ChannelID, "forgetting", len(c.Messages))
+		if len(c.Messages) > 1 {
+			c.Messages = c.Messages[:1]
+			reply = "The memory of our past conversations just got zapped."
+		}
+		if _, _, err := s.sc.PostMessageContext(ctx, cmd.ChannelID, slack.MsgOptionText(reply, false)); err != nil {
+			slog.Error("slack", "event", "failed posting message", "error", err)
+		}
+	default:
+		slog.Warn("slack", "message", "unknown slash command", "command", cmd.Command)
+	}
+}
+
+// onInteractive handles shortcuts and menus.
+//
+// They are configured at https://api.slack.com/apps/<appid>/interactive-messages
+func (s *slackBot) onInteractive(ctx context.Context, evt socketmode.Event, callback slack.InteractionCallback) {
+	switch callback.Type {
+	case "shortcut":
+		slog.Info("slack", "event", evt.Type, "callback", callback.Type, "name", callback.CallbackID)
+	case "block_actions", "dialog_submission", "view_submission":
+		slog.Info("slack", "event", evt.Type, "callback", callback.Type, "name", callback.Name)
+	default:
+		slog.Warn("slack", "event", evt.Type, "error", "unknown", "callback", callback.Type)
 	}
 }
 
