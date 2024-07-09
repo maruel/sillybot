@@ -111,45 +111,27 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 
 	// TODO: Get list of DMs and tell users "I'm back up!"
 
-	appid := r.Application.ID
-	cmd, err := dg.ApplicationCommand(appid, "", "forget")
-	if err != nil {
-		slog.Error("discord", "message", "failed to get command", "error", err)
-	}
-	// It seems the commands are never registered when we reconnect.
-	// TODO: Investigate.
-	// cmd, err := dg.ApplicationCommand(appid, "", "forget")
-	// if cmd == nil { ... }
-
 	// See https://discord.com/developers/docs/interactions/application-commands
-	slog.Info("discord", "registering (slash)", "image")
-	cmd = &discordgo.ApplicationCommand{
-		ID:          "image",
-		Name:        "image",
-		Type:        discordgo.ChatApplicationCommand,
-		Description: "Generate an image.",
+	cmds := []*discordgo.ApplicationCommand{
+		{
+			Name:        "image",
+			Type:        discordgo.ChatApplicationCommand,
+			Description: "Generate an image.",
+		},
+		{
+			Name:        "forget",
+			Type:        discordgo.ChatApplicationCommand,
+			Description: "Forget all the bot's memory of your conversation here with it.",
+		},
+		{
+			Name: "forget",
+			Type: discordgo.UserApplicationCommand,
+		},
 	}
-	if cmd, err = dg.ApplicationCommandCreate(appid, "", cmd); err != nil {
-		slog.Error("discord", "message", "failed to register command", "error", err)
-	}
-	slog.Info("discord", "registering (slash)", "forget")
-	cmd = &discordgo.ApplicationCommand{
-		ID:          "forget",
-		Name:        "forget",
-		Type:        discordgo.ChatApplicationCommand,
-		Description: "Forget all the bot's memory of your conversation here with it.",
-	}
-	if cmd, err = dg.ApplicationCommandCreate(appid, "", cmd); err != nil {
-		slog.Error("discord", "message", "failed to register command", "error", err)
-	}
-	slog.Info("discord", "registering (user)", "forget")
-	cmd = &discordgo.ApplicationCommand{
-		ID:   "forget",
-		Name: "forget",
-		Type: discordgo.UserApplicationCommand,
-	}
-	if cmd, err = dg.ApplicationCommandCreate(appid, "", cmd); err != nil {
-		slog.Error("discord", "message", "failed to register command", "error", err)
+	if _, err := dg.ApplicationCommandBulkOverwrite(r.Application.ID, "", cmds); err != nil {
+		slog.Error("discord", "message", "failed to register commands", "error", err)
+	} else {
+		slog.Info("discord", "message", "registered commands", "number", len(cmds))
 	}
 }
 
