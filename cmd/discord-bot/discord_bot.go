@@ -29,7 +29,7 @@ type discordBot struct {
 	mem          *sillybot.Memory
 	systemPrompt string
 	chat         chan msgReq
-	image        chan msgReq
+	image        chan intReq
 	wg           sync.WaitGroup
 }
 
@@ -67,7 +67,7 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 		mem:          mem,
 		systemPrompt: systPrmpt,
 		chat:         make(chan msgReq, 5),
-		image:        make(chan msgReq, 3),
+		image:        make(chan intReq, 3),
 	}
 	// The events are listed at
 	// https://discord.com/developers/docs/topics/gateway-events#receive-events
@@ -94,7 +94,7 @@ func (d *discordBot) Close() error {
 	// for direct messages.
 	err := d.dg.Close()
 	d.chat <- msgReq{}
-	d.image <- msgReq{}
+	d.image <- intReq{}
 	d.wg.Wait()
 	return err
 }
@@ -117,6 +117,14 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 			Name:        "image",
 			Type:        discordgo.ChatApplicationCommand,
 			Description: "Generate an image.",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "description",
+					Description: "image to generate",
+					Required:    true,
+				},
+			},
 		},
 		{
 			Name:        "forget",
@@ -129,10 +137,11 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 		},
 	}
 	if _, err := dg.ApplicationCommandBulkOverwrite(r.Application.ID, "", cmds); err != nil {
+		// TODO: Make this a hard fail.
 		slog.Error("discord", "message", "failed to register commands", "error", err)
-	} else {
-		slog.Info("discord", "message", "registered commands", "number", len(cmds))
+		return
 	}
+	slog.Info("discord", "message", "registered commands", "number", len(cmds))
 }
 
 // onGuildCreate is received when new guild (server) is joined or becomes
@@ -188,22 +197,11 @@ func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.Message
 	}
 	msg := strings.TrimSpace(strings.ReplaceAll(m.Content, user, ""))
 	slog.Info("discord", "event", "messageCreate", "author", m.Author.Username, "message", msg)
-	imgreq := strings.HasPrefix(msg, "image:")
-	if imgreq {
-		if d.ig == nil {
-			if _, err := dg.ChannelMessageSend(m.ChannelID, "Image generation is not enabled. Restart with flag \"-ig\""); err != nil {
-				slog.Error("discord", "event", "failed posting message", "error", err)
-			}
-			return
+	if d.l == nil {
+		if _, err := dg.ChannelMessageSend(m.ChannelID, "LLM is not enabled."); err != nil {
+			slog.Error("discord", "event", "failed posting message", "error", err)
 		}
-		msg = strings.TrimSpace(strings.TrimPrefix(msg, "image:"))
-	} else {
-		if d.l == nil {
-			if _, err := dg.ChannelMessageSend(m.ChannelID, "LLM is not enabled."); err != nil {
-				slog.Error("discord", "event", "failed posting message", "error", err)
-			}
-			return
-		}
+		return
 	}
 	// Immediately signal the user that the bot is preparing a reply.
 	if err := dg.ChannelTyping(m.ChannelID); err != nil {
@@ -217,29 +215,15 @@ func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.Message
 		guildID:   m.GuildID,
 		replyToID: m.ID,
 	}
-	if imgreq {
-		select {
-		case d.image <- req:
-		default:
-			_, err := dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-				Content:   "Sorry! I have too many pending image requests. Please retry in a moment.",
-				Reference: &discordgo.MessageReference{MessageID: req.replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-			})
-			if err != nil {
-				slog.Error("discord", "event", "failed posting message", "error", err)
-			}
-		}
-	} else {
-		select {
-		case d.chat <- req:
-		default:
-			_, err := dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-				Content:   "Sorry! I have too many pending chat requests. Please retry in a moment.",
-				Reference: &discordgo.MessageReference{MessageID: req.replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-			})
-			if err != nil {
-				slog.Error("discord", "event", "failed posting message", "error", err)
-			}
+	select {
+	case d.chat <- req:
+	default:
+		_, err := dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
+			Content:   "Sorry! I have too many pending chat requests. Please retry in a moment.",
+			Reference: &discordgo.MessageReference{MessageID: req.replyToID, ChannelID: req.channelID, GuildID: req.guildID},
+		})
+		if err != nil {
+			slog.Error("discord", "event", "failed posting message", "error", err)
 		}
 	}
 }
@@ -255,7 +239,8 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 		slog.Warn("discord", "message", "invalid type", "type", event.Data)
 		return
 	}
-	if data.Name == "forget" {
+	switch data.Name {
+	case "forget":
 		u := event.User
 		if event.Member != nil {
 			u = event.Member.User
@@ -266,18 +251,58 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 			reply = "The memory of our past conversations just got zapped."
 			c.Messages = c.Messages[:1]
 		}
-		err := d.dg.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: reply,
-			},
+		if err := d.interactionRespond(event.Interaction, reply); err != nil {
+			slog.Error("discord", "event", "failed handling interaction", "error", err)
+		}
+	case "image":
+		if len(data.Options) != 1 {
+			if err := d.interactionRespond(event.Interaction, "internal error"); err != nil {
+				slog.Error("discord", "event", "failed handling interaction", "error", err)
+			}
+			return
+		}
+		msg, ok := data.Options[0].Value.(string)
+		if !ok {
+			if err := d.interactionRespond(event.Interaction, "internal error"); err != nil {
+				slog.Error("discord", "event", "failed handling interaction", "error", err)
+			}
+			return
+		}
+		if d.ig == nil {
+			if err := d.interactionRespond(event.Interaction, "Image generation is not enabled. Restart with image generation enabled in config.yml."); err != nil {
+				slog.Error("discord", "event", "failed handling interaction", "error", err)
+			}
+			return
+		}
+		req := intReq{
+			msg: msg,
+			int: event.Interaction,
+		}
+		select {
+		case d.image <- req:
+		default:
+			if err := d.interactionRespond(event.Interaction, "Sorry! I have too many pending image requests. Please retry in a moment."); err != nil {
+				slog.Error("discord", "event", "failed handling interaction", "error", err)
+			}
+			return
+		}
+		err := d.dg.InteractionRespond(req.int, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		})
 		if err != nil {
 			slog.Error("discord", "event", "failed handling interaction", "error", err)
 		}
-		return
+
+	default:
+		slog.Warn("discord", "unexpected command", data.Name, "data", event.Interaction)
 	}
-	slog.Warn("discord", "unexpected command", data.Name)
+}
+
+func (d *discordBot) interactionRespond(int *discordgo.Interaction, s string) error {
+	return d.dg.InteractionRespond(int, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Content: s},
+	})
 }
 
 // Internal
@@ -296,7 +321,7 @@ func (d *discordBot) chatRoutine() {
 // imageRoutine serializes the chat requests.
 func (d *discordBot) imageRoutine() {
 	for req := range d.image {
-		if req.authorID == "" {
+		if req.int == nil {
 			d.wg.Done()
 			return
 		}
@@ -374,20 +399,17 @@ func (d *discordBot) handlePrompt(req msgReq) {
 }
 
 // handleImage generates an image based on the user prompt.
-func (d *discordBot) handleImage(req msgReq) {
-	// TODO: Insert a stand-in, then replace it.
-	// TODO: Generate multiple images.
+func (d *discordBot) handleImage(req intReq) {
+	// TODO: Generate multiple images when the queue is empty?
 	p, err := d.ig.GenImage(req.msg)
 	if err != nil {
-		if _, err = d.dg.ChannelMessageSend(req.channelID, "Image generation failed: "+err.Error()); err != nil {
-			if err != nil {
-				slog.Error("discord", "event", "failed posting message", "error", err)
-			}
+		c := "Image generation failed: " + err.Error()
+		if _, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{Content: &c}); err != nil {
+			slog.Error("discord", "event", "failed posting interaction", "error", err)
 		}
 		return
 	}
-
-	data := discordgo.MessageSend{
+	_, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{
 		Files: []*discordgo.File{
 			{
 				Name:        "prompt.png",
@@ -395,10 +417,9 @@ func (d *discordBot) handleImage(req msgReq) {
 				Reader:      bytes.NewReader(p),
 			},
 		},
-		Reference: &discordgo.MessageReference{MessageID: req.replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-	}
-	if _, err = d.dg.ChannelMessageSendComplex(req.channelID, &data); err != nil {
-		slog.Error("discord", "event", "failed posting message", "error", err)
+	})
+	if err != nil {
+		slog.Error("discord", "event", "failed posting interaction", "error", err)
 	}
 }
 
@@ -413,4 +434,11 @@ type msgReq struct {
 	channelID string
 	guildID   string
 	replyToID string
+}
+
+// intReq is an interaction request.
+type intReq struct {
+	msg string
+	// Only there for ID and Token.
+	int *discordgo.Interaction
 }

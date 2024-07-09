@@ -32,7 +32,7 @@ var DefaultConfig []byte
 type Config struct {
 	Bot struct {
 		LLM      LLMOptions
-		ImageGen ImageGenOptions
+		ImageGen ImageGenOptions `yaml:"image_gen"`
 	}
 	KnownLLMs []KnownLLM
 }
@@ -46,7 +46,9 @@ func (c *Config) LoadOrDefault(config string) error {
 		}
 		b = DefaultConfig
 	}
-	if err = yaml.Unmarshal(b, c); err != nil {
+	d := yaml.NewDecoder(bytes.NewReader(b))
+	d.KnownFields(true)
+	if err = d.Decode(c); err != nil {
 		return fmt.Errorf("failed to read %q: %w", config, err)
 	}
 	return nil
@@ -63,20 +65,24 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (*LLM, *ImageGen
 	var l *LLM
 	var s *ImageGen
 	eg.Go(func() error {
+		if cfg.Bot.LLM.Model == "" {
+			slog.Info("models", "message", "no llm requested")
+			return nil
+		}
 		var err error
-		if cfg.Bot.LLM.Model != "" {
-			if l, err = NewLLM(ctx, cache, &cfg.Bot.LLM, cfg.KnownLLMs); err != nil {
-				slog.Info("llm", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
-			}
+		if l, err = NewLLM(ctx, cache, &cfg.Bot.LLM, cfg.KnownLLMs); err != nil {
+			slog.Info("llm", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
 		}
 		return err
 	})
 	eg.Go(func() error {
+		if cfg.Bot.ImageGen.Model == "" {
+			slog.Info("models", "message", "no image_gen requested")
+			return nil
+		}
 		var err error
-		if cfg.Bot.ImageGen.Model != "" {
-			if s, err = NewImageGen(ctx, cache, &cfg.Bot.ImageGen); err != nil {
-				slog.Info("ig", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/image_gen.log'")
-			}
+		if s, err = NewImageGen(ctx, cache, &cfg.Bot.ImageGen); err != nil {
+			slog.Info("ig", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/image_gen.log'")
 		}
 		return err
 	})
