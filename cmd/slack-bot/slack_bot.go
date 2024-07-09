@@ -355,11 +355,11 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 // handleImage generates an image based on the user prompt.
 func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	req.mu.Lock()
-	req.mu.Unlock()
 	// TODO: Generate multiple images when the queue is empty?
 	p, err := s.ig.GenImage(req.msg)
+	req.mu.Unlock()
 	if err != nil {
-		_, _, _, err := s.sc.SendMessageContext(
+		_, _, _, err = s.sc.SendMessageContext(
 			ctx, req.channel,
 			slack.MsgOptionResponseURL(req.responseURL, slack.ResponseTypeInChannel),
 			slack.MsgOptionText("Image generation failed: "+err.Error(), false),
