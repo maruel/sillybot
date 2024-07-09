@@ -116,20 +116,40 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 	if err != nil {
 		slog.Error("discord", "message", "failed to get command", "error", err)
 	}
-	if cmd == nil {
-		slog.Info("discord", "registering", "forget")
-		cmd = &discordgo.ApplicationCommand{
-			ID:          "forget",
-			Name:        "forget",
-			Type:        discordgo.ChatApplicationCommand,
-			Description: "Forget all the bot's memory of your conversation here with it.",
-		}
-		if cmd, err = dg.ApplicationCommandCreate(appid, "", cmd); err != nil {
-			slog.Error("discord", "message", "failed to register command", "error", err)
-		}
-		slog.Info("discord", "message", "registered command", "command", cmd)
-	} else {
-		slog.Info("discord", "message", "command forget was already registered")
+	// It seems the commands are never registered when we reconnect.
+	// TODO: Investigate.
+	// cmd, err := dg.ApplicationCommand(appid, "", "forget")
+	// if cmd == nil { ... }
+
+	// See https://discord.com/developers/docs/interactions/application-commands
+	slog.Info("discord", "registering (slash)", "image")
+	cmd = &discordgo.ApplicationCommand{
+		ID:          "image",
+		Name:        "image",
+		Type:        discordgo.ChatApplicationCommand,
+		Description: "Generate an image.",
+	}
+	if cmd, err = dg.ApplicationCommandCreate(appid, "", cmd); err != nil {
+		slog.Error("discord", "message", "failed to register command", "error", err)
+	}
+	slog.Info("discord", "registering (slash)", "forget")
+	cmd = &discordgo.ApplicationCommand{
+		ID:          "forget",
+		Name:        "forget",
+		Type:        discordgo.ChatApplicationCommand,
+		Description: "Forget all the bot's memory of your conversation here with it.",
+	}
+	if cmd, err = dg.ApplicationCommandCreate(appid, "", cmd); err != nil {
+		slog.Error("discord", "message", "failed to register command", "error", err)
+	}
+	slog.Info("discord", "registering (user)", "forget")
+	cmd = &discordgo.ApplicationCommand{
+		ID:   "forget",
+		Name: "forget",
+		Type: discordgo.UserApplicationCommand,
+	}
+	if cmd, err = dg.ApplicationCommandCreate(appid, "", cmd); err != nil {
+		slog.Error("discord", "message", "failed to register command", "error", err)
 	}
 }
 
