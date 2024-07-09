@@ -27,11 +27,14 @@ type slackBot struct {
 	l            *sillybot.LLM
 	ig           *sillybot.ImageGen
 	mem          *sillybot.Memory
-	botID        string
-	userID       string
 	systemPrompt string
 	chat         chan msgReq
 	image        chan msgReq
+
+	// Filled upon connection in onHello.
+	botID  string
+	userID string
+	appID  string
 }
 
 type slackLogger struct {
@@ -149,17 +152,12 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 		// It's generally when the websocket is turned down on shutdown so log as
 		// info.
 		slog.Info("slack", "event", evt.Type, "payload", evt)
-	case "connecting", "connection_error":
+	case "connecting", "connected", "connection_error":
+		// These are pseudo-events that are sent by socketmode when the websocket
+		// is changing state.
 		slog.Info("slack", "state", evt.Type)
 	case "hello":
-		slog.Info("slack", "payload", evt.Type)
-		// TODO: This number seems to be all over the place. Maybe we don't do
-		// teardown correctly?
-		if evt.Request.NumConnections != 1 {
-			slog.Warn("slack", "error", "more than one active connection!", "num_connections", evt.Request.NumConnections)
-		}
-	case "connected":
-		s.onConnected(ctx, evt)
+		s.onHello(ctx, evt)
 	case "events_api":
 		eventsAPIEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
 		if !ok {
@@ -186,7 +184,14 @@ func (s *slackBot) handleSocketEvent(ctx context.Context, evt socketmode.Event) 
 	}
 }
 
-func (s *slackBot) onConnected(ctx context.Context, evt socketmode.Event) {
+// onHello handles the very first message sent by the server which is "hello".
+func (s *slackBot) onHello(ctx context.Context, evt socketmode.Event) {
+	slog.Info("slack", "payload", evt.Type)
+	// TODO: This number seems to be all over the place. Maybe we don't do
+	// teardown correctly?
+	if evt.Request.NumConnections != 1 {
+		slog.Warn("slack", "error", "more than one active connection!", "num_connections", evt.Request.NumConnections)
+	}
 	a, err := s.api.AuthTest()
 	if err != nil {
 		slog.Error("slack", "event", evt.Type, "error", err)
@@ -195,6 +200,23 @@ func (s *slackBot) onConnected(ctx context.Context, evt socketmode.Event) {
 	slog.Info("slack", "event", evt.Type, "user", a.User, "userid", a.UserID, "botid", a.BotID)
 	s.botID = a.BotID
 	s.userID = a.UserID
+	s.appID = evt.Request.ConnectionInfo.AppID
+
+	// TODO: Have the code here create the slash commands automatically instead
+	// of requiring the user to add them manually.
+	//
+	// An app configuration token can be created per Workspace at
+	// https://api.slack.com/reference/manifests#config-tokens
+	// The access token has 12h lifetime.
+	//
+	// m, err := s.api.ExportManifestContext(ctx, "<token>", s.appID)
+	// if err != nil {
+	// 	slog.Error("slack", "message", "failed to get application manifest", "error", err)
+	// } else {
+	//  m.Features.SlashCommands = []slack.ManifestSlashCommand{...}
+	// 	resp, err := s.api.UpdateManifestContext(ctx, m, "<token>", s.appID)
+	// 	slog.Error("slack", "manifest", m)
+	// }
 }
 
 func (s *slackBot) onEventsAPI(ctx context.Context, evt socketmode.Event, eventsAPIEvent slackevents.EventsAPIEvent) {
