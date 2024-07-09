@@ -269,7 +269,7 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 			return
 		}
 		if d.ig == nil {
-			if err := d.interactionRespond(event.Interaction, "Image generation is not enabled. Restart with image generation enabled in config.yml."); err != nil {
+			if err := d.interactionRespond(event.Interaction, "Image generation is not enabled. Restart with bot.image_gen.model set in config.yml."); err != nil {
 				slog.Error("discord", "event", "failed handling interaction", "error", err)
 			}
 			return

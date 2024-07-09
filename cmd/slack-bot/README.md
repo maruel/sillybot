@@ -40,7 +40,17 @@ Do this first. Configure the Slack App at https://api.slack.com/apps:
 3. App Home
     - Show Tabs, Messages Tab, "Allow users to send Slash commands and messages
       from the messages tab"
-4. Event Subscriptions
+4. Slash Commands
+    - Create New Command
+        - Command: `/forget`
+        - Short Description: `Forget all the bot's memory of your conversation
+          here with it.gets`
+        - Save
+    - Create New Command
+        - Command: `/image`
+        - Short Description: `Generate an image.`
+        - Save
+5. Event Subscriptions
     - Enable Events
     - Subscript to bot events. _This is which events the bot receives. This more
       it receives, the more spam it gets._
@@ -52,7 +62,7 @@ Do this first. Configure the Slack App at https://api.slack.com/apps:
         - message.groups
         - message.im
         - message.mpim
-5. Install App
+6. Install App
     - Install to a workspace you are admin of
 
 Read more at https://api.slack.com/apis/socket-mode. In particular, you cannot
