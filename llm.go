@@ -509,8 +509,8 @@ func getHfModelGGUFFromLlamafile(ctx context.Context, cache, repo, model string)
 	gguf := model + ".gguf"
 	dstgguf := filepath.Join(cache, gguf)
 	// It can happen that the file only contains "Entry not found"
-	if i, err := os.Stat(dstgguf); (err == nil && i.Size() >= 1024) || (err != nil && !os.IsNotExist(err)) {
-		return err
+	if i, err2 := os.Stat(dstgguf); (err2 == nil && i.Size() >= 1024) || (err2 != nil && !os.IsNotExist(err2)) {
+		return err2
 	}
 	z, err := zip.OpenReader(dst)
 	if err != nil {

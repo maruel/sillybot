@@ -28,7 +28,6 @@ type discordBot struct {
 	ig           *sillybot.ImageGen
 	mem          *sillybot.Memory
 	systemPrompt string
-	selfRef      string
 	chat         chan msgReq
 	image        chan msgReq
 	wg           sync.WaitGroup
@@ -114,6 +113,9 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 
 	appid := r.Application.ID
 	cmd, err := dg.ApplicationCommand(appid, "", "forget")
+	if err != nil {
+		slog.Error("discord", "message", "failed to get command", "error", err)
+	}
 	if cmd == nil {
 		slog.Info("discord", "registering", "forget")
 		cmd = &discordgo.ApplicationCommand{
@@ -123,7 +125,7 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 			Description: "Forget all the bot's memory of your conversation here with it.",
 		}
 		if cmd, err = dg.ApplicationCommandCreate(appid, "", cmd); err != nil {
-			slog.Error("discord", "failed to register command: %w", err)
+			slog.Error("discord", "message", "failed to register command", "error", err)
 		}
 		slog.Info("discord", "message", "registered command", "command", cmd)
 	} else {
