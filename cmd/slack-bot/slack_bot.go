@@ -355,9 +355,25 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 // handleImage generates an image based on the user prompt.
 func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	req.mu.Lock()
-	// TODO: Generate multiple images when the queue is empty?
-	p, err := s.ig.GenImage(req.msg)
+	// Dummy command while holding the lock so the linter doesn't complain.
+	msg := req.msg
 	req.mu.Unlock()
+	// Use the LLM to improve the prompt!
+	if s.l != nil {
+		const systemPrompt = "You are autoregressive language model that specializes in creating perfect, outstanding prompts for generative art models like Stable Diffusion. Your job is to take user ideas, capture ALL main parts, and turn into amazing prompts. You have to capture everything from the user's prompt and then use your talent to make it amazing. You are a master of art styles, terminology, pop culture, and photography across the globe. Respond only with the new prompt. Exclude article words."
+		msgs := []sillybot.Message{
+			{Role: sillybot.System, Content: systemPrompt},
+			{Role: sillybot.User, Content: req.msg},
+		}
+
+		if reply, err := s.l.Prompt(ctx, msgs); err != nil {
+			slog.Error("discord", "event", "failed to enhance prompt", "error", err)
+		} else {
+			msg = reply
+		}
+	}
+	// TODO: Generate multiple images when the queue is empty?
+	p, err := s.ig.GenImage(msg)
 	if err != nil {
 		_, _, _, err = s.sc.SendMessageContext(
 			ctx, req.channel,

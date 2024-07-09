@@ -425,8 +425,22 @@ func (d *discordBot) handlePrompt(req msgReq) {
 
 // handleImage generates an image based on the user prompt.
 func (d *discordBot) handleImage(req intReq) {
+	// Use the LLM to improve the prompt!
+	msg := req.msg
+	if d.l != nil {
+		const systemPrompt = "You are autoregressive language model that specializes in creating perfect, outstanding prompts for generative art models like Stable Diffusion. Your job is to take user ideas, capture ALL main parts, and turn into amazing prompts. You have to capture everything from the user's prompt and then use your talent to make it amazing. You are a master of art styles, terminology, pop culture, and photography across the globe. Respond only with the new prompt. Exclude article words."
+		msgs := []sillybot.Message{
+			{Role: sillybot.System, Content: systemPrompt},
+			{Role: sillybot.User, Content: req.msg},
+		}
+		if reply, err := d.l.Prompt(d.ctx, msgs); err != nil {
+			slog.Error("discord", "event", "failed to enhance prompt", "error", err)
+		} else {
+			msg = reply
+		}
+	}
 	// TODO: Generate multiple images when the queue is empty?
-	p, err := d.ig.GenImage(req.msg)
+	p, err := d.ig.GenImage(msg)
 	if err != nil {
 		c := "Image generation failed: " + err.Error()
 		if _, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{Content: &c}); err != nil {
