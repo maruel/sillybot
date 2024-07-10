@@ -12,6 +12,7 @@ import (
 	"image"
 	"image/png"
 	"log/slog"
+	"math"
 	"regexp"
 	"strings"
 	"sync"
@@ -656,9 +657,18 @@ func drawTextOnImage(img *image.RGBA, f *opentype.Font, top int, text string) {
 		y = h - 20
 	}
 	// Draw a crude outline.
-	for _, o := range []image.Point{{5, 0}, {0, 5}, {-5, 0}, {0, -5}, {5, 5}, {5, -5}, {-5, 5}, {-5, -5}} {
-		d.Dot = fixed.Point26_6{X: fixed.I(x + o.X), Y: fixed.I(y + o.Y)}
-		d.DrawString(text)
+	// TODO: It's not super efficient to draw this many (72) times! Make it
+	// faster unless it's good enough.
+	radius := 5.
+	for i := 0; i < 360; i += 5 {
+		a := math.Pi / 180. * float64(i)
+		dx := math.Cos(a) * radius
+		dy := math.Sin(a) * radius
+		dot := fixed.Point26_6{X: fixed.Int26_6((float64(x) + dx) * 64), Y: fixed.Int26_6((float64(y) + dy) * 64)}
+		if dot != d.Dot {
+			d.Dot = dot
+			d.DrawString(text)
+		}
 	}
 	// Draw the final text.
 	d.Src = image.White
