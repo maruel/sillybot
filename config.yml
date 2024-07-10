@@ -10,6 +10,11 @@ bot:
     model:        "Meta-Llama-3-8B-Instruct.Q5_K_M"
     systemprompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic."
   image_gen:
+    # Specify a "host:port" of an already running py/image_gen.py server.
+    #
+    # Useful when you can't run both the LLM and the image generation models on
+    # a single machine.
+    remote: ""
     # Use "python" to use the embedded pytorch generator.
     model: ""
 

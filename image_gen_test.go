@@ -28,7 +28,7 @@ func TestImageGen(t *testing.T) {
 			t.Error(err2)
 		}
 	})
-	got, err := s.GenImage("cat")
+	got, err := s.GenImage("cat", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

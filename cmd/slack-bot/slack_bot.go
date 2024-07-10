@@ -373,7 +373,7 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 		}
 	}
 	// TODO: Generate multiple images when the queue is empty?
-	p, err := s.ig.GenImage(msg)
+	p, err := s.ig.GenImage(msg, 1)
 	if err != nil {
 		_, _, _, err = s.sc.SendMessageContext(
 			ctx, req.channel,

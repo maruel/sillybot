@@ -464,7 +464,7 @@ func (d *discordBot) handleImage(req intReq) {
 	}
 
 	// TODO: Generate multiple images when the queue is empty?
-	p, err := d.ig.GenImage(msg)
+	p, err := d.ig.GenImage(msg, 1)
 	if err != nil {
 		c := "Image generation failed: " + err.Error()
 		if _, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{Content: &c}); err != nil {
@@ -474,8 +474,8 @@ func (d *discordBot) handleImage(req intReq) {
 	}
 
 	if meme != "" {
-		if n, err := drawMemeOnImage(p, d.f, meme); err != nil {
-			slog.Error("discord", "message", "failed drawing text", "error", err)
+		if n, err2 := drawMemeOnImage(p, d.f, meme); err2 != nil {
+			slog.Error("discord", "message", "failed drawing text", "error", err2)
 		} else {
 			p = n
 		}

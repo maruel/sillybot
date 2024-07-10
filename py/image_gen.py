@@ -107,7 +107,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def main():
   parser = argparse.ArgumentParser(description=sys.modules[__name__].__doc__)
   parser.add_argument("--token",
-                      help="Create a read token at htps://huggingface.co/settings/tokens")
+                      help="Token to fetch from Hugging Face. Create a read token at htps://huggingface.co/settings/tokens")
+  parser.add_argument("--host", default="localhost",
+                      help="Host to listen to. Use 0.0.0.0 to listen on all IPs")
   parser.add_argument("--port", default=8032, type=int)
   parser.add_argument("--prompt", help="Run once and exit")
   args = parser.parse_args()
@@ -131,7 +133,7 @@ def main():
     img.save(name)
     return 0
 
-  httpd = http.server.HTTPServer(("localhost", args.port), Handler)
+  httpd = http.server.HTTPServer((args.host, args.port), Handler)
   logging.info(f"Started server on port {args.port}")
 
   def handle(signum, frame):

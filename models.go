@@ -76,7 +76,7 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (*LLM, *ImageGen
 		return err
 	})
 	eg.Go(func() error {
-		if cfg.Bot.ImageGen.Model == "" {
+		if cfg.Bot.ImageGen.Remote == "" && cfg.Bot.ImageGen.Model == "" {
 			slog.Info("models", "message", "no image_gen requested")
 			return nil
 		}

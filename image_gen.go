@@ -18,6 +18,9 @@ import (
 
 // ImageGenOptions for NewImageGen.
 type ImageGenOptions struct {
+	// Remote is the host:port of a pre-existing server to use instead of
+	// starting our own.
+	Remote string
 	// Model specifies a model to use. Use "python" to use the python backend.
 	// "python" is currently the only supported value.
 	Model string
@@ -27,40 +30,43 @@ type ImageGenOptions struct {
 
 // ImageGen manages an image generation server.
 type ImageGen struct {
-	done    <-chan error
-	cancel  func() error
-	url     string
+	url    string
+	done   <-chan error
+	cancel func() error
+
 	steps   int
 	loading bool
 }
 
 // NewImageGen initializes a new image generation server.
 func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*ImageGen, error) {
-	if opts.Model != "python" {
-		return nil, fmt.Errorf("unknown model %q", opts.Model)
-	}
-	if pyNeedRecreate(cache) {
-		if err := pyRecreate(ctx, cache); err != nil {
-			return nil, err
-		}
-	}
-
-	port := findFreePort()
-	cmd := []string{filepath.Join(cache, "image_gen.py"), "--port", strconv.Itoa(port)}
-	done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "image_gen.log"))
-	if err != nil {
-		return nil, err
-	}
 	ig := &ImageGen{
-		done:    done,
-		cancel:  cancel,
-		url:     fmt.Sprintf("http://localhost:%d/", port),
 		steps:   1,
 		loading: true,
 	}
+	if opts.Remote == "" {
+		if opts.Model != "python" {
+			return nil, fmt.Errorf("unknown model %q", opts.Model)
+		}
+		if pyNeedRecreate(cache) {
+			if err := pyRecreate(ctx, cache); err != nil {
+				return nil, err
+			}
+		}
+		port := findFreePort()
+		cmd := []string{filepath.Join(cache, "image_gen.py"), "--port", strconv.Itoa(port)}
+		var err error
+		ig.done, ig.cancel, err = runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "image_gen.log"))
+		if err != nil {
+			return nil, err
+		}
+		ig.url = fmt.Sprintf("http://localhost:%d/", port)
+	} else {
+		ig.url = "http://" + opts.Remote + "/"
+	}
 	slog.Info("ig", "state", "started", "url", ig.url, "message", "Please be patient, it can take several minutes to download everything")
 	for ctx.Err() == nil {
-		if _, err = ig.GenImage("cat"); err == nil {
+		if _, err := ig.GenImage("cat", 1); err == nil {
 			break
 		}
 		select {
@@ -70,6 +76,8 @@ func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*Ima
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+	// Using few steps assumes using a LoRA from Latent Consistency. See
+	// https://huggingface.co/blog/lcm_lora for more information.
 	ig.steps = 8
 	slog.Info("ig", "state", "ready")
 	ig.loading = false
@@ -77,23 +85,29 @@ func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*Ima
 }
 
 func (ig *ImageGen) Close() error {
+	if ig.cancel == nil {
+		return nil
+	}
 	slog.Info("ig", "state", "terminating")
 	_ = ig.cancel()
 	return <-ig.done
 }
 
 // GenImage returns a PNG encoded image based on the prompt.
-func (ig *ImageGen) GenImage(prompt string) ([]byte, error) {
+func (ig *ImageGen) GenImage(prompt string, seed int) ([]byte, error) {
 	start := time.Now()
 	if !ig.loading {
 		// Otherwise it storms on startup.
 		slog.Info("ig", "prompt", prompt)
 	}
+	// If you feel this API is subpar, I hear you. If you got this far to read
+	// this comment, please send a PR to make this a proper API and update
+	// image_gen.py. ❤
 	data := struct {
 		Message string `json:"message"`
 		Steps   int    `json:"steps"`
 		Seed    int    `json:"seed"`
-	}{Message: prompt, Steps: ig.steps, Seed: 1}
+	}{Message: prompt, Steps: ig.steps, Seed: seed}
 	b, _ := json.Marshal(data)
 	resp, err := http.Post(ig.url, "application/json", bytes.NewReader(b))
 	if err != nil {
