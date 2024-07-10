@@ -18,7 +18,7 @@ Here's how to run the image generation server and to listen on all IPs.
 ```
 ./setup.sh
 source venv/bin/activate
-./image_gen.py --host 0.0.0.0 --port 8031
+./image_gen.py --host 0.0.0.0 --port 8032
 ```
 
 #### Windows
@@ -26,7 +26,7 @@ source venv/bin/activate
 ```
 setup.bat
 venv\Scripts\activate
-python image_gen.py --host 0.0.0.0 --port 8031
+python image_gen.py --host 0.0.0.0 --port 8032
 ```
 
 
@@ -41,14 +41,14 @@ https://platform.openai.com/docs/api-reference/chat
 
 - Either compile or download from https://github.com/ggerganov/llama.cpp
 - Download a GGUF yourself. You can look at `knownllms` in `config.yml`.
-- Run `./llama-server --model <model.gguf> -ngl 9999 --host 0.0.0.0 --port 8032`
+- Run `./llama-server --model <model.gguf> -ngl 9999 --host 0.0.0.0 --port 8031`
 
 
 ### llamafile
 
 - Download from https://github.com/Mozilla-Ocho/llamafile
 - Download a GGUF yourself. You can look at `knownllms` in `config.yml`.
-- Run `./llamafile --model <model.gguf> -ngl 9999 --host 0.0.0.0 --port 8032 --nobrowser`
+- Run `./llamafile --model <model.gguf> -ngl 9999 --host 0.0.0.0 --port 8031 --nobrowser`
 
 
 ### llm.py
@@ -59,7 +59,7 @@ https://platform.openai.com/docs/api-reference/chat
 ```
 ./setup.sh
 source venv/bin/activate
-./llm.py --host 0.0.0.0 --port 8032
+./llm.py --host 0.0.0.0 --port 8031
 ```
 
 #### Windows
@@ -67,6 +67,6 @@ source venv/bin/activate
 ```
 setup.bat
 venv\Scripts\activate
-python llm.py --host 0.0.0.0 --port 8032
+python llm.py --host 0.0.0.0 --port 8031
 ```
 
