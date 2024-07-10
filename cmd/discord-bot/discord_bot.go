@@ -221,6 +221,11 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 			Type: discordgo.UserApplicationCommand,
 		},
 	}
+	if strings.Contains(dg.State.User.ID, "(dev)") {
+		for _, c := range cmds {
+			c.Name += "_dev"
+		}
+	}
 	if _, err := dg.ApplicationCommandBulkOverwrite(r.Application.ID, "", cmds); err != nil {
 		// TODO: Make this a hard fail.
 		slog.Error("discord", "message", "failed to register commands", "error", err)
@@ -371,7 +376,7 @@ func (d *discordBot) onImage(event *discordgo.InteractionCreate, data discordgo.
 		slog.Error("discord", "command", data.Name, "message", "failed decoding command options", "error", err)
 		return
 	}
-	if d.ig == nil && strings.HasSuffix(data.Name, "_auto") {
+	if d.ig == nil && strings.HasSuffix(data.Name, "_auto") && data.Name != "meme_labels_auto" {
 		if err := d.interactionRespond(event.Interaction, "Image generation is not enabled. Restart with bot.image_gen.model set in config.yml."); err != nil {
 			slog.Error("discord", "command", data.Name, "message", "failed reply to enable", "error", err)
 		}
