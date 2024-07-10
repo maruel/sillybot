@@ -7,10 +7,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/png"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -125,25 +127,82 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 
 	// See https://discord.com/developers/docs/interactions/application-commands
 	cmds := []*discordgo.ApplicationCommand{
+		// meme_*
 		{
-			Name:        "image",
+			Name:        "meme_auto",
 			Type:        discordgo.ChatApplicationCommand,
-			Description: "Generate an image.",
+			Description: "Generate a meme in full automatic mode. Create both the image and labels by leveraging the LLM.",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "description",
-					Description: "image to generate",
+					Description: "Description used to generate both the meme labels and background image. The LLM will enhance both.",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        "meme_manual",
+			Type:        discordgo.ChatApplicationCommand,
+			Description: "Generate a meme in full manual mode. Specify both the image and the labels yourself.",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "image_prompt",
+					Description: "Exact Stable Diffusion style prompt to use to generate the image.",
 					Required:    true,
 				},
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "text",
-					Description: "text to overlay on the image",
-					Required:    false,
+					Name:        "labels_content",
+					Description: "Exact text to overlay on the image. Use comma to split lines.",
+					Required:    true,
 				},
 			},
 		},
+		{
+			Name:        "meme_labels_auto",
+			Type:        discordgo.ChatApplicationCommand,
+			Description: "Generate meme labels in automatic mode. Create the text by leveraging the LLM.",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "description",
+					Description: "Description to use to generate the meme labels. The LLM will enhance both.",
+					Required:    true,
+				},
+			},
+		},
+
+		// image_*
+		{
+			Name:        "image_auto",
+			Type:        discordgo.ChatApplicationCommand,
+			Description: "Generate an image in automatic mode. It automatically uses the LLM to enhance the prompt.",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "description",
+					Description: "Description to use to generate the image. The LLM will enhance it.",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        "image_manual",
+			Type:        discordgo.ChatApplicationCommand,
+			Description: "Generate an image in manual mode.",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "image_prompt",
+					Description: "Exact Stable Diffusion style prompt to use to generate the image.",
+					Required:    true,
+				},
+			},
+		},
+
+		// forget
 		{
 			Name:        "forget",
 			Type:        discordgo.ChatApplicationCommand,
@@ -266,80 +325,80 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 	}
 	switch data.Name {
 	case "forget":
-		u := event.User
-		if event.Member != nil {
-			u = event.Member.User
-		}
-		c := d.mem.Get(u.ID, event.ChannelID)
-		systemPrompt := d.systemPrompt
-		if len(data.Options) == 1 {
-			n, ok := data.Options[0].Value.(string)
-			if !ok {
-				if err := d.interactionRespond(event.Interaction, "internal error"); err != nil {
-					slog.Error("discord", "message", "failed handling interaction", "error", err)
-				}
-				return
-			}
-			systemPrompt = n
-		}
-		reply := "I don't know you. I can't wait to start our discussion so I can get to know you better!"
-		if len(c.Messages) > 1 {
-			reply = "The memory of our past conversations just got zapped."
-		}
-		c.Messages = []sillybot.Message{{Role: sillybot.System, Content: systemPrompt}}
-		if err := d.interactionRespond(event.Interaction, reply); err != nil {
-			slog.Error("discord", "message", "failed handling interaction", "error", err)
-		}
-
-	case "image":
-		if len(data.Options) != 1 {
-			if err := d.interactionRespond(event.Interaction, "internal error"); err != nil {
-				slog.Error("discord", "message", "failed handling interaction", "error", err)
-			}
-			return
-		}
-		msg, ok := data.Options[0].Value.(string)
-		if !ok {
-			if err := d.interactionRespond(event.Interaction, "internal error"); err != nil {
-				slog.Error("discord", "message", "failed handling interaction", "error", err)
-			}
-			return
-		}
-		if d.ig == nil {
-			if err := d.interactionRespond(event.Interaction, "Image generation is not enabled. Restart with bot.image_gen.model set in config.yml."); err != nil {
-				slog.Error("discord", "message", "failed handling interaction", "error", err)
-			}
-			return
-		}
-		req := intReq{
-			msg: msg,
-			int: event.Interaction,
-		}
-		select {
-		case d.image <- req:
-		default:
-			if err := d.interactionRespond(event.Interaction, "Sorry! I have too many pending image requests. Please retry in a moment."); err != nil {
-				slog.Error("discord", "message", "failed handling interaction", "error", err)
-			}
-			return
-		}
-		err := d.dg.InteractionRespond(req.int, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		})
-		if err != nil {
-			slog.Error("discord", "message", "failed handling interaction", "error", err)
-		}
-
+		d.onForget(event, data)
+	case "meme_auto", "meme_manual", "meme_labels_auto", "image_auto", "image_manual":
+		d.onImage(event, data)
 	default:
 		slog.Warn("discord", "unexpected command", data.Name, "data", event.Interaction)
 	}
 }
 
+func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	u := event.User
+	if event.Member != nil {
+		u = event.Member.User
+	}
+	c := d.mem.Get(u.ID, event.ChannelID)
+	opts := struct {
+		SystemPrompt string `json:"system_prompt"`
+	}{SystemPrompt: d.systemPrompt}
+	if err := optionsToStruct(data.Options, &opts); err != nil {
+		slog.Error("discord", "command", data.Name, "message", "failed decoding command options", "error", err)
+		return
+	}
+	reply := "I don't know you. I can't wait to start our discussion so I can get to know you better!"
+	if len(c.Messages) > 1 {
+		reply = "The memory of our past conversations just got zapped."
+	}
+	c.Messages = []sillybot.Message{{Role: sillybot.System, Content: opts.SystemPrompt}}
+	if err := d.interactionRespond(event.Interaction, reply); err != nil {
+		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
+	}
+}
+
+func (d *discordBot) onImage(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	opts := struct {
+		// meme_auto, meme_labels_auto, image_auto
+		Description string `json:"description"`
+		// meme_manual, image_manual
+		ImagePrompt string `json:"image_prompt"`
+		// meme_manual
+		LabelsContent string `json:"labels_content"`
+	}{}
+	if err := optionsToStruct(data.Options, &opts); err != nil {
+		slog.Error("discord", "command", data.Name, "message", "failed decoding command options", "error", err)
+		return
+	}
+	if d.ig == nil && strings.HasSuffix(data.Name, "_auto") {
+		if err := d.interactionRespond(event.Interaction, "Image generation is not enabled. Restart with bot.image_gen.model set in config.yml."); err != nil {
+			slog.Error("discord", "command", data.Name, "message", "failed reply to enable", "error", err)
+		}
+		return
+	}
+	req := intReq{
+		description:   opts.Description,
+		imagePrompt:   opts.ImagePrompt,
+		labelsContent: opts.LabelsContent,
+		cmdName:       data.Name,
+		int:           event.Interaction,
+	}
+	select {
+	case d.image <- req:
+	default:
+		if err := d.interactionRespond(event.Interaction, "Sorry! I have too many pending image requests. Please retry in a moment."); err != nil {
+			slog.Error("discord", "command", data.Name, "message", "failed reply rate limit", "error", err)
+		}
+		return
+	}
+	r := &discordgo.InteractionResponse{Type: discordgo.InteractionResponseDeferredChannelMessageWithSource}
+	if err := d.dg.InteractionRespond(req.int, r); err != nil {
+		slog.Error("discord", "command", data.Name, "message", "failed reply update", "error", err)
+	}
+}
+
 func (d *discordBot) interactionRespond(int *discordgo.Interaction, s string) error {
-	return d.dg.InteractionRespond(int, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{Content: s},
-	})
+	r := &discordgo.InteractionResponse{Type: discordgo.InteractionResponseChannelMessageWithSource, Data: &discordgo.InteractionResponseData{Content: s}}
+	return d.dg.InteractionRespond(int, r)
 }
 
 // Internal
@@ -437,51 +496,80 @@ func (d *discordBot) handlePrompt(req msgReq) {
 
 // handleImage generates an image based on the user prompt.
 func (d *discordBot) handleImage(req intReq) {
-	// Use the LLM to improve the prompt!
-	msg := req.msg
-	meme := ""
-	if d.l != nil {
+	content := ""
+	if req.description != "" {
+		content += "*Description*: " + escapeMarkdown(req.description) + "\n"
+	}
+	// Optionally use the LLM to generate the prompt(s) based on the description.
+	// TODO: We could do the two requests in parallel to reduce latency. Only
+	// important in "meme_auto".
+
+	// Image
+	if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
+		// TODO: fine-tune.
 		const imagePrompt = "You are autoregressive language model that specializes in creating perfect, outstanding prompts for generative art models like Stable Diffusion. Your job is to take user ideas, capture ALL main parts, and turn into amazing prompts. You have to capture everything from the user's prompt and then use your talent to make it amazing. You are a master of art styles, terminology, pop culture, and photography across the globe. Respond only with the new prompt. Exclude article words."
 		msgs := []sillybot.Message{
 			{Role: sillybot.System, Content: imagePrompt},
-			{Role: sillybot.User, Content: req.msg},
+			{Role: sillybot.User, Content: req.description},
 		}
 		if reply, err := d.l.Prompt(d.ctx, msgs); err != nil {
-			slog.Error("discord", "message", "failed to enhance prompt", "error", err)
+			slog.Error("discord", "command", req.cmdName, "message", "failed to enhance prompt", "error", err)
+			content += "*LLM Error*: " + escapeMarkdown(err.Error()) + "\n"
 		} else {
-			msg = reply
+			req.imagePrompt = reply
 		}
-		const memePrompt = "You are autoregressive language model that specializes in creating perfect, outstanding meme text. Your job is to take user ideas, capture ALL main parts, and turn into amazing meme. You have to capture everything from the user's prompt and then use your talent to make it amazing filled with sarcasm. Respond only with the new meme text. Make it as succinct as possible. Use exactly one comma. Exclude article words."
-		msgs = []sillybot.Message{
+	}
+	if req.imagePrompt != "" {
+		content += "*Image prompt*: " + escapeMarkdown(req.imagePrompt) + "\n"
+	}
+
+	// Labels
+	if req.cmdName == "meme_auto" || req.cmdName == "meme_labels_auto" {
+		// TODO: fine-tune.
+		const memePrompt = "You are autoregressive language model that specializes in creating perfect, outstanding meme text. Your job is to take user ideas, capture ALL main parts, and turn into amazing meme labels. You have to capture everything from the user's prompt and then use your talent to make it amazing filled with sarcasm. Respond only with the new meme text. Make it as succinct as possible. Use few words. Use exactly one comma. Exclude article words."
+		msgs := []sillybot.Message{
 			{Role: sillybot.System, Content: memePrompt},
-			{Role: sillybot.User, Content: req.msg},
+			{Role: sillybot.User, Content: req.description},
 		}
-		var err error
-		if meme, err = d.l.Prompt(d.ctx, msgs); err != nil {
-			slog.Error("discord", "message", "failed to make meme prompt", "error", err)
+		if meme, err := d.l.Prompt(d.ctx, msgs); err != nil {
+			slog.Error("discord", "command", req.cmdName, "message", "failed to make meme prompt", "error", err)
+			content += "*LLM Error*: " + escapeMarkdown(err.Error()) + "\n"
+		} else {
+			req.labelsContent = strings.Trim(meme, "\",.")
 		}
-		meme = strings.Trim(meme, "\"")
+		if req.cmdName == "meme_labels_auto" {
+			// Special case since we don't actually need an image.
+			content += "*Labels*: " + escapeMarkdown(req.labelsContent)
+			if _, err := d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{Content: &content}); err != nil {
+				slog.Error("discord", "command", req.cmdName, "message", "failed posting interaction", "error", err)
+			}
+			return
+		}
+	}
+	if req.labelsContent != "" {
+		content += "*Labels*: " + escapeMarkdown(req.labelsContent) + "\n"
 	}
 
 	// TODO: Generate multiple images when the queue is empty?
-	p, err := d.ig.GenImage(msg, 1)
+	p, err := d.ig.GenImage(req.imagePrompt, 1)
 	if err != nil {
-		c := "Image generation failed: " + err.Error()
-		if _, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{Content: &c}); err != nil {
-			slog.Error("discord", "message", "failed posting interaction", "error", err)
+		content += "*ImageGen Error*: " + escapeMarkdown(err.Error())
+		if _, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{Content: &content}); err != nil {
+			slog.Error("discord", "command", req.cmdName, "message", "failed posting interaction", "error", err)
 		}
 		return
 	}
 
-	if meme != "" {
-		if n, err2 := drawMemeOnImage(p, d.f, meme); err2 != nil {
-			slog.Error("discord", "message", "failed drawing text", "error", err2)
+	if req.labelsContent != "" {
+		if n, err2 := drawMemeOnImage(p, d.f, req.labelsContent); err2 != nil {
+			slog.Error("discord", "command", req.cmdName, "message", "failed drawing text", "error", err2)
 		} else {
 			p = n
 		}
 	}
 
 	_, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{
+		Content: &content,
 		Files: []*discordgo.File{
 			{
 				Name:        "prompt.png",
@@ -491,7 +579,7 @@ func (d *discordBot) handleImage(req intReq) {
 		},
 	})
 	if err != nil {
-		slog.Error("discord", "message", "failed posting interaction", "error", err)
+		slog.Error("discord", "command", req.cmdName, "message", "failed posting interaction", "error", err)
 	}
 }
 
@@ -586,7 +674,32 @@ type msgReq struct {
 
 // intReq is an interaction request to generate an image.
 type intReq struct {
-	msg string
+	description   string
+	imagePrompt   string
+	labelsContent string
+	cmdName       string
+	msg           string
 	// Only there for ID and Token.
 	int *discordgo.Interaction
+}
+
+func optionsToStruct(opts []*discordgo.ApplicationCommandInteractionDataOption, out interface{}) error {
+	// The world's slowest implementation.
+	// TODO: Use something faster, e.g. use reflect directly. PR appreciated. ❤
+	t := map[string]interface{}{}
+	for _, o := range opts {
+		t[o.Name] = o.Value
+	}
+	b, err := json.Marshal(t)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, out)
+}
+
+func escapeMarkdown(s string) string {
+	const _MARKDOWN_ESCAPE_COMMON = `^>(?:>>)?\s|\[.+\]\(.+\)|^#{1,3}|^\s*-`
+	const _MARKDOWN_STOCK_REGEX = `(?P<markdown>[_\\~|\*` + "`" + `]|` + _MARKDOWN_ESCAPE_COMMON + `)`
+	re := regexp.MustCompile(_MARKDOWN_STOCK_REGEX)
+	return re.ReplaceAllStringFunc(s, func(m string) string { return "\\" + m })
 }
