@@ -1,4 +1,2 @@
 /cache
-/token_discord.txt
-/token_slack_app.txt
-/token_slack_bot.txt
+/token_*.txt

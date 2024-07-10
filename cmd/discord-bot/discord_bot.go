@@ -244,7 +244,7 @@ func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.Guild
 	if event.Guild.Unavailable {
 		return
 	}
-	const welcome = "I'm back up!"
+	const welcome = "I'm back up! Check out my commands by typing the '/' slash key. I can generate images and memes."
 	for _, channel := range event.Guild.Channels {
 		if t := channel.Type; t == discordgo.ChannelTypeGuildVoice || t == discordgo.ChannelTypeGuildCategory {
 			continue
