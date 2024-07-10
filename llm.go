@@ -272,7 +272,7 @@ func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error
 	}
 	req, err := http.NewRequestWithContext(ctx, "POST", l.url, bytes.NewReader(b))
 	if err != nil {
-		return "", fmt.Errorf("failed to get llama server response: %w", err)
+		return "", fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)

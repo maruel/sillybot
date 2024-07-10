@@ -71,7 +71,7 @@ func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*Ima
 
 	slog.Info("ig", "state", "started", "url", ig.url, "message", "Please be patient, it can take several minutes to download everything")
 	for ctx.Err() == nil {
-		if _, err := ig.GenImage("cat", 1); err == nil {
+		if _, err := ig.GenImage(ctx, "cat", 1); err == nil {
 			break
 		}
 		select {
@@ -99,7 +99,7 @@ func (ig *ImageGen) Close() error {
 }
 
 // GenImage returns a PNG encoded image based on the prompt.
-func (ig *ImageGen) GenImage(prompt string, seed int) ([]byte, error) {
+func (ig *ImageGen) GenImage(ctx context.Context, prompt string, seed int) ([]byte, error) {
 	start := time.Now()
 	if !ig.loading {
 		// Otherwise it storms on startup.
@@ -113,8 +113,16 @@ func (ig *ImageGen) GenImage(prompt string, seed int) ([]byte, error) {
 		Steps   int    `json:"steps"`
 		Seed    int    `json:"seed"`
 	}{Message: prompt, Steps: ig.steps, Seed: seed}
-	b, _ := json.Marshal(data)
-	resp, err := http.Post(ig.url, "application/json", bytes.NewReader(b))
+	b, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("internal error: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", ig.url, bytes.NewReader(b))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		if !ig.loading {
 			// Otherwise it storms on startup.

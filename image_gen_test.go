@@ -19,7 +19,8 @@ func TestImageGen(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := ImageGenOptions{Model: "python"}
-	s, err := NewImageGen(context.Background(), cache, &opts)
+	ctx := context.Background()
+	s, err := NewImageGen(ctx, cache, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +29,7 @@ func TestImageGen(t *testing.T) {
 			t.Error(err2)
 		}
 	})
-	got, err := s.GenImage("cat", 1)
+	got, err := s.GenImage(ctx, "cat", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
