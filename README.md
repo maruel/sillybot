@@ -1,11 +1,17 @@
 # Silly Bot
 
 A simple Discord and Slack bot written in Go that natively serves LLM and Stable
-Diffusion (in python for now).
+Diffusion (in python for now) to chat, generate images, and memes!
+
+
+## Usage
 
 `/meme_auto sillybot meme generator awesome`
 
 ![Meme Lord in Training](https://raw.githubusercontent.com/wiki/maruel/sillybot/meme_lord.png)
+
+
+## Features
 
 - Uses WebSocket so no need to setup a web server! 🎉
 - Keeps memory of past conversations.
