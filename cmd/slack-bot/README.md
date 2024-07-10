@@ -88,3 +88,6 @@ network) to download the models on first run, be patient.
 - If you have nvidia hardware, install [CUDA](https://developer.nvidia.com/cuda-downloads).
 - On macOS, use [`mac_vram.sh`](/mac_vram.sh) to increase the amount of VRAM
   usable for the model.
+- You can run either or both the LLM and Image generation servers on separate
+  machines, especially if your computer is not powerful enough to run both
+  simultaneously. See the `remote` configuration in config.yml.
