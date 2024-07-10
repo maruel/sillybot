@@ -36,3 +36,23 @@ func TestImageGen(t *testing.T) {
 		t.Fatal("uh")
 	}
 }
+
+func TestImageGen_Remote_Fail(t *testing.T) {
+	cache, err := filepath.Abs("cache")
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := ImageGenOptions{Remote: "host"}
+	if _, err = NewImageGen(context.Background(), cache, &opts); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestIsHostPort(t *testing.T) {
+	if isHostPort("a:1") {
+		t.Fatal()
+	}
+	if !isHostPort("aa.bb.ts.net:1") {
+		t.Fatal()
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 )
@@ -62,6 +63,9 @@ func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*Ima
 		}
 		ig.url = fmt.Sprintf("http://localhost:%d/", port)
 	} else {
+		if !isHostPort(opts.Remote) {
+			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
+		}
 		ig.url = "http://" + opts.Remote + "/"
 	}
 	slog.Info("ig", "state", "started", "url", ig.url, "message", "Please be patient, it can take several minutes to download everything")
@@ -130,4 +134,18 @@ func (ig *ImageGen) GenImage(prompt string, seed int) ([]byte, error) {
 	}
 	slog.Info("ig", "prompt", prompt, "duration", time.Since(start).Round(time.Millisecond))
 	return r.Image, nil
+}
+
+// isHostPort returns true if the string seems like a valid "host:port" string.
+func isHostPort(s string) bool {
+	// Simplified regexp that supports IPv4, IPv6 and hostname and requires a port.
+	ipv4 := `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`
+	ipv6 := `\[[a-fA-F0-9:]+\]`
+	hostname := `[a-zA-Z0-9\-\.]{2,}`
+	r := `^(?:` + ipv4 + `|` + ipv6 + `|` + hostname + `):\d{1,5}$`
+	ok, err := regexp.MatchString(r, s)
+	if err != nil {
+		panic(err)
+	}
+	return ok
 }
