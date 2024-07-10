@@ -469,29 +469,45 @@ func (d *discordBot) handlePrompt(req msgReq) {
 				}
 				pending += w
 			case <-t.C:
-				// Don't send one word at a time! Cut at punctuations. This is
-				// especially important when the LLM is on the slow side.
+				// Don't send one word at a time! Cut at punctuations. Keep backquotes
+				// escaping together. This is especially important when the LLM is
+				// slow.
 				const punctuations = ":.?!"
-				if len(pending) > 30 && strings.ContainsAny(pending, punctuations) {
-					i := strings.LastIndexAny(pending, punctuations)
-					if i == -1 {
+				backquotes := strings.Count(pending, "```")
+				hasPunctuation := strings.ContainsAny(pending, punctuations)
+				if backquotes == 0 && !hasPunctuation {
+					continue
+				}
+				toSend := ""
+				// If there's backquote escaping used, make sure they are closed
+				// otherwise the markdown will be broken.
+				if (backquotes & 1) == 1 {
+					i := strings.Index(pending, "```")
+					if i == 0 {
 						continue
 					}
-					msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-						Content:   pending[:i+1],
-						Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-					})
-					text += pending[:i+1]
-					pending = pending[i+1:]
-					if err != nil {
-						slog.Error("discord", "message", "failed posting message", "error", err)
-					} else {
-						replyToID = msg.ID
+					toSend = pending[:i]
+				} else {
+					i := strings.LastIndexAny(pending, punctuations+"`")
+					if i == -1 {
+						// Can't happen.
+						continue
 					}
-					if err := d.dg.ChannelTyping(req.channelID); err != nil {
-						slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
-						// Continue anyway.
-					}
+					toSend = pending[:i+1]
+				}
+				msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
+					Content:   toSend,
+					Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
+				})
+				text += toSend
+				pending = pending[len(toSend):]
+				if err != nil {
+					slog.Error("discord", "message", "failed posting message", "error", err)
+				} else {
+					replyToID = msg.ID
+				}
+				if err := d.dg.ChannelTyping(req.channelID); err != nil {
+					slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
 				}
 			}
 		}
