@@ -350,6 +350,7 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	if len(c.Messages) > 1 {
 		reply = "The memory of our past conversations just got zapped."
 	}
+	reply += "\n*System prompt*: " + escapeMarkdown(opts.SystemPrompt)
 	c.Messages = []sillybot.Message{{Role: sillybot.System, Content: opts.SystemPrompt}}
 	if err := d.interactionRespond(event.Interaction, reply); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
@@ -466,7 +467,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 				if len(pending) > 30 {
 					text += pending
 					msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-						Content:   pending + " (...continued)",
+						Content:   pending + " (…_cont_)",
 						Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
 					})
 					pending = ""
