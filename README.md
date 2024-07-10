@@ -3,6 +3,10 @@
 A simple Discord and Slack bot written in Go that natively serves LLM and Stable
 Diffusion (in python for now).
 
+`/meme_auto sillybot meme generator awesome`
+
+![Meme Lord in Training](https://raw.githubusercontent.com/wiki/maruel/sillybot/meme_lord.png)
+
 - Uses WebSocket so no need to setup a web server! 🎉
 - Keeps memory of past conversations.
 - Works on Ubuntu (linux), macOS and Windows! 🪟
