@@ -10,6 +10,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/schollz/progressbar/v3 v3.14.4
 	github.com/slack-go/slack v0.13.0
+	golang.org/x/image v0.18.0
 	golang.org/x/sync v0.7.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -21,4 +22,5 @@ require (
 	golang.org/x/crypto v0.25.0 // indirect
 	golang.org/x/sys v0.22.0 // indirect
 	golang.org/x/term v0.22.0 // indirect
+	golang.org/x/text v0.16.0 // indirect
 )
