@@ -134,7 +134,7 @@ def main():
     return 0
 
   httpd = http.server.HTTPServer((args.host, args.port), Handler)
-  logging.info(f"Started server on port {args.port}")
+  logging.info(f"Started server on port {args.host}:{args.port}")
 
   def handle(signum, frame):
     # It tried various way to quick cleanly but it's just a pain.

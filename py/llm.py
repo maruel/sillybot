@@ -125,7 +125,9 @@ def main():
   parser = argparse.ArgumentParser(description=sys.modules[__name__].__doc__)
   parser.add_argument("--token",
                       help="Create a read token at htps://huggingface.co/settings/tokens")
-  parser.add_argument("--port", default=8032, type=int)
+  parser.add_argument("--host", default="localhost",
+                      help="Host to listen to. Use 0.0.0.0 to listen on all IPs")
+  parser.add_argument("--port", default=8031, type=int)
   args = parser.parse_args()
   logging.basicConfig(level=logging.DEBUG)
 
@@ -135,8 +137,8 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = True
   Handler._pipe = load_phi_3_mini()
   logging.info("Model loaded using %s", DEVICE)
-  httpd = http.server.HTTPServer(("localhost", args.port), Handler)
-  logging.info(f"Started server on port {args.port}")
+  httpd = http.server.HTTPServer((args.host, args.port), Handler)
+  logging.info(f"Started server on port {args.host}:{args.port}")
 
   def handle(signum, frame):
     # It tried various way to quick cleanly but it's just a pain.
