@@ -12,6 +12,9 @@ bot:
     #
     # Useful when you can't run both the LLM and the image generation models on
     # a single machine.
+    #
+    # See https://github.com/maruel/sillybot/blob/main/py/README.md for how
+    # to run.
     remote: ""
     # Llama 3 8B Q5_K_M is fast on unaccelerated CPU and takes 6GiB of RAM which
     # should work on most computers.
@@ -24,6 +27,9 @@ bot:
     #
     # Useful when you can't run both the LLM and the image generation models on
     # a single machine.
+    #
+    # See https://github.com/maruel/sillybot/blob/main/py/README.md for how
+    # to run.
     remote: ""
     # Use "python" to use the embedded pytorch generator. The default SSD-1B
     # with LCM-LoRA takes about 4.6GiB of VRAM.
