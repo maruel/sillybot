@@ -2,12 +2,22 @@
 # Use of this source code is governed under the Apache License, Version 2.0
 # that can be found in the LICENSE file.
 
+# This file uses the schema from
+# https://pkg.go.dev/github.com/maruel/sillybot#Config
+
 bot:
   llm:
+    # Specify a "host:port" of an already running llama.cpp, llamafile or
+    # py/llm.py server.
+    #
+    # Useful when you can't run both the LLM and the image generation models on
+    # a single machine.
+    remote: ""
     # Llama 3 8B Q5_K_M is fast on unaccelerated CPU and takes 6GiB of RAM which
     # should work on most computers.
     # Use "python" to use the embedded pytorch generator.
     model:        "Meta-Llama-3-8B-Instruct.Q5_K_M"
+    # Default system prompt to use.
     systemprompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic."
   image_gen:
     # Specify a "host:port" of an already running py/image_gen.py server.
@@ -15,7 +25,8 @@ bot:
     # Useful when you can't run both the LLM and the image generation models on
     # a single machine.
     remote: ""
-    # Use "python" to use the embedded pytorch generator.
+    # Use "python" to use the embedded pytorch generator. The default SSD-1B
+    # with LCM-LoRA takes about 4.6GiB of VRAM.
     model: ""
 
 knownllms:

@@ -29,8 +29,12 @@ import (
 
 // LLMOptions for NewLLM.
 type LLMOptions struct {
+	// Remote is the host:port of a pre-existing server to use instead of
+	// starting our own.
+	Remote string
 	// Model specifies a model to use. Use "python" to use the python backend.
-	Model        string
+	Model string
+	// Default system prompt to use.
 	SystemPrompt string
 
 	_ struct{}
@@ -71,80 +75,95 @@ type LLM struct {
 // NewLLM instantiates a llama.cpp or llamafile server, or optionally uses
 // python instead.
 func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []KnownLLM) (*LLM, error) {
-	llamasrv := ""
-	isLlamafile := false
-	modelFile := ""
-	if opts.Model == "python" {
-		if pyNeedRecreate(cache) {
-			if err := pyRecreate(ctx, cache); err != nil {
+	svr := "remote"
+	l := &LLM{loading: true}
+	if opts.Remote == "" {
+		llamasrv := ""
+		isLlamafile := false
+		modelFile := ""
+		if opts.Model == "python" {
+			if pyNeedRecreate(cache) {
+				if err := pyRecreate(ctx, cache); err != nil {
+					return nil, fmt.Errorf("failed to load llm: %w", err)
+				}
+			}
+			slog.Info("llm", "message", "using python")
+		} else {
+			// Make sure the server is available.
+			var err error
+			if llamasrv, isLlamafile, err = getLlama(ctx, cache); err != nil {
 				return nil, fmt.Errorf("failed to load llm: %w", err)
 			}
-		}
-		slog.Info("llm", "message", "using python")
-	} else {
-		// Make sure the server is available.
-		var err error
-		if llamasrv, isLlamafile, err = getLlama(ctx, cache); err != nil {
-			return nil, fmt.Errorf("failed to load llm: %w", err)
-		}
-		cmd := mangle(isLlamafile, llamasrv, "--version")
-		c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
-		d, err := c.CombinedOutput()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get llm version: %w", err)
-		}
-		slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
+			cmd := mangle(isLlamafile, llamasrv, "--version")
+			c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+			d, err := c.CombinedOutput()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get llm version: %w", err)
+			}
+			slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
 
-		// Make sure the model is available.
-		if modelFile, err = getModel(ctx, cache, opts.Model, knownLLMs); err != nil {
-			return nil, fmt.Errorf("failed to get llm model: %w", err)
+			// Make sure the model is available.
+			if modelFile, err = getModel(ctx, cache, opts.Model, knownLLMs); err != nil {
+				return nil, fmt.Errorf("failed to get llm model: %w", err)
+			}
 		}
+
+		// Create the log file to redirect llamafile's output which is quite verbose.
+		port := findFreePort()
+		l.url = fmt.Sprintf("http://localhost:%d/v1/chat/completions", port)
+		if opts.Model == "python" {
+			cmd := []string{filepath.Join(cache, "llm.py"), "--port", strconv.Itoa(port)}
+			done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "llm.log"))
+			if err != nil {
+				return nil, fmt.Errorf("failed to start python llm server: %w", err)
+			}
+			l.done = done
+			l.cancel = cancel
+		} else {
+			done := make(chan error)
+			l.done = done
+			log, err := os.OpenFile(filepath.Join(cache, "llm.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create llm server log file: %w", err)
+			}
+			defer log.Close()
+			cmd := mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port), "--nobrowser")
+			if !isLlamafile {
+				cmd = mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port))
+			}
+			slog.Debug("llm", "command", cmd, "cwd", cache, "log", log.Name())
+			l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+			l.c.Dir = cache
+			l.c.Stdout = log
+			l.c.Stderr = log
+			l.c.Cancel = func() error {
+				slog.Debug("llm", "state", "killing")
+				return l.c.Process.Kill()
+			}
+			if err = l.c.Start(); err != nil {
+				return nil, fmt.Errorf("failed to start llm server: %w", err)
+			}
+			go func() {
+				done <- l.c.Wait()
+				slog.Info("llm", "state", "terminated")
+			}()
+			slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", port)
+		}
+		if opts.Model == "python" {
+			svr = "llm.py"
+		} else if isLlamafile {
+			svr = "llamafile"
+		} else {
+			svr = "llama-server"
+		}
+	} else {
+		if !isHostPort(opts.Remote) {
+			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
+		}
+		l.url = "http://" + opts.Remote + "/v1/chat/completions"
+		slog.Info("llm", "state", "loading")
 	}
 
-	// Create the log file to redirect llamafile's output which is quite verbose.
-	port := findFreePort()
-	l := &LLM{
-		url:     fmt.Sprintf("http://localhost:%d/v1/chat/completions", port),
-		loading: true,
-	}
-	if opts.Model == "python" {
-		cmd := []string{filepath.Join(cache, "llm.py"), "--port", strconv.Itoa(port)}
-		done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "llm.log"))
-		if err != nil {
-			return nil, fmt.Errorf("failed to start python llm server: %w", err)
-		}
-		l.done = done
-		l.cancel = cancel
-	} else {
-		done := make(chan error)
-		l.done = done
-		log, err := os.OpenFile(filepath.Join(cache, "llm.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create llm server log file: %w", err)
-		}
-		defer log.Close()
-		cmd := mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port), "--nobrowser")
-		if !isLlamafile {
-			cmd = mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port))
-		}
-		slog.Debug("llm", "command", cmd, "cwd", cache, "log", log.Name())
-		l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
-		l.c.Dir = cache
-		l.c.Stdout = log
-		l.c.Stderr = log
-		l.c.Cancel = func() error {
-			slog.Debug("llm", "state", "killing")
-			return l.c.Process.Kill()
-		}
-		if err = l.c.Start(); err != nil {
-			return nil, fmt.Errorf("failed to start llm server: %w", err)
-		}
-		go func() {
-			done <- l.c.Wait()
-			slog.Info("llm", "state", "terminated")
-		}()
-		slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", port)
-	}
 	msgs := []Message{
 		{Role: System, Content: "You are an AI assistant. You strictly follow orders. Do not add punctuation. Do not use uppercase letters."},
 		{Role: User, Content: "reply with \"ok\""},
@@ -165,21 +184,17 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	x := ""
-	if opts.Model == "python" {
-		x = "llm.py"
-	} else if isLlamafile {
-		x = "llamafile"
-	} else {
-		x = "llama-server"
-	}
-	slog.Info("llm", "state", "ready", "model", opts.Model, "using", x, "url", l.url)
+	slog.Info("llm", "state", "ready", "model", opts.Model, "using", svr, "url", l.url)
 	l.loading = false
 	return l, nil
 }
 
 func (l *LLM) Close() error {
 	slog.Info("llm", "state", "terminating")
+	if l.done == nil {
+		// Using a remote server.
+		return nil
+	}
 	if l.cancel != nil {
 		_ = l.cancel()
 	} else {

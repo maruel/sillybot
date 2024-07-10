@@ -68,6 +68,7 @@ func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*Ima
 		}
 		ig.url = "http://" + opts.Remote + "/"
 	}
+
 	slog.Info("ig", "state", "started", "url", ig.url, "message", "Please be patient, it can take several minutes to download everything")
 	for ctx.Err() == nil {
 		if _, err := ig.GenImage("cat", 1); err == nil {
