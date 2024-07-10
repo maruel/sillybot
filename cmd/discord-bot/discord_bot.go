@@ -463,14 +463,20 @@ func (d *discordBot) handlePrompt(req msgReq) {
 				}
 				pending += w
 			case <-t.C:
-				// Don't send one word at a time.
-				if len(pending) > 30 {
-					text += pending
+				// Don't send one word at a time! Cut at punctuations. This is
+				// especially important when the LLM is on the slow side.
+				const punctuations = ":.?!"
+				if len(pending) > 30 && strings.ContainsAny(pending, punctuations) {
+					i := strings.LastIndexAny(pending, punctuations)
+					if i == -1 {
+						continue
+					}
 					msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-						Content:   pending + " (…_cont_)",
+						Content:   pending[:i+1],
 						Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
 					})
-					pending = ""
+					text += pending[:i+1]
+					pending = pending[i+1:]
 					if err != nil {
 						slog.Error("discord", "message", "failed posting message", "error", err)
 					} else {
