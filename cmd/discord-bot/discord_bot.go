@@ -656,7 +656,7 @@ func drawTextOnImage(img *image.RGBA, f *opentype.Font, top int, text string) {
 		y = h - 20
 	}
 	// Draw a crude outline.
-	for _, o := range []image.Point{{2, 0}, {0, 2}, {-2, 0}, {0, -2}, {2, 2}, {2, -2}, {-2, 2}, {-2, -2}} {
+	for _, o := range []image.Point{{5, 0}, {0, 5}, {-5, 0}, {0, -5}, {5, 5}, {5, -5}, {-5, 5}, {-5, -5}} {
 		d.Dot = fixed.Point26_6{X: fixed.I(x + o.X), Y: fixed.I(y + o.Y)}
 		d.DrawString(text)
 	}
@@ -685,7 +685,6 @@ type intReq struct {
 	imagePrompt   string
 	labelsContent string
 	cmdName       string
-	msg           string
 	// Only there for ID and Token.
 	int *discordgo.Interaction
 }
