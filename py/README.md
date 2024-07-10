@@ -18,7 +18,7 @@ Here's how to run the image generation server and to listen on all IPs.
 ```
 ./setup.sh
 source venv/bin/activate
-./image_gen.py --host 0.0.0.0
+./image_gen.py --host 0.0.0.0 --port 8031
 ```
 
 #### Windows
@@ -26,7 +26,7 @@ source venv/bin/activate
 ```
 setup.bat
 venv\Scripts\activate
-python image_gen.py --host 0.0.0.0
+python image_gen.py --host 0.0.0.0 --port 8031
 ```
 
 
@@ -59,7 +59,7 @@ https://platform.openai.com/docs/api-reference/chat
 ```
 ./setup.sh
 source venv/bin/activate
-./llm.py --host 0.0.0.0
+./llm.py --host 0.0.0.0 --port 8032
 ```
 
 #### Windows
@@ -67,6 +67,6 @@ source venv/bin/activate
 ```
 setup.bat
 venv\Scripts\activate
-python llm.py --host 0.0.0.0
+python llm.py --host 0.0.0.0 --port 8032
 ```
 
