@@ -635,24 +635,29 @@ func drawTextOnImage(img *image.NRGBA, f *opentype.Font, top int, text string) {
 		return
 	}
 	textWidth := d.MeasureString(text).Round()
-	if d.Face, err = opentype.NewFace(f, &opentype.FaceOptions{Size: 1000. * float64(w) / (100. + float64(textWidth)), DPI: 72}); err != nil {
+	// TODO: This code needs proper fine tuning.
+	if d.Face, err = opentype.NewFace(f, &opentype.FaceOptions{Size: 1000. * float64(w) / (250. + float64(textWidth)), DPI: 72}); err != nil {
 		slog.Error("discord", "message", "failed loading typeface", "error", err)
 		return
 	}
 	textWidth = d.MeasureString(text).Round()
 	textHeight := d.Face.Metrics().Height.Ceil()
-	x := (w - textWidth) / 2
+	// The text tends to offshoot on the right so offset it on the left, divide
+	// by 4 instead of 2.
+	x := (w - textWidth) / 4
 	y := top * h / 100
 	if y < textHeight {
 		y = textHeight
-	} else if y > h-20 {
-		y = h - 20
+	} else if y > h-40 {
+		y = h - 40
 	}
 	// Draw a crude outline.
-	// TODO: It's not super efficient to draw this many (72) times! Make it
+	// TODO: It's not super efficient to draw this many (36) times! Make it
 	// faster unless it's good enough.
+	// TODO: Rasterize at 8x then downsize to reduce aliasing and not have to
+	// render so many times.
 	radius := 5.
-	for i := 0; i < 360; i += 5 {
+	for i := 0; i < 360; i += 10 {
 		a := math.Pi / 180. * float64(i)
 		dx := math.Cos(a) * radius
 		dy := math.Sin(a) * radius
