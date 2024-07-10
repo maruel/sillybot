@@ -16,11 +16,19 @@ Do this first.
     - "New Application"
     - Add name, description, picture. You can generate a free picture with
       https://meta.ai.
-    - (seems to be optional) Setup web server, add TERMS OF SERVICE URL and PRIVACY POLICY URL.
-    - Bot, Privileged Gateway Intents, Enable: MESSAGE CONTENT INTENT; SERVER MEMBERS INTENT PRESENCE INTENT
+    - Setup web server: (seems to be optional)
+        - Add TERMS OF SERVICE URL and PRIVACY POLICY URL.
+    - Bot
+        - Privileged Gateway Intents:
+            - Enable: MESSAGE CONTENT INTENT; SERVER MEMBERS INTENT PRESENCE INTENT
+      - Token
+          - Click "Reset Token"
+          - Click "Copy" and save it as `token_discord.txt`
     - Installation, Guild Install:
         - Scopes: applications.commands, bot
-        - Permissions: Connect, Send Messages
+            - Permissions: Connect, Send Messages
+        - Install Link
+            - Copy the link and share it to friend.
 
 
 ## Local installation and running
