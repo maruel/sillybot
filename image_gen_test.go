@@ -6,8 +6,11 @@ package sillybot
 
 import (
 	"context"
+	"image"
 	"path/filepath"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestImageGen(t *testing.T) {
@@ -29,12 +32,14 @@ func TestImageGen(t *testing.T) {
 			t.Error(err2)
 		}
 	})
-	got, err := s.GenImage(ctx, "cat", 1)
+	img, err := s.GenImage(ctx, "cat", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) < 1000 {
-		t.Fatal("uh")
+	got := img.Bounds()
+	want := image.Rect(0, 0, 1024, 1024)
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatal(diff)
 	}
 }
 

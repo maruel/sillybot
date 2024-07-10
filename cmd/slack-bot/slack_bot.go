@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image/png"
 	"io"
 	"log"
 	"log/slog"
@@ -273,7 +274,7 @@ func (s *slackBot) onAppMention(ctx context.Context, req msgReq) {
 	req.msg = strings.TrimSpace(strings.ReplaceAll(req.msg, user, ""))
 	if s.l == nil {
 		if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("LLM is not enabled.", false), slack.MsgOptionTS(req.ts)); err != nil {
-			slog.Error("slack", "event", "failed posting message", "error", err)
+			slog.Error("slack", "message", "failed posting message", "error", err)
 		}
 		return
 	}
@@ -287,7 +288,7 @@ func (s *slackBot) onAppMention(ctx context.Context, req msgReq) {
 	case s.chat <- req:
 	default:
 		if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("Sorry! I have too many pending chat requests. Please retry in a moment.", false), slack.MsgOptionTS(req.ts)); err != nil {
-			slog.Error("slack", "event", "failed posting message", "error", err)
+			slog.Error("slack", "message", "failed posting message", "error", err)
 		}
 	}
 }
@@ -300,7 +301,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	}
 	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false), slack.MsgOptionTS(req.ts))
 	if err != nil {
-		slog.Error("slack", "event", "failed posting message", "error", err)
+		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
 	c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.User, Content: req.msg})
 	words := make(chan string, 10)
@@ -319,7 +320,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 					if pending != "" {
 						text += pending
 						if _, _, err2 := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text, false), slack.MsgOptionTS(req.ts)); err2 != nil {
-							slog.Error("slack", "event", "failed posting message", "error", err2)
+							slog.Error("slack", "message", "failed posting message", "error", err2)
 						}
 					}
 					// Remember our own answer.
@@ -334,7 +335,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 				if len(pending) > 30 {
 					text += pending
 					if _, _, err2 := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText(text+" (...generating)", false), slack.MsgOptionTS(req.ts)); err2 != nil {
-						slog.Error("slack", "event", "failed posting message", "error", err2)
+						slog.Error("slack", "message", "failed posting message", "error", err2)
 					}
 					pending = ""
 				}
@@ -347,7 +348,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 
 	if err != nil {
 		if _, _, err = s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText("Prompt generation failed: "+err.Error(), false), slack.MsgOptionTS(req.ts)); err != nil {
-			slog.Error("slack", "event", "failed posting message", "error", err)
+			slog.Error("slack", "message", "failed posting message", "error", err)
 		}
 	}
 }
@@ -367,13 +368,13 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 		}
 
 		if reply, err := s.l.Prompt(ctx, msgs); err != nil {
-			slog.Error("discord", "event", "failed to enhance prompt", "error", err)
+			slog.Error("discord", "message", "failed to enhance prompt", "error", err)
 		} else {
 			msg = reply
 		}
 	}
 	// TODO: Generate multiple images when the queue is empty?
-	p, err := s.ig.GenImage(ctx, msg, 1)
+	img, err := s.ig.GenImage(ctx, msg, 1)
 	if err != nil {
 		_, _, _, err = s.sc.SendMessageContext(
 			ctx, req.channel,
@@ -381,20 +382,25 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 			slack.MsgOptionText("Image generation failed: "+err.Error(), false),
 		)
 		if err != nil {
-			slog.Error("slack", "event", "failed posting message", "error", err)
+			slog.Error("slack", "message", "failed posting message", "error", err)
 		}
+		return
+	}
+	w := bytes.Buffer{}
+	if err = png.Encode(&w, img); err != nil {
+		slog.Error("slack", "message", "failed encoding PNG", "error", err)
 		return
 	}
 	// TODO: Figure out how to use a block instead to include the generation request.
 	param := slack.UploadFileV2Parameters{
 		Title:    req.username + " asked for: " + req.msg,
 		Filename: "image.png",
-		FileSize: len(p),
-		Reader:   bytes.NewReader(p),
+		FileSize: w.Len(),
+		Reader:   &w,
 		Channel:  req.channel,
 	}
 	if _, err = s.sc.UploadFileV2Context(ctx, param); err != nil {
-		slog.Error("slack", "event", "failed posting message", "error", err)
+		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
 }
 
@@ -419,7 +425,7 @@ func (s *slackBot) onSlashCommand(ctx context.Context, evt socketmode.Event, cmd
 			slack.MsgOptionText(reply, false),
 		)
 		if err != nil {
-			slog.Error("slack", "event", "failed posting message", "error", err)
+			slog.Error("slack", "message", "failed posting message", "error", err)
 		}
 	case "/image":
 		if s.ig == nil {
@@ -430,7 +436,7 @@ func (s *slackBot) onSlashCommand(ctx context.Context, evt socketmode.Event, cmd
 				slack.MsgOptionText(str, false),
 			)
 			if err != nil {
-				slog.Error("slack", "event", "failed posting message", "error", err)
+				slog.Error("slack", "message", "failed posting message", "error", err)
 			}
 			return
 		}
@@ -451,14 +457,14 @@ func (s *slackBot) onSlashCommand(ctx context.Context, evt socketmode.Event, cmd
 				slack.MsgOptionText("Generating ...", false),
 			)
 			if err != nil {
-				slog.Error("slack", "event", "failed posting message", "error", err)
+				slog.Error("slack", "message", "failed posting message", "error", err)
 			}
 			req.mu.Unlock()
 		default:
 			req.mu.Unlock()
 			str := "Sorry! I have too many pending image requests. Please retry in a moment."
 			if _, _, err := s.sc.PostMessageContext(ctx, cmd.ChannelID, slack.MsgOptionText(str, false)); err != nil {
-				slog.Error("slack", "event", "failed posting message", "error", err)
+				slog.Error("slack", "message", "failed posting message", "error", err)
 			}
 		}
 	default:

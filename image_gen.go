@@ -7,8 +7,12 @@ package sillybot
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"log/slog"
 	"net/http"
 	"path/filepath"
@@ -98,8 +102,8 @@ func (ig *ImageGen) Close() error {
 	return <-ig.done
 }
 
-// GenImage returns a PNG encoded image based on the prompt.
-func (ig *ImageGen) GenImage(ctx context.Context, prompt string, seed int) ([]byte, error) {
+// GenImage returns an image based on the prompt.
+func (ig *ImageGen) GenImage(ctx context.Context, prompt string, seed int) (*image.NRGBA, error) {
 	start := time.Now()
 	if !ig.loading {
 		// Otherwise it storms on startup.
@@ -142,7 +146,54 @@ func (ig *ImageGen) GenImage(ctx context.Context, prompt string, seed int) ([]by
 		return nil, err
 	}
 	slog.Info("ig", "prompt", prompt, "duration", time.Since(start).Round(time.Millisecond))
-	return r.Image, nil
+
+	img, err := decodePNG(r.Image)
+	if err != nil {
+		return nil, err
+	}
+	addWatermark(img)
+	return img, nil
+}
+
+//
+
+//go:embed mascot.png
+var mascotPNG []byte
+
+var mascot = func() *image.NRGBA {
+	img, err := decodePNG(mascotPNG)
+	if err != nil {
+		panic(err)
+	}
+	for i := 0; i < len(img.Pix); i += 4 {
+		img.Pix[i+3] = img.Pix[i+3] >> 2
+	}
+	return img
+}()
+
+func addWatermark(img *image.NRGBA) {
+	d := img.Bounds()
+	m := mascot.Bounds()
+	draw.Draw(img, m.Add(image.Pt(0, d.Dy()-m.Dy())), mascot, image.Point{}, draw.Over)
+}
+
+func decodePNG(b []byte) (*image.NRGBA, error) {
+	img, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode PNG: %w", err)
+	}
+	switch n := img.(type) {
+	case *image.NRGBA:
+		return n, nil
+	case *image.RGBA:
+		// Convert.
+		b := n.Bounds()
+		dst := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+		draw.Draw(dst, dst.Bounds(), n, b.Min, draw.Src)
+		return dst, nil
+	default:
+		return nil, fmt.Errorf("failed to decode PNG: expected NRGBA, got %T", img)
+	}
 }
 
 // isHostPort returns true if the string seems like a valid "host:port" string.

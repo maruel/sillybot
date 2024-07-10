@@ -559,7 +559,7 @@ func (d *discordBot) handleImage(req intReq) {
 	}
 
 	// TODO: Generate multiple images when the queue is empty?
-	p, err := d.ig.GenImage(d.ctx, req.imagePrompt, 1)
+	img, err := d.ig.GenImage(d.ctx, req.imagePrompt, 1)
 	if err != nil {
 		content += "*ImageGen Error*: " + escapeMarkdown(err.Error())
 		if _, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{Content: &content}); err != nil {
@@ -569,20 +569,20 @@ func (d *discordBot) handleImage(req intReq) {
 	}
 
 	if req.labelsContent != "" {
-		if n, err2 := drawMemeOnImage(p, d.f, req.labelsContent); err2 != nil {
-			slog.Error("discord", "command", req.cmdName, "message", "failed drawing text", "error", err2)
-		} else {
-			p = n
-		}
+		drawMemeOnImage(img, d.f, req.labelsContent)
 	}
-
+	w := bytes.Buffer{}
+	if err = png.Encode(&w, img); err != nil {
+		slog.Error("discord", "command", req.cmdName, "message", "failed encoding PNG", "error", err)
+		return
+	}
 	_, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{
 		Content: &content,
 		Files: []*discordgo.File{
 			{
 				Name:        "prompt.png",
 				ContentType: "image/png",
-				Reader:      bytes.NewReader(p),
+				Reader:      &w,
 			},
 		},
 	})
@@ -591,15 +591,7 @@ func (d *discordBot) handleImage(req intReq) {
 	}
 }
 
-func drawMemeOnImage(p []byte, f *opentype.Font, meme string) ([]byte, error) {
-	src, err := png.Decode(bytes.NewReader(p))
-	if err != nil {
-		return nil, fmt.Errorf("failed decoding png: %w", err)
-	}
-	img, ok := src.(*image.RGBA)
-	if !ok {
-		return nil, fmt.Errorf("unexpected image format: %T", src)
-	}
+func drawMemeOnImage(img *image.NRGBA, f *opentype.Font, meme string) {
 	lines := strings.Split(meme, ",")
 	switch len(lines) {
 	case 1:
@@ -623,14 +615,9 @@ func drawMemeOnImage(p []byte, f *opentype.Font, meme string) ([]byte, error) {
 		drawTextOnImage(img, f, 80, lines[3])
 		drawTextOnImage(img, f, 100, lines[4])
 	}
-	w := bytes.Buffer{}
-	if err := png.Encode(&w, img); err != nil {
-		return nil, fmt.Errorf("failed encoding png: %w", err)
-	}
-	return w.Bytes(), nil
 }
 
-func drawTextOnImage(img *image.RGBA, f *opentype.Font, top int, text string) {
+func drawTextOnImage(img *image.NRGBA, f *opentype.Font, top int, text string) {
 	bounds := img.Bounds()
 	w := bounds.Dx()
 	h := bounds.Dy()
