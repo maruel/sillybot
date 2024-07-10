@@ -62,7 +62,7 @@ type LLM struct {
 	c       *exec.Cmd
 	done    <-chan error
 	cancel  func() error
-	port    int
+	url     string
 	loading bool
 
 	_ struct{}
@@ -102,12 +102,13 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 	}
 
 	// Create the log file to redirect llamafile's output which is quite verbose.
+	port := findFreePort()
 	l := &LLM{
-		port:    findFreePort(),
+		url:     fmt.Sprintf("http://localhost:%d/v1/chat/completions", port),
 		loading: true,
 	}
 	if opts.Model == "python" {
-		cmd := []string{filepath.Join(cache, "llm.py"), "--port", strconv.Itoa(l.port)}
+		cmd := []string{filepath.Join(cache, "llm.py"), "--port", strconv.Itoa(port)}
 		done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "llm.log"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to start python llm server: %w", err)
@@ -122,9 +123,9 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 			return nil, fmt.Errorf("failed to create llm server log file: %w", err)
 		}
 		defer log.Close()
-		cmd := mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(l.port), "--nobrowser")
+		cmd := mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port), "--nobrowser")
 		if !isLlamafile {
-			cmd = mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(l.port))
+			cmd = mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port))
 		}
 		slog.Debug("llm", "command", cmd, "cwd", cache, "log", log.Name())
 		l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
@@ -142,7 +143,7 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 			done <- l.c.Wait()
 			slog.Info("llm", "state", "terminated")
 		}()
-		slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", l.port)
+		slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", port)
 	}
 	msgs := []Message{
 		{Role: System, Content: "You are an AI assistant. You strictly follow orders. Do not add punctuation. Do not use uppercase letters."},
@@ -172,7 +173,7 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 	} else {
 		x = "llama-server"
 	}
-	slog.Info("llm", "state", "ready", "model", opts.Model, "using", x)
+	slog.Info("llm", "state", "ready", "model", opts.Model, "using", x, "url", l.url)
 	l.loading = false
 	return l, nil
 }
@@ -254,8 +255,7 @@ func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error
 	if err != nil {
 		return "", fmt.Errorf("internal error: %w", err)
 	}
-	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, "POST", l.url, bytes.NewReader(b))
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
@@ -284,8 +284,7 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, words chan<- 
 	if err != nil {
 		return "", fmt.Errorf("internal error: %w", err)
 	}
-	url := fmt.Sprintf("http://localhost:%d/v1/chat/completions", l.port)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, "POST", l.url, bytes.NewReader(b))
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}

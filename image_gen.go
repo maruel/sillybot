@@ -29,7 +29,7 @@ type ImageGenOptions struct {
 type ImageGen struct {
 	done    <-chan error
 	cancel  func() error
-	port    int
+	url     string
 	steps   int
 	loading bool
 }
@@ -54,11 +54,11 @@ func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*Ima
 	ig := &ImageGen{
 		done:    done,
 		cancel:  cancel,
-		port:    port,
+		url:     fmt.Sprintf("http://localhost:%d/", port),
 		steps:   1,
 		loading: true,
 	}
-	slog.Info("ig", "state", "started", "port", ig.port, "message", "Please be patient, it can take several minutes to download everything")
+	slog.Info("ig", "state", "started", "url", ig.url, "message", "Please be patient, it can take several minutes to download everything")
 	for ctx.Err() == nil {
 		if _, err = ig.GenImage("cat"); err == nil {
 			break
@@ -95,8 +95,7 @@ func (ig *ImageGen) GenImage(prompt string) ([]byte, error) {
 		Seed    int    `json:"seed"`
 	}{Message: prompt, Steps: ig.steps, Seed: 1}
 	b, _ := json.Marshal(data)
-	url := fmt.Sprintf("http://localhost:%d/", ig.port)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
+	resp, err := http.Post(ig.url, "application/json", bytes.NewReader(b))
 	if err != nil {
 		if !ig.loading {
 			// Otherwise it storms on startup.
