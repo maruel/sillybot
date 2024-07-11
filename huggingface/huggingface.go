@@ -22,7 +22,9 @@ import (
 
 // Model is a model stored on https://huggingface.co
 type Model struct {
-	// Repo is in the form <user>/<project>.
+	// Author is the owner, either a person or an organization.
+	Author string
+	// Repo is the name of the repository owned by the Author.
 	Repo string
 	// Upstream is the upstream repo when the model is based on another one.
 	Upstream string
@@ -32,11 +34,14 @@ type Model struct {
 	// Basename is the base filename when PackagingType is one of "gguf" or
 	// "llamafile".
 	Basename string
+
+	// Information filled by GetModel():
+
 	// Tensor is the native quantization of the weight. Frequently "BF16" for
 	// "bfloat16" type. This is found in config.json in Upstream.
 	TensorType string
 	// Number of weights. Has direct impact on performance and memory usage.
-	NumWeight int
+	NumWeights int64
 	// ContentLength is the number of tokens that the LLM can take as context
 	// when relevant. Has impact on performance and memory usage. Not relevant
 	// for image generators.
@@ -45,13 +50,28 @@ type Model struct {
 	// name for well known licences (e.g. "Apache v2.0" or "MIT") or an URL for
 	// custom licenses.
 	License string
+	// LicenseURL is the URL to the license file.
+	LicenseURL string
+	// Files is the list of files in the repository.
+	Files []string
+	// Created is the time the repository was created. It can be at the earliest
+	// 2022-03-02 as documented at
+	// https://huggingface.co/docs/hub/api#repo-listing-api.
+	Created time.Time
+	// Modified is the last time the repository was modified.
+	Modified time.Time
 
 	_ struct{}
 }
 
+// RepoID is a shorthand to return .m.Author + "/" + m.Repo
+func (m *Model) RepoID() string {
+	return m.Author + "/" + m.Repo
+}
+
 // URL returns the Model's canonical URL.
 func (m *Model) URL() string {
-	return "https://huggingface.co/" + m.Repo
+	return "https://huggingface.co/" + m.RepoID()
 }
 
 // Client is the client for https://huggingface.co/.
@@ -108,68 +128,51 @@ type modelInfoResponse struct {
 	} `json:"safetensors"`
 }
 
-// ModelInfo contains information retrieved from the repo.
-type ModelInfo struct {
-	Files      []string
-	Created    time.Time
-	Modified   time.Time
-	Tensor     string
-	Size       int64
-	License    string
-	LicenseURL string
-
-	_ struct{}
-}
-
-// ListRepo returns the list of files in the repo.
-//
-// TODO: Support split files.
-func (c *Client) ListRepo(ctx context.Context, repo string) (*ModelInfo, error) {
-	url := c.serverBase + "/api/models/" + repo + "/revision/main"
+// GetModel fills the supplied Model with information from the HuggingFace Hub.
+func (c *Client) GetModel(ctx context.Context, m *Model) error {
+	url := c.serverBase + "/api/models/" + m.RepoID() + "/revision/main"
 	resp, err := authGet(ctx, url, c.token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list repo %s: %w", repo, err)
+		return fmt.Errorf("failed to list repoID %s: %w", m.RepoID(), err)
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list repo %s: %w", repo, err)
+		return fmt.Errorf("failed to list repoID %s: %w", m.RepoID(), err)
 	}
 	r := modelInfoResponse{}
 	if err := json.Unmarshal(b, &r); err != nil {
-		return nil, fmt.Errorf("failed to parse list repo %s response: %w", repo, err)
+		return fmt.Errorf("failed to parse list repoID %s response: %w", m.RepoID(), err)
 	}
-	out := &ModelInfo{
-		Files:      make([]string, len(r.Siblings)),
-		Created:    r.CreatedAt,
-		Modified:   r.LastModified,
-		License:    r.CardData.License,
-		LicenseURL: r.CardData.LicenseURL,
-	}
+	m.Files = make([]string, len(r.Siblings))
+	m.Created = r.CreatedAt
+	m.Modified = r.LastModified
+	m.License = r.CardData.License
+	m.LicenseURL = r.CardData.LicenseURL
 	for i := range r.Siblings {
-		out.Files[i] = r.Siblings[i].Filename
+		m.Files[i] = r.Siblings[i].Filename
 	}
-	for k, m := range r.SafeTensors.Parameters {
-		if m > out.Size {
-			out.Tensor = k
-			out.Size = m
+	for k, s := range r.SafeTensors.Parameters {
+		if s > m.NumWeights {
+			m.TensorType = k
+			m.NumWeights = s
 		}
 	}
-	if out.Size == 0 {
-		out.Size = r.SafeTensors.Total
+	if m.NumWeights == 0 {
+		m.NumWeights = r.SafeTensors.Total
 	}
-	return out, nil
+	return nil
 }
 
 // EnsureFile ensures the file is available, downloads it otherwise.
 //
 // TODO: Support split files.
-func (c *Client) EnsureFile(ctx context.Context, repo string, filename string, mode os.FileMode) (string, error) {
+func (c *Client) EnsureFile(ctx context.Context, repoID string, filename string, mode os.FileMode) (string, error) {
 	dst := filepath.Join(c.Cache, filename)
 	if _, err := os.Stat(dst); err == nil {
 		return dst, err
 	}
-	url := c.serverBase + "/" + repo + "/resolve/main/" + filename + "?download=true"
+	url := c.serverBase + "/" + repoID + "/resolve/main/" + filename + "?download=true"
 	return dst, DownloadFile(ctx, url, dst, c.token, mode)
 }
 

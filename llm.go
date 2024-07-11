@@ -42,6 +42,7 @@ type LLMOptions struct {
 
 // KnownLLM is a known model.
 type KnownLLM struct {
+	HG       *huggingface.Model
 	URL      string
 	Type     string
 	Basename string

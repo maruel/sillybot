@@ -20,6 +20,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/maruel/sillybot"
+	"github.com/maruel/sillybot/huggingface"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/goitalic"
 	"golang.org/x/image/font/opentype"
@@ -377,8 +378,9 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 	reply := "Known models:\n"
 	for _, k := range d.l.KnownLLMs {
 		reply += "- [`" + k.Basename + "`](" + k.URL + ") "
-		info, err := d.l.HF.ListRepo(d.ctx, k.URL[len("https://huggingface.co/"):])
-		if err != nil {
+		parts := strings.SplitN(k.URL[len("https://huggingface.co/"):], "/", 2)
+		info := huggingface.Model{Author: parts[0], Repo: parts[1]}
+		if err := d.l.HF.GetModel(d.ctx, &info); err != nil {
 			reply += " Oh no, we failed to query: " + err.Error()
 			slog.Error("discord", "command", data.Name, "error", err)
 		} else {
@@ -392,13 +394,14 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 				f = strings.TrimSuffix(f, ".llamafile")
 				reply += f + ", "
 			}
-			infoUpstream, err := d.l.HF.ListRepo(d.ctx, k.Upstream[len("https://huggingface.co/"):])
-			if err != nil {
+			parts = strings.SplitN(k.Upstream[len("https://huggingface.co/"):], "/", 2)
+			infoUpstream := huggingface.Model{Author: parts[0], Repo: parts[1]}
+			if err = d.l.HF.GetModel(d.ctx, &infoUpstream); err != nil {
 				reply += " Oh no, we failed to query: " + err.Error()
 				slog.Error("discord", "command", data.Name, "error", err)
 			} else {
-				if infoUpstream.Size != 0 {
-					reply += fmt.Sprintf(" Tensors: %s in %.fB", infoUpstream.Tensor, float64(infoUpstream.Size)*0.000000001)
+				if infoUpstream.NumWeights != 0 {
+					reply += fmt.Sprintf(" Tensors: %s in %.fB", infoUpstream.TensorType, float64(infoUpstream.NumWeights)*0.000000001)
 				}
 				if infoUpstream.LicenseURL != "" {
 					reply += " License: [" + infoUpstream.License + "](" + infoUpstream.LicenseURL + ")"

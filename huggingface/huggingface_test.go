@@ -21,7 +21,7 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-func TestList(t *testing.T) {
+func TestGetModel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/models/microsoft/Phi-3-mini-4k-instruct/revision/main" {
 			t.Errorf("unexpected path, got: %s", r.URL.Path)
@@ -35,11 +35,17 @@ func TestList(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.serverBase = server.URL
-	got, err := c.ListRepo(context.Background(), "microsoft/Phi-3-mini-4k-instruct")
-	if err != nil {
+
+	got := Model{
+		Author: "microsoft",
+		Repo:   "Phi-3-mini-4k-instruct",
+	}
+	if err := c.GetModel(context.Background(), &got); err != nil {
 		t.Fatal(err)
 	}
-	want := ModelInfo{
+	want := Model{
+		Author: "microsoft",
+		Repo:   "Phi-3-mini-4k-instruct",
 		Files: []string{
 			".gitattributes",
 			"CODE_OF_CONDUCT.md",
@@ -63,12 +69,12 @@ func TestList(t *testing.T) {
 		},
 		Created:    time.Date(2024, 04, 22, 16, 18, 17, 0, time.UTC),
 		Modified:   time.Date(2024, 07, 01, 21, 16, 50, 0000, time.UTC),
-		Tensor:     "BF16",
-		Size:       3821079552,
+		TensorType: "BF16",
+		NumWeights: 3821079552,
 		License:    "mit",
 		LicenseURL: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct/resolve/main/LICENSE",
 	}
-	if diff := cmp.Diff(&want, got, cmpopts.IgnoreUnexported(want)); diff != "" {
+	if diff := cmp.Diff(want, got, cmpopts.IgnoreUnexported(want)); diff != "" {
 		t.Fatal(diff)
 	}
 }
