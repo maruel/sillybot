@@ -16,10 +16,11 @@ bot:
     # See https://github.com/maruel/sillybot/blob/main/py/README.md for how
     # to run.
     remote: ""
-    # Llama 3 8B Q5_K_M is fast on unaccelerated CPU and takes 6GiB of RAM which
-    # should work on most computers.
+    # Mistral-7B-Instruct-v0.3.Q5_K_M is fast on unaccelerated CPU and takes
+    # 9GiB of RAM which should work on most computers. It has a permissive
+    # license.
     # Use "python" to use the embedded pytorch generator.
-    model:        "Meta-Llama-3-8B-Instruct.Q5_K_M"
+    model:        "Mistral-7B-Instruct-v0.3.Q5_K_M"
     # Default system prompt to use.
     systemprompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic."
   image_gen:

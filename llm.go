@@ -5,7 +5,6 @@
 package sillybot
 
 import (
-	"archive/zip"
 	"bufio"
 	"bytes"
 	"context"
@@ -23,8 +22,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/schollz/progressbar/v3"
 )
 
 // LLMOptions for NewLLM.
@@ -63,6 +60,7 @@ type KnownLLM struct {
 // While it is expected that the model is an Instruct form, it is not a
 // requirement.
 type LLM struct {
+	hf      *huggingface
 	c       *exec.Cmd
 	done    <-chan error
 	cancel  func() error
@@ -76,7 +74,15 @@ type LLM struct {
 // python instead.
 func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []KnownLLM) (*LLM, error) {
 	svr := "remote"
-	l := &LLM{loading: true}
+	cacheModels := filepath.Join(cache, "models")
+	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create the directory to cache models: %w", err)
+	}
+	hf, err := newHuggingFace("", cacheModels)
+	if err != nil {
+		return nil, err
+	}
+	l := &LLM{hf: hf, loading: true}
 	cachePy := filepath.Join(cache, "py")
 	if opts.Remote == "" {
 		llamasrv := ""
@@ -98,7 +104,7 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 			if llamasrv, isLlamafile, err = getLlama(ctx, cache); err != nil {
 				return nil, fmt.Errorf("failed to load llm: %w", err)
 			}
-			cmd := mangle(isLlamafile, llamasrv, "--version")
+			cmd := mangleForLlamafile(isLlamafile, llamasrv, "--version")
 			c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 			d, err := c.CombinedOutput()
 			if err != nil {
@@ -106,12 +112,8 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 			}
 			slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
 
-			cacheModels := filepath.Join(cache, "models")
-			if err := os.MkdirAll(cacheModels, 0o755); err != nil {
-				return nil, fmt.Errorf("failed to create the directory to cache models: %w", err)
-			}
 			// Make sure the model is available.
-			if modelFile, err = getModel(ctx, cacheModels, opts.Model, knownLLMs); err != nil {
+			if modelFile, err = l.ensureModel(ctx, opts.Model, knownLLMs); err != nil {
 				return nil, fmt.Errorf("failed to get llm model: %w", err)
 			}
 		}
@@ -135,9 +137,9 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 				return nil, fmt.Errorf("failed to create llm server log file: %w", err)
 			}
 			defer log.Close()
-			cmd := mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port), "--nobrowser")
+			cmd := mangleForLlamafile(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port), "--nobrowser")
 			if !isLlamafile {
-				cmd = mangle(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port))
+				cmd = mangleForLlamafile(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port))
 			}
 			slog.Debug("llm", "command", cmd, "cwd", cache, "log", log.Name())
 			l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
@@ -389,6 +391,74 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, seed int, tem
 	}
 }
 
+// ensureModel gets the model if missing.
+//
+// Currently hard-coded to GGUF or llamafile files and Hugging Face. Doesn't
+// support split files.
+func (l *LLM) ensureModel(ctx context.Context, model string, knownLLMs []KnownLLM) (string, error) {
+	// TODO: This is very "meh".
+	switch strings.ToUpper(filepath.Ext(model)) {
+	case ".GGUF":
+		return "", fmt.Errorf("do not include the .gguf suffix for model %q", model)
+
+	case ".BF16":
+		if runtime.GOOS == "darwin" {
+			slog.Warn("llm", "message", "As of July 2024, bfloat16 was not fully supported on Apple Silicon system. Remove this warning once this is fixed.")
+		}
+
+		// Well known quantizations.
+	case ".F16", ".FP16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
+
+	case "":
+		return "", fmt.Errorf("you forgot to add a quantization suffix like '.BF16', '.F16', '.Q8_0' or '.Q5_K_M' when specifying model %q", model)
+
+	default:
+		return "", fmt.Errorf("unknown quantization for model %q, did you forget a suffix like '.BF16' or '.Q5_K_M'?", model)
+	}
+
+	// TODO: It'd be great to enumerate the GGUF files in the repo to help the user.
+
+	// Hack.
+	dst := filepath.Join(l.hf.cache, model+".gguf")
+	_, err := os.Stat(dst)
+	if err == nil {
+		return dst, nil
+	}
+	slog.Info("llm", "model", model, "state", "missing")
+	url := ""
+	t := ""
+	for _, k := range knownLLMs {
+		if strings.HasPrefix(model, k.Basename) {
+			url = k.URL
+			t = k.Type
+			break
+		}
+	}
+	if url == "" {
+		return "", fmt.Errorf("can't guess model %q huggingface repo", model)
+	}
+	// Hack.
+	urlhf := "https://huggingface.co/"
+	if !strings.HasPrefix(url, urlhf) {
+		return "", fmt.Errorf("can't guess model %q source", model)
+	}
+	repo := url[len(urlhf):]
+	switch t {
+	case "gguf":
+		if dst, err = l.hf.ensure(ctx, repo, model+".gguf", 0o644); err != nil {
+			err = fmt.Errorf("can't find model %q at %s: %w", model, url, err)
+		}
+	case "llamafile":
+		// TODO: Remove support for llamafile.
+		if dst, err = l.hf.ensureGGUFFromLlamafile(ctx, repo, model); err != nil {
+			err = fmt.Errorf("can't find model %q at %s: %w", model, url, err)
+		}
+	default:
+		err = errors.New("internal error: unknown type")
+	}
+	return dst, err
+}
+
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
 
 // openAIChatCompletionRequest is documented at
@@ -469,6 +539,64 @@ type openAIStreamDelta struct {
 
 // Tools
 
+// mangleForLlamafile hacks the command arguments to make it work for llamafile. Pass
+// through otherwise.
+func mangleForLlamafile(isLlamafile bool, cmd ...string) []string {
+	// This hack is only needed for llamafile, not llama-server.
+	if runtime.GOOS == "windows" || !isLlamafile {
+		return cmd
+	}
+	// TODO: Proper escaping.
+	return []string{"/bin/sh", "-c", strings.Join(cmd, " ")}
+}
+
+// getLlama returns the file path to llama.cpp/llamafile executable.
+//
+// Returns the file path to the executable and true if it is llamafile, false
+// if it is llama-server from llama.cpp.
+//
+// It first look for llama-server or llamafile if one of them is PATH. Then it
+// checks if one of them is s in the cache directory, otherwise downloads the
+// latest version of llamafile from GitHub.
+func getLlama(ctx context.Context, cache string) (string, bool, error) {
+	if s, err := exec.LookPath("llama-server"); err == nil {
+		return s, false, nil
+	}
+	if s, err := exec.LookPath("llamafile"); err == nil {
+		return s, true, nil
+	}
+	execSuffix := ""
+	if runtime.GOOS == "windows" {
+		execSuffix = ".exe"
+	}
+	llamaserver := filepath.Join(cache, "llama-server"+execSuffix)
+	if i, err := os.Stat(llamaserver); err == nil && i.Size() > 100000 {
+		return llamaserver, false, nil
+	}
+	llamafile := filepath.Join(cache, "llamafile"+execSuffix)
+	if i, err := os.Stat(llamaserver); err == nil && i.Size() > 100000 {
+		return llamafile, true, nil
+	}
+
+	// Time to download.
+	// Download llamafile from GitHub. We always want the latest and greatest
+	// as it is very actively developed and the model we download likely use an
+	// older version.
+	url, name, err := getGitHubLatestRelease("Mozilla-Ocho", "llamafile", "application/octet-stream")
+	if err != nil {
+		return "", false, fmt.Errorf("failed to find latest llamafile release from github: %w", err)
+	}
+	versioned := filepath.Join(cache, name+execSuffix)
+	if err = downloadFile(ctx, url, versioned, "", 0o755); err != nil {
+		return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
+	}
+	// Copy it as the default executable to use.
+	if err = copyFile(llamafile, versioned); err != nil {
+		return "", false, fmt.Errorf("failed to copy llamafile in cache: %w", err)
+	}
+	return llamafile, true, nil
+}
+
 // getGitHubLatestRelease returns the latest release for a github repository.
 func getGitHubLatestRelease(owner, repo, contentType string) (string, string, error) {
 	resp, err := http.Get("https://api.github.com/repos/" + owner + "/" + repo + "/releases")
@@ -502,33 +630,6 @@ func getGitHubLatestRelease(owner, repo, contentType string) (string, string, er
 	return "", "", nil
 }
 
-// downloadFile downloads a file.
-func downloadFile(ctx context.Context, url, dst string, mode os.FileMode) error {
-	// Work around "Entry not found"
-	if i, err := os.Stat(dst); (err == nil && i.Size() >= 1024) || (err != nil && !os.IsNotExist(err)) {
-		return err
-	}
-	// TODO: When authenticated the bandwidth saturates to 1Gbps.
-	slog.Info("llm", "downloading", url)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to download %q: %w", dst, err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download %q: %w", dst, err)
-	}
-	defer resp.Body.Close()
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, mode)
-	if err != nil {
-		return fmt.Errorf("failed to download %q: %w", dst, err)
-	}
-	defer f.Close()
-	bar := progressbar.DefaultBytes(resp.ContentLength, "downloading")
-	_, err = io.Copy(io.MultiWriter(f, bar), resp.Body)
-	return err
-}
-
 // copyFile copy a file while keeping the file mode.
 func copyFile(dst, src string) error {
 	s, err := os.Open(src)
@@ -547,159 +648,4 @@ func copyFile(dst, src string) error {
 	defer d.Close()
 	_, err = io.Copy(d, s)
 	return err
-}
-
-// getHfModelGGUFFromLlamafile retrieves a file from an HuggingFace repository.
-//
-// TODO: We should use the package so authentication works, this would speed up
-// download.
-func getHfModelGGUFFromLlamafile(ctx context.Context, cache, repo, model string) error {
-	dst, err := getHfFile(ctx, cache, repo, model+".llamafile", 0o755)
-	if err != nil {
-		return err
-	}
-	gguf := model + ".gguf"
-	dstgguf := filepath.Join(cache, gguf)
-	// It can happen that the file only contains "Entry not found"
-	if i, err2 := os.Stat(dstgguf); (err2 == nil && i.Size() >= 1024) || (err2 != nil && !os.IsNotExist(err2)) {
-		return err2
-	}
-	z, err := zip.OpenReader(dst)
-	if err != nil {
-		return err
-	}
-	defer z.Close()
-	for _, i := range z.File {
-		if i.Name == gguf {
-			s, err := i.Open()
-			if err != nil {
-				return err
-			}
-			defer s.Close()
-			d, err := os.OpenFile(dstgguf, os.O_CREATE|os.O_WRONLY, 0o644)
-			if err != nil {
-				return err
-			}
-			defer d.Close()
-			_, err = io.Copy(d, s)
-			return err
-		}
-	}
-	return errors.New("gguf not found")
-}
-
-func getHfFile(ctx context.Context, cache, repo, file string, mode os.FileMode) (string, error) {
-	url := "https://huggingface.co/" + repo + "/resolve/main/" + file + "?download=true"
-	dst := filepath.Join(cache, file)
-	return dst, downloadFile(ctx, url, dst, mode)
-}
-
-// getLlama returns the file path to llama.cpp/llamafile executable.
-//
-// Returns the file path to the executable and true if it is llamafile, false
-// if it is llama-server from llama.cpp.
-//
-// It first look for llama-server or llamafile if one of them is PATH. Then it
-// checks if one of them is s in the cache directory, otherwise downloads the
-// latest version of llamafile.
-func getLlama(ctx context.Context, cache string) (string, bool, error) {
-	if s, err := exec.LookPath("llama-server"); err == nil {
-		return s, false, nil
-	}
-	if s, err := exec.LookPath("llamafile"); err == nil {
-		return s, true, nil
-	}
-	execSuffix := ""
-	if runtime.GOOS == "windows" {
-		execSuffix = ".exe"
-	}
-	llamaserver := filepath.Join(cache, "llama-server"+execSuffix)
-	if i, err := os.Stat(llamaserver); err == nil && i.Size() > 100000 {
-		return llamaserver, false, nil
-	}
-	llamafile := filepath.Join(cache, "llamafile"+execSuffix)
-	if i, err := os.Stat(llamaserver); err == nil && i.Size() > 100000 {
-		return llamafile, true, nil
-	}
-
-	// Time to download.
-	// Download llamafile from GitHub. We always want the latest and greatest
-	// as it is very actively developed and the model we download likely use an
-	// older version.
-	url, name, err := getGitHubLatestRelease("Mozilla-Ocho", "llamafile", "application/octet-stream")
-	if err != nil {
-		return "", false, fmt.Errorf("failed to find latest llamafile release from github: %w", err)
-	}
-	versioned := filepath.Join(cache, name+execSuffix)
-	if err = downloadFile(ctx, url, versioned, 0o755); err != nil {
-		return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
-	}
-	// Copy it as the default executable to use.
-	if err = copyFile(llamafile, versioned); err != nil {
-		return "", false, fmt.Errorf("failed to copy llamafile in cache: %w", err)
-	}
-	return llamafile, true, nil
-}
-
-// getModel gets and Verifies the model.
-func getModel(ctx context.Context, cache, model string, knownLLMs []KnownLLM) (string, error) {
-	switch strings.ToUpper(filepath.Ext(model)) {
-	case ".GGUF":
-		return "", fmt.Errorf("do not include the .gguf suffix for model %q", model)
-	case ".BF16":
-		if runtime.GOOS == "darwin" {
-			slog.Warn("llm", "message", "As of July 2024, bfloat16 was not fully supported on Apple Silicon system. Remove this warning once this is fixed.")
-		}
-		// Well known quantizations.
-	case ".F16", ".FP16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
-	case "":
-		return "", fmt.Errorf("you forgot to add a quantization suffix like '.BF16', '.F16', '.Q8_0' or '.Q5_K_M' when specifying model %q", model)
-	default:
-		return "", fmt.Errorf("unknown quantization for model %q, did you forget a suffix like '.BF16' or '.Q5_K_M'?", model)
-	}
-	modelFile := filepath.Join(cache, model+".gguf")
-	// It can happen that the file only contains "Entry not found"
-	if i, err := os.Stat(modelFile); (err == nil && i.Size() < 1048576) || err != nil {
-		slog.Info("llm", "model", model, "state", "missing")
-		url := ""
-		t := ""
-		for _, k := range knownLLMs {
-			if strings.HasPrefix(model, k.Basename) {
-				url = k.URL
-				t = k.Type
-				break
-			}
-		}
-		if url == "" {
-			return "", fmt.Errorf("can't guess model %q huggingface repo", model)
-		}
-		hf := "https://huggingface.co/"
-		if strings.HasPrefix(url, hf) {
-			repo := url[len(hf):]
-			switch t {
-			case "gguf":
-				if _, err = getHfFile(ctx, cache, repo, model+".gguf", 0o644); err != nil {
-					return "", fmt.Errorf("failed to retrieve model %q: %w", model, err)
-				}
-			case "llamafile":
-				if err = getHfModelGGUFFromLlamafile(ctx, cache, repo, model); err != nil {
-					return "", fmt.Errorf("failed to retrieve model %q: %w", model, err)
-				}
-			default:
-				return "", errors.New("internal error: unknown type")
-			}
-		} else {
-			return "", fmt.Errorf("can't guess model %q source", model)
-		}
-	}
-	return modelFile, nil
-}
-
-func mangle(isLlamafile bool, cmd ...string) []string {
-	// This hack is only needed for llamafile, not llama-server.
-	if runtime.GOOS == "windows" || !isLlamafile {
-		return cmd
-	}
-	// TODO: Proper escaping.
-	return []string{"/bin/sh", "-c", strings.Join(cmd, " ")}
 }
