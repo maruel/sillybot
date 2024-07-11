@@ -2,17 +2,23 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package sillybot
+package huggingface
 
 import (
 	"context"
+	"flag"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/lmittmann/tint"
+	"github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
 )
 
 func TestList(t *testing.T) {
@@ -24,12 +30,12 @@ func TestList(t *testing.T) {
 		w.Write([]byte(apiRepoPhi3Data))
 	}))
 	defer server.Close()
-	h, err := newHuggingFace("", t.TempDir())
+	c, err := New("", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.serverBase = server.URL
-	got, err := h.ListRepo(context.Background(), "microsoft/Phi-3-mini-4k-instruct")
+	c.serverBase = server.URL
+	got, err := c.ListRepo(context.Background(), "microsoft/Phi-3-mini-4k-instruct")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,3 +156,19 @@ var apiRepoPhi3Data = `
     }
 }
 `
+
+// TestMain sets up the verbose logging.
+func TestMain(m *testing.M) {
+	flag.Parse()
+	l := slog.LevelWarn
+	if testing.Verbose() {
+		l = slog.LevelDebug
+	}
+	logger := slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
+		Level:      l,
+		TimeFormat: time.TimeOnly,
+		NoColor:    !isatty.IsTerminal(os.Stderr.Fd()),
+	}))
+	slog.SetDefault(logger)
+	os.Exit(m.Run())
+}

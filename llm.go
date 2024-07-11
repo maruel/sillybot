@@ -5,6 +5,7 @@
 package sillybot
 
 import (
+	"archive/zip"
 	"bufio"
 	"bytes"
 	"context"
@@ -22,6 +23,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/maruel/sillybot/huggingface"
 )
 
 // LLMOptions for NewLLM.
@@ -60,7 +63,7 @@ type KnownLLM struct {
 // While it is expected that the model is an Instruct form, it is not a
 // requirement.
 type LLM struct {
-	HF        *HuggingFace
+	HF        *huggingface.Client
 	KnownLLMs []KnownLLM
 
 	c       *exec.Cmd
@@ -80,7 +83,7 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create the directory to cache models: %w", err)
 	}
-	hf, err := newHuggingFace("", cacheModels)
+	hf, err := huggingface.New("", cacheModels)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +432,7 @@ func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
 	// TODO: It'd be great to enumerate the GGUF files in the repo to help the user.
 
 	// Hack.
-	dst := filepath.Join(l.HF.cache, model+".gguf")
+	dst := filepath.Join(l.HF.Cache, model+".gguf")
 	_, err := os.Stat(dst)
 	if err == nil {
 		return dst, nil
@@ -455,18 +458,54 @@ func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
 	repo := url[len(urlhf):]
 	switch t {
 	case "gguf":
-		if dst, err = l.HF.ensureFile(ctx, repo, model+".gguf", 0o644); err != nil {
+		if dst, err = l.HF.EnsureFile(ctx, repo, model+".gguf", 0o644); err != nil {
 			err = fmt.Errorf("can't find model %q at %s: %w", model, url, err)
 		}
 	case "llamafile":
 		// TODO: Remove support for llamafile.
-		if dst, err = l.HF.ensureGGUFFromLlamafile(ctx, repo, model); err != nil {
+		if dst, err = l.ensureGGUFFromLlamafile(ctx, repo, model); err != nil {
 			err = fmt.Errorf("can't find model %q at %s: %w", model, url, err)
 		}
 	default:
 		err = errors.New("internal error: unknown type")
 	}
 	return dst, err
+}
+
+// ensureGGUFFromLlamafile retrieves a file from an HuggingFace repository if missing.
+func (l *LLM) ensureGGUFFromLlamafile(ctx context.Context, repo string, model string) (string, error) {
+	gguf := model + ".gguf"
+	dstgguf := filepath.Join(l.HF.Cache, gguf)
+	if _, err := os.Stat(dstgguf); err == nil {
+		return dstgguf, err
+	}
+	// Get the llamafile first.
+	src, err := l.HF.EnsureFile(ctx, repo, model+".llamafile", 0o755)
+	if err != nil {
+		return dstgguf, err
+	}
+	z, err := zip.OpenReader(src)
+	if err != nil {
+		return dstgguf, err
+	}
+	defer z.Close()
+	for _, i := range z.File {
+		if i.Name == gguf {
+			s, err := i.Open()
+			if err != nil {
+				return dstgguf, err
+			}
+			defer s.Close()
+			d, err := os.OpenFile(dstgguf, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+			if err != nil {
+				return dstgguf, err
+			}
+			defer d.Close()
+			_, err = io.CopyN(d, s, int64(i.UncompressedSize64))
+			return dstgguf, err
+		}
+	}
+	return dstgguf, errors.New("gguf not found")
 }
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
@@ -597,7 +636,7 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		return "", false, fmt.Errorf("failed to find latest llamafile release from github: %w", err)
 	}
 	versioned := filepath.Join(cache, name+execSuffix)
-	if err = downloadFile(ctx, url, versioned, "", 0o755); err != nil {
+	if err = huggingface.DownloadFile(ctx, url, versioned, "", 0o755); err != nil {
 		return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
 	}
 	// Copy it as the default executable to use.

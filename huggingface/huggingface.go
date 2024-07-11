@@ -2,10 +2,9 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package sillybot
+package huggingface
 
 import (
-	"archive/zip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,17 +20,53 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
-type HuggingFace struct {
+// Model is a model stored on https://huggingface.co
+type Model struct {
+	// Repo is in the form <user>/<project>.
+	Repo string
+	// Upstream is the upstream repo when the model is based on another one.
+	Upstream string
+	// PackagingType is the file format used in the model. It can be one of
+	// "safetensors", "gguf" or "llamafile".
+	PackagingType string
+	// Basename is the base filename when PackagingType is one of "gguf" or
+	// "llamafile".
+	Basename string
+	// Tensor is the native quantization of the weight. Frequently "BF16" for
+	// "bfloat16" type. This is found in config.json in Upstream.
+	TensorType string
+	// Number of weights. Has direct impact on performance and memory usage.
+	NumWeight int
+	// ContentLength is the number of tokens that the LLM can take as context
+	// when relevant. Has impact on performance and memory usage. Not relevant
+	// for image generators.
+	ContextLength int
+	// License is the license of the weights, for whatever that means. Use the
+	// name for well known licences (e.g. "Apache v2.0" or "MIT") or an URL for
+	// custom licenses.
+	License string
+
+	_ struct{}
+}
+
+// URL returns the Model's canonical URL.
+func (m *Model) URL() string {
+	return "https://huggingface.co/" + m.Repo
+}
+
+// Client is the client for https://huggingface.co/.
+type Client struct {
+	Cache string
+
 	// serverBase is mocked in test.
 	serverBase string
 	token      string
-	cache      string
 }
 
-// newHuggingFace returns a new HuggingFace client to download files.
+// New returns a new *Client client to download files and list repositories.
 //
 // It uses the endpoints as described at https://huggingface.co/docs/hub/api.
-func newHuggingFace(token string, cache string) (*HuggingFace, error) {
+func New(token string, cache string) (*Client, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -53,7 +88,7 @@ func newHuggingFace(token string, cache string) (*HuggingFace, error) {
 	if token != "" && !strings.HasPrefix(token, "hf_") {
 		return nil, errors.New("token is invalid, it must have prefix 'hf_'")
 	}
-	return &HuggingFace{serverBase: "https://huggingface.co", token: token, cache: cache}, nil
+	return &Client{serverBase: "https://huggingface.co", token: token, Cache: cache}, nil
 }
 
 // https://huggingface.co/docs/hub/api#get-apimodelsrepoid-or-apimodelsrepoidrevisionrevision
@@ -73,6 +108,7 @@ type modelInfoResponse struct {
 	} `json:"safetensors"`
 }
 
+// ModelInfo contains information retrieved from the repo.
 type ModelInfo struct {
 	Files      []string
 	Created    time.Time
@@ -88,9 +124,9 @@ type ModelInfo struct {
 // ListRepo returns the list of files in the repo.
 //
 // TODO: Support split files.
-func (h *HuggingFace) ListRepo(ctx context.Context, repo string) (*ModelInfo, error) {
-	url := h.serverBase + "/api/models/" + repo + "/revision/main"
-	resp, err := authGet(ctx, url, h.token)
+func (c *Client) ListRepo(ctx context.Context, repo string) (*ModelInfo, error) {
+	url := c.serverBase + "/api/models/" + repo + "/revision/main"
+	resp, err := authGet(ctx, url, c.token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list repo %s: %w", repo, err)
 	}
@@ -125,56 +161,22 @@ func (h *HuggingFace) ListRepo(ctx context.Context, repo string) (*ModelInfo, er
 	return out, nil
 }
 
-// ensureFile ensures the file is available, downloads it otherwise.
+// EnsureFile ensures the file is available, downloads it otherwise.
 //
 // TODO: Support split files.
-func (h *HuggingFace) ensureFile(ctx context.Context, repo string, filename string, mode os.FileMode) (string, error) {
-	dst := filepath.Join(h.cache, filename)
+func (c *Client) EnsureFile(ctx context.Context, repo string, filename string, mode os.FileMode) (string, error) {
+	dst := filepath.Join(c.Cache, filename)
 	if _, err := os.Stat(dst); err == nil {
 		return dst, err
 	}
-	url := h.serverBase + "/" + repo + "/resolve/main/" + filename + "?download=true"
-	return dst, downloadFile(ctx, url, dst, h.token, mode)
+	url := c.serverBase + "/" + repo + "/resolve/main/" + filename + "?download=true"
+	return dst, DownloadFile(ctx, url, dst, c.token, mode)
 }
 
-// ensureGGUFFromLlamafile retrieves a file from an HuggingFace repository if missing.
-func (h *HuggingFace) ensureGGUFFromLlamafile(ctx context.Context, repo string, model string) (string, error) {
-	gguf := model + ".gguf"
-	dstgguf := filepath.Join(h.cache, gguf)
-	if _, err := os.Stat(dstgguf); err == nil {
-		return dstgguf, err
-	}
-	// Get the llamafile first.
-	src, err := h.ensureFile(ctx, repo, model+".llamafile", 0o755)
-	if err != nil {
-		return dstgguf, err
-	}
-	z, err := zip.OpenReader(src)
-	if err != nil {
-		return dstgguf, err
-	}
-	defer z.Close()
-	for _, i := range z.File {
-		if i.Name == gguf {
-			s, err := i.Open()
-			if err != nil {
-				return dstgguf, err
-			}
-			defer s.Close()
-			d, err := os.OpenFile(dstgguf, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-			if err != nil {
-				return dstgguf, err
-			}
-			defer d.Close()
-			_, err = io.CopyN(d, s, int64(i.UncompressedSize64))
-			return dstgguf, err
-		}
-	}
-	return dstgguf, errors.New("gguf not found")
-}
-
-// downloadFile downloads a file optionally with a bearer token.
-func downloadFile(ctx context.Context, url, dst string, token string, mode os.FileMode) error {
+// DownloadFile downloads a file optionally with a bearer token.
+//
+// It prints a progress bar.
+func DownloadFile(ctx context.Context, url, dst string, token string, mode os.FileMode) error {
 	slog.Info("hf", "downloading", url)
 	resp, err := authGet(ctx, url, token)
 	if err != nil {
@@ -194,6 +196,7 @@ func downloadFile(ctx context.Context, url, dst string, token string, mode os.Fi
 	return err
 }
 
+// authGet does an authenticated HTTP request with a Bearer token.
 func authGet(ctx context.Context, url, token string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
