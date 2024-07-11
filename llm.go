@@ -169,7 +169,7 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 		{Role: User, Content: "reply with \"ok\""},
 	}
 	for ctx.Err() == nil {
-		if resp, err := l.Prompt(ctx, msgs); err == nil {
+		if resp, err := l.Prompt(ctx, msgs, 1, 0.1); err == nil {
 			// Phi-3 can't follow orders properly.
 			if strings.ToLower(resp) != "ok" {
 				_ = l.Close()
@@ -213,7 +213,16 @@ func (l *LLM) Close() error {
 }
 
 // Prompt prompts the LLM and returns the reply.
-func (l *LLM) Prompt(ctx context.Context, msgs []Message) (string, error) {
+//
+// Use a non-zero seed to get deterministic output (without strong guarantees).
+//
+// Use low temperature (<1.0) to get more deterministic and repetitive output.
+//
+// Use high temperature (>1.0) to get more creative and random text. High
+// values can result in nonsensical responses.
+//
+// It is recommended to use 1.0 by default.
+func (l *LLM) Prompt(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
 	start := time.Now()
 	lvl := slog.LevelInfo
 	if l.loading {
@@ -221,7 +230,7 @@ func (l *LLM) Prompt(ctx context.Context, msgs []Message) (string, error) {
 		lvl = slog.LevelDebug
 	}
 	slog.Log(ctx, lvl, "llm", "msgs", msgs)
-	reply, err := l.promptBlocking(ctx, msgs)
+	reply, err := l.promptBlocking(ctx, msgs, seed, temperature)
 	if err != nil {
 		lvl := slog.LevelDebug
 		if !l.loading || err == context.Canceled {
@@ -243,7 +252,16 @@ func (l *LLM) Prompt(ctx context.Context, msgs []Message) (string, error) {
 }
 
 // PromptStreaming prompts the LLM and returns the reply in the supplied channel.
-func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, words chan<- string) error {
+//
+// Use a non-zero seed to get deterministic output (without strong guarantees).
+//
+// Use low temperature (<1.0) to get more deterministic and repetitive output.
+//
+// Use high temperature (>1.0) to get more creative and random text. High
+// values can result in nonsensical responses.
+//
+// It is recommended to use 1.0 by default.
+func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) error {
 	start := time.Now()
 	lvl := slog.LevelInfo
 	if l.loading {
@@ -251,7 +269,7 @@ func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, words chan<- 
 		lvl = slog.LevelDebug
 	}
 	slog.Log(ctx, lvl, "llm", "msgs", msgs)
-	reply, err := l.promptStreaming(ctx, msgs, words)
+	reply, err := l.promptStreaming(ctx, msgs, seed, temperature, words)
 	if err != nil {
 		lvl := slog.LevelDebug
 		if !l.loading || err == context.Canceled {
@@ -264,8 +282,13 @@ func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, words chan<- 
 	return nil
 }
 
-func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error) {
-	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs}
+func (l *LLM) promptBlocking(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
+	data := openAIChatCompletionRequest{
+		Model:       "ignored",
+		Messages:    msgs,
+		Seed:        seed,
+		Temperature: temperature,
+	}
 	b, err := json.Marshal(data)
 	if err != nil {
 		return "", fmt.Errorf("internal error: %w", err)
@@ -293,8 +316,14 @@ func (l *LLM) promptBlocking(ctx context.Context, msgs []Message) (string, error
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, words chan<- string) (string, error) {
-	data := openAIChatCompletionRequest{Model: "ignored", Messages: msgs, Stream: true}
+func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) (string, error) {
+	data := openAIChatCompletionRequest{
+		Model:       "ignored",
+		Messages:    msgs,
+		Stream:      true,
+		Seed:        seed,
+		Temperature: temperature,
+	}
 	b, err := json.Marshal(data)
 	if err != nil {
 		return "", fmt.Errorf("internal error: %w", err)
@@ -360,7 +389,8 @@ type openAIChatCompletionRequest struct {
 	Model       string    `json:"model"`
 	Stream      bool      `json:"stream"`
 	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature"`
+	Seed        int       `json:"seed,omitempty"`
+	Temperature float64   `json:"temperature,omitempty"`
 }
 
 // Role is one of the LLM known roles.

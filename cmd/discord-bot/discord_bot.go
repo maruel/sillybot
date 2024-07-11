@@ -512,7 +512,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 			}
 		}
 	}()
-	err := d.l.PromptStreaming(d.ctx, c.Messages, words)
+	err := d.l.PromptStreaming(d.ctx, c.Messages, 0, 1.0, words)
 	close(words)
 	wg.Wait()
 
@@ -541,7 +541,7 @@ func (d *discordBot) handleImage(req intReq) {
 			{Role: sillybot.System, Content: imagePrompt},
 			{Role: sillybot.User, Content: req.description},
 		}
-		if reply, err := d.l.Prompt(d.ctx, msgs); err != nil {
+		if reply, err := d.l.Prompt(d.ctx, msgs, 0, 1.0); err != nil {
 			slog.Error("discord", "command", req.cmdName, "message", "failed to enhance prompt", "error", err)
 			content += "*LLM Error*: " + escapeMarkdown(err.Error()) + "\n"
 		} else {
@@ -560,7 +560,7 @@ func (d *discordBot) handleImage(req intReq) {
 			{Role: sillybot.System, Content: memePrompt},
 			{Role: sillybot.User, Content: req.description},
 		}
-		if meme, err := d.l.Prompt(d.ctx, msgs); err != nil {
+		if meme, err := d.l.Prompt(d.ctx, msgs, 0, 1.0); err != nil {
 			slog.Error("discord", "command", req.cmdName, "message", "failed to make meme prompt", "error", err)
 			content += "*LLM Error*: " + escapeMarkdown(err.Error()) + "\n"
 		} else {

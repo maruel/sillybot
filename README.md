@@ -10,7 +10,7 @@ Type in chat:
 
 `/meme_auto sillybot meme generator awesome`
 
-Get:
+Receive:
 
 ![Meme Lord in Training](https://raw.githubusercontent.com/wiki/maruel/sillybot/meme_lord.png)
 

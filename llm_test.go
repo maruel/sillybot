@@ -72,7 +72,7 @@ func testModel(t *testing.T, model string) {
 		{Role: System, Content: "You are an AI assistant. You strictly follow orders. Do not add punctuation. Do not use uppercase letters."},
 		{Role: User, Content: "reply with \"ok chief\""},
 	}
-	got, err := l.Prompt(ctx, msgs)
+	got, err := l.Prompt(ctx, msgs, 1, 0.1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func testModelStreaming(t *testing.T, model string) {
 		}
 		wg.Done()
 	}()
-	err = l.PromptStreaming(ctx, msgs, words)
+	err = l.PromptStreaming(ctx, msgs, 1, 0.1, words)
 	close(words)
 	wg.Wait()
 	if err != nil {

@@ -103,6 +103,8 @@ func (ig *ImageGen) Close() error {
 }
 
 // GenImage returns an image based on the prompt.
+//
+// Use a non-zero seed to get deterministic output (without strong guarantees).
 func (ig *ImageGen) GenImage(ctx context.Context, prompt string, seed int) (*image.NRGBA, error) {
 	start := time.Now()
 	if !ig.loading {
