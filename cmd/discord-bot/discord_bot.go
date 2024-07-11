@@ -203,6 +203,13 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 			},
 		},
 
+		// list_models
+		{
+			Name:        "list_models",
+			Type:        discordgo.ChatApplicationCommand,
+			Description: "List models available and the one currently used.",
+		},
+
 		// forget
 		{
 			Name:        "forget",
@@ -332,6 +339,8 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 	switch data.Name {
 	case "forget":
 		d.onForget(event, data)
+	case "list_models":
+		d.onListModels(event, data)
 	case "meme_auto", "meme_manual", "meme_labels_auto", "image_auto", "image_manual":
 		d.onImage(event, data)
 	default:
@@ -360,6 +369,62 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	c.Messages = []sillybot.Message{{Role: sillybot.System, Content: opts.SystemPrompt}}
 	if err := d.interactionRespond(event.Interaction, reply); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
+	}
+}
+
+func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	var replies []string
+	reply := "Known models:\n"
+	for _, k := range d.l.KnownLLMs {
+		reply += "- [`" + k.Basename + "`](" + k.URL + ") "
+		info, err := d.l.HF.ListRepo(d.ctx, k.URL[len("https://huggingface.co/"):])
+		if err != nil {
+			reply += " Oh no, we failed to query: " + err.Error()
+			slog.Error("discord", "command", data.Name, "error", err)
+		} else {
+			reply += " Quantizations: "
+			for _, f := range info.Files {
+				if !strings.HasPrefix(f, k.Basename) {
+					continue
+				}
+				f = f[len(k.Basename):]
+				f = strings.TrimSuffix(f, ".gguf")
+				f = strings.TrimSuffix(f, ".llamafile")
+				reply += f + ", "
+			}
+			infoUpstream, err := d.l.HF.ListRepo(d.ctx, k.Upstream[len("https://huggingface.co/"):])
+			if err != nil {
+				reply += " Oh no, we failed to query: " + err.Error()
+				slog.Error("discord", "command", data.Name, "error", err)
+			} else {
+				if infoUpstream.Size != 0 {
+					reply += fmt.Sprintf(" Tensors: %s in %.fB", infoUpstream.Tensor, float64(infoUpstream.Size)*0.000000001)
+				}
+				if infoUpstream.LicenseURL != "" {
+					reply += " License: [" + infoUpstream.License + "](" + infoUpstream.LicenseURL + ")"
+				} else {
+					reply += " License: " + infoUpstream.License
+				}
+			}
+		}
+		reply += "\n"
+		if len(reply) > 1000 {
+			// Don't hit the 2000 characters limit.
+			replies = append(replies, reply)
+			reply = ""
+		}
+	}
+	if reply != "" {
+		replies = append(replies, reply)
+	}
+	if err := d.interactionRespond(event.Interaction, replies[0]); err != nil {
+		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
+	}
+	for _, r := range replies[1:] {
+		// TODO: use MessageID so it becomes a set of replies.
+		if _, err := d.dg.ChannelMessageSend(event.Interaction.ChannelID, r); err != nil {
+			slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
+		}
 	}
 }
 

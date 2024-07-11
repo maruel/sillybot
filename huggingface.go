@@ -21,62 +21,74 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
-type huggingface struct {
+type HuggingFace struct {
 	// serverBase is mocked in test.
 	serverBase string
 	token      string
 	cache      string
 }
 
-// newHuggingFace returns a new huggingface client to download files.
+// newHuggingFace returns a new HuggingFace client to download files.
 //
 // It uses the endpoints as described at https://huggingface.co/docs/hub/api.
-func newHuggingFace(token string, cache string) (*huggingface, error) {
+func newHuggingFace(token string, cache string) (*HuggingFace, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
 	tokenFile := filepath.Join(home, ".cache", "huggingface", "token")
 	if token == "" {
-		t, err := os.ReadFile(tokenFile)
-		if err != nil {
+		if t, err := os.ReadFile(tokenFile); err == nil {
 			token = strings.TrimSpace(string(t))
+			slog.Info("hf", "message", "found token from cache", "file", tokenFile)
 		}
 	} else {
 		if _, err := os.Stat(tokenFile); os.IsNotExist(err) {
 			if err = os.WriteFile(tokenFile, []byte(token), 0o644); err != nil {
 				return nil, err
 			}
+			slog.Info("hf", "message", "saved token to cache", "file", tokenFile)
 		}
 	}
-	return &huggingface{serverBase: "https://huggingface.co", token: token, cache: cache}, nil
+	if token != "" && !strings.HasPrefix(token, "hf_") {
+		return nil, errors.New("token is invalid, it must have prefix 'hf_'")
+	}
+	return &HuggingFace{serverBase: "https://huggingface.co", token: token, cache: cache}, nil
 }
 
 // https://huggingface.co/docs/hub/api#get-apimodelsrepoid-or-apimodelsrepoidrevisionrevision
 type modelInfoResponse struct {
-	Siblings []struct {
+	LastModified time.Time `json:"lastModified"`
+	Siblings     []struct {
 		Filename string `json:"rfilename"`
 	}
-	LastModified time.Time `json:"lastModified"`
-	CreatedAt    time.Time `json:"createdAt"`
-	SafeTensors  struct {
+	CardData struct {
+		License    string
+		LicenseURL string `json:"license_link"`
+	} `json:"cardData"`
+	CreatedAt   time.Time `json:"createdAt"`
+	SafeTensors struct {
 		Parameters map[string]int64
 		Total      int64
 	} `json:"safetensors"`
 }
 
-type modelInfo struct {
-	files    []string
-	created  time.Time
-	modified time.Time
-	tensor   string
-	size     int64
+type ModelInfo struct {
+	Files      []string
+	Created    time.Time
+	Modified   time.Time
+	Tensor     string
+	Size       int64
+	License    string
+	LicenseURL string
+
+	_ struct{}
 }
 
-// listRepo returns the list of files in the repo.
+// ListRepo returns the list of files in the repo.
 //
 // TODO: Support split files.
-func (h *huggingface) listRepo(ctx context.Context, repo string) (*modelInfo, error) {
+func (h *HuggingFace) ListRepo(ctx context.Context, repo string) (*ModelInfo, error) {
 	url := h.serverBase + "/api/models/" + repo + "/revision/main"
 	resp, err := authGet(ctx, url, h.token)
 	if err != nil {
@@ -91,22 +103,24 @@ func (h *huggingface) listRepo(ctx context.Context, repo string) (*modelInfo, er
 	if err := json.Unmarshal(b, &r); err != nil {
 		return nil, fmt.Errorf("failed to parse list repo %s response: %w", repo, err)
 	}
-	out := &modelInfo{
-		files:    make([]string, len(r.Siblings)),
-		created:  r.CreatedAt,
-		modified: r.LastModified,
+	out := &ModelInfo{
+		Files:      make([]string, len(r.Siblings)),
+		Created:    r.CreatedAt,
+		Modified:   r.LastModified,
+		License:    r.CardData.License,
+		LicenseURL: r.CardData.LicenseURL,
 	}
 	for i := range r.Siblings {
-		out.files[i] = r.Siblings[i].Filename
+		out.Files[i] = r.Siblings[i].Filename
 	}
 	for k, m := range r.SafeTensors.Parameters {
-		if m > out.size {
-			out.tensor = k
-			out.size = m
+		if m > out.Size {
+			out.Tensor = k
+			out.Size = m
 		}
 	}
-	if out.size == 0 {
-		out.size = r.SafeTensors.Total
+	if out.Size == 0 {
+		out.Size = r.SafeTensors.Total
 	}
 	return out, nil
 }
@@ -114,7 +128,7 @@ func (h *huggingface) listRepo(ctx context.Context, repo string) (*modelInfo, er
 // ensureFile ensures the file is available, downloads it otherwise.
 //
 // TODO: Support split files.
-func (h *huggingface) ensureFile(ctx context.Context, repo string, filename string, mode os.FileMode) (string, error) {
+func (h *HuggingFace) ensureFile(ctx context.Context, repo string, filename string, mode os.FileMode) (string, error) {
 	dst := filepath.Join(h.cache, filename)
 	if _, err := os.Stat(dst); err == nil {
 		return dst, err
@@ -124,7 +138,7 @@ func (h *huggingface) ensureFile(ctx context.Context, repo string, filename stri
 }
 
 // ensureGGUFFromLlamafile retrieves a file from an HuggingFace repository if missing.
-func (h *huggingface) ensureGGUFFromLlamafile(ctx context.Context, repo string, model string) (string, error) {
+func (h *HuggingFace) ensureGGUFFromLlamafile(ctx context.Context, repo string, model string) (string, error) {
 	gguf := model + ".gguf"
 	dstgguf := filepath.Join(h.cache, gguf)
 	if _, err := os.Stat(dstgguf); err == nil {

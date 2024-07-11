@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestList(t *testing.T) {
@@ -23,17 +24,17 @@ func TestList(t *testing.T) {
 		w.Write([]byte(apiRepoPhi3Data))
 	}))
 	defer server.Close()
-	h, err := newHuggingFace("tok", t.TempDir())
+	h, err := newHuggingFace("", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.serverBase = server.URL
-	got, err := h.listRepo(context.Background(), "microsoft/Phi-3-mini-4k-instruct")
+	got, err := h.ListRepo(context.Background(), "microsoft/Phi-3-mini-4k-instruct")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := modelInfo{
-		files: []string{
+	want := ModelInfo{
+		Files: []string{
 			".gitattributes",
 			"CODE_OF_CONDUCT.md",
 			"LICENSE",
@@ -54,12 +55,14 @@ func TestList(t *testing.T) {
 			"tokenizer.model",
 			"tokenizer_config.json",
 		},
-		created:  time.Date(2024, 04, 22, 16, 18, 17, 0, time.UTC),
-		modified: time.Date(2024, 07, 01, 21, 16, 50, 0000, time.UTC),
-		tensor:   "BF16",
-		size:     3821079552,
+		Created:    time.Date(2024, 04, 22, 16, 18, 17, 0, time.UTC),
+		Modified:   time.Date(2024, 07, 01, 21, 16, 50, 0000, time.UTC),
+		Tensor:     "BF16",
+		Size:       3821079552,
+		License:    "mit",
+		LicenseURL: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct/resolve/main/LICENSE",
 	}
-	if diff := cmp.Diff(&want, got, cmp.AllowUnexported(want)); diff != "" {
+	if diff := cmp.Diff(&want, got, cmpopts.IgnoreUnexported(want)); diff != "" {
 		t.Fatal(diff)
 	}
 }

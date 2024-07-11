@@ -60,7 +60,9 @@ type KnownLLM struct {
 // While it is expected that the model is an Instruct form, it is not a
 // requirement.
 type LLM struct {
-	hf      *huggingface
+	HF        *HuggingFace
+	KnownLLMs []KnownLLM
+
 	c       *exec.Cmd
 	done    <-chan error
 	cancel  func() error
@@ -82,7 +84,7 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 	if err != nil {
 		return nil, err
 	}
-	l := &LLM{hf: hf, loading: true}
+	l := &LLM{HF: hf, KnownLLMs: knownLLMs, loading: true}
 	cachePy := filepath.Join(cache, "py")
 	if opts.Remote == "" {
 		llamasrv := ""
@@ -113,7 +115,7 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 			slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
 
 			// Make sure the model is available.
-			if modelFile, err = l.ensureModel(ctx, opts.Model, knownLLMs); err != nil {
+			if modelFile, err = l.ensureModel(ctx, opts.Model); err != nil {
 				return nil, fmt.Errorf("failed to get llm model: %w", err)
 			}
 		}
@@ -403,7 +405,7 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, seed int, tem
 //
 // Currently hard-coded to GGUF or llamafile files and Hugging Face. Doesn't
 // support split files.
-func (l *LLM) ensureModel(ctx context.Context, model string, knownLLMs []KnownLLM) (string, error) {
+func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
 	// TODO: This is very "meh".
 	switch strings.ToUpper(filepath.Ext(model)) {
 	case ".GGUF":
@@ -427,7 +429,7 @@ func (l *LLM) ensureModel(ctx context.Context, model string, knownLLMs []KnownLL
 	// TODO: It'd be great to enumerate the GGUF files in the repo to help the user.
 
 	// Hack.
-	dst := filepath.Join(l.hf.cache, model+".gguf")
+	dst := filepath.Join(l.HF.cache, model+".gguf")
 	_, err := os.Stat(dst)
 	if err == nil {
 		return dst, nil
@@ -435,7 +437,7 @@ func (l *LLM) ensureModel(ctx context.Context, model string, knownLLMs []KnownLL
 	slog.Info("llm", "model", model, "state", "missing")
 	url := ""
 	t := ""
-	for _, k := range knownLLMs {
+	for _, k := range l.KnownLLMs {
 		if strings.HasPrefix(model, k.Basename) {
 			url = k.URL
 			t = k.Type
@@ -453,12 +455,12 @@ func (l *LLM) ensureModel(ctx context.Context, model string, knownLLMs []KnownLL
 	repo := url[len(urlhf):]
 	switch t {
 	case "gguf":
-		if dst, err = l.hf.ensureFile(ctx, repo, model+".gguf", 0o644); err != nil {
+		if dst, err = l.HF.ensureFile(ctx, repo, model+".gguf", 0o644); err != nil {
 			err = fmt.Errorf("can't find model %q at %s: %w", model, url, err)
 		}
 	case "llamafile":
 		// TODO: Remove support for llamafile.
-		if dst, err = l.hf.ensureGGUFFromLlamafile(ctx, repo, model); err != nil {
+		if dst, err = l.HF.ensureGGUFFromLlamafile(ctx, repo, model); err != nil {
 			err = fmt.Errorf("can't find model %q at %s: %w", model, url, err)
 		}
 	default:
