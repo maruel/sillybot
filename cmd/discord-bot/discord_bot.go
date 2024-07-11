@@ -469,38 +469,16 @@ func (d *discordBot) handlePrompt(req msgReq) {
 				}
 				pending += w
 			case <-t.C:
-				// Don't send one word at a time! Cut at punctuations. Keep backquotes
-				// escaping together. This is especially important when the LLM is
-				// slow.
-				const punctuations = ":.?!"
-				backquotes := strings.Count(pending, "```")
-				hasPunctuation := strings.ContainsAny(pending, punctuations)
-				if backquotes == 0 && !hasPunctuation {
+				i := splitResponse(pending)
+				if i == 0 {
 					continue
 				}
-				toSend := ""
-				// If there's backquote escaping used, make sure they are closed
-				// otherwise the markdown will be broken.
-				if (backquotes & 1) == 1 {
-					i := strings.Index(pending, "```")
-					if i == 0 {
-						continue
-					}
-					toSend = pending[:i]
-				} else {
-					i := strings.LastIndexAny(pending, punctuations+"`")
-					if i == -1 {
-						// Can't happen.
-						continue
-					}
-					toSend = pending[:i+1]
-				}
 				msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-					Content:   toSend,
+					Content:   pending[:i],
 					Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
 				})
-				text += toSend
-				pending = pending[len(toSend):]
+				text += pending[:i]
+				pending = pending[i:]
 				if err != nil {
 					slog.Error("discord", "message", "failed posting message", "error", err)
 				} else {
@@ -521,6 +499,68 @@ func (d *discordBot) handlePrompt(req msgReq) {
 			slog.Error("discord", "message", "failed posting message", "error", err)
 		}
 	}
+}
+
+// splitResponse take pending reply from the LLM and returns the amount of
+// bytes to send back. Returns 0 if nothing should be sent.
+//
+// The basic assumption here is that most LLMs are trained to generate
+// markdown, for the better or worst.
+//
+// If you spot a case where it doesn't work right in the wild, please fix and
+// add a test case! Make sure it's 100% test coverage (except the panic).
+func splitResponse(t string) int {
+	// First priority is 3 backquotes. We must never break that in the middle.
+	if backquotes := strings.Count(t, "```"); backquotes == 1 {
+		i := strings.Index(t, "```")
+		t = t[:i]
+	} else if backquotes >= 2 {
+		// Cut right after the second.
+		start := strings.Index(t, "```") + 3
+		return strings.Index(t[start:], "```") + start + 3
+	}
+	if t == "" {
+		return 0
+	}
+
+	// If there's a EOL, use it.
+	if i := strings.LastIndexByte(t, '\n'); i >= 10 {
+		return i + 1
+	}
+
+	// Now look for enumerations. The only thing we want to break on for
+	// enumerations is '\n'.
+	isEnum := strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ")
+	if !isEnum {
+		var err error
+		isEnum, err = regexp.MatchString(t, `^\d+\. .*`)
+		if err != nil {
+			panic(err)
+		}
+	}
+	if isEnum {
+		return 0
+	}
+
+	if len(t) < 10 {
+		// Not enough characters to send, ignore.
+		return 0
+	}
+
+	// If there's backquotes, e.g. `foo.bar`, they mess up punctuation search. So
+	// only start the search after the last backquote.
+	start := 0
+	if backquotes := strings.Count(t, "`"); (backquotes & 1) == 1 {
+		// Impair number of backquotes. Limit ourselves up to the last one.
+		t = t[:strings.LastIndexByte(t, '`')]
+	}
+
+	// TODO: Highlighting pairs: '*' and '_'
+	i := strings.LastIndexAny(t[start:], ".?!")
+	if i == -1 {
+		return 0
+	}
+	return start + i + 1
 }
 
 // handleImage generates an image based on the user prompt.
