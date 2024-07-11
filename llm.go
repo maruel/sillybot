@@ -41,22 +41,37 @@ type LLMOptions struct {
 }
 
 // KnownLLM is a known model.
+//
+// Currently assumes it is hosted on HuggingFace.
 type KnownLLM struct {
-	HG       *huggingface.Model
-	URL      string
-	Type     string
+	// RepoID is the repository in the form <author>/<repo>.
+	RepoID string `yaml:"repo"`
+	// PackagingType is the file format used in the model. It can be one of
+	// "safetensors", "gguf" or "llamafile".
+	PackagingType string
+	// Basename is the base filename when PackagingType is one of "gguf" or
+	// "llamafile".
 	Basename string
-	Upstream string
-	Context  int
-	// Native is the native quantization of the weight. Normally BF16. This is
-	// found in config.json in Upstream.
-	Native string
-	// License is the license of the weights, for whatever that means. Use the
-	// name for well known licences (e.g. "Apache v2.0" or "MIT") or an URL for
-	// custom licenses.
-	License string
+	// UpstreamID is the upstream repo when the model is based on another one.
+	UpstreamID string `yaml:"upstream"`
 
 	_ struct{}
+}
+
+// URL returns the canonical URL for this repository.
+func (k *KnownLLM) URL() string {
+	return "https://huggingface.co/" + k.RepoID
+}
+
+func (k *KnownLLM) validate() error {
+	if strings.Count(k.RepoID, "/") != 1 {
+		return errors.New("invalid repo")
+	}
+	if strings.Count(k.UpstreamID, "/") != 1 {
+		return errors.New("invalid upstream")
+	}
+	// TODO: more validation.
+	return nil
 }
 
 // LLM runs a llamafile server and runs queries on it.
@@ -443,8 +458,8 @@ func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
 	t := ""
 	for _, k := range l.KnownLLMs {
 		if strings.HasPrefix(model, k.Basename) {
-			url = k.URL
-			t = k.Type
+			url = k.URL()
+			t = k.PackagingType
 			break
 		}
 	}

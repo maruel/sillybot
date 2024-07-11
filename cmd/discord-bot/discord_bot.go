@@ -13,6 +13,7 @@ import (
 	"image/png"
 	"log/slog"
 	"math"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -377,10 +378,10 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 	var replies []string
 	reply := "Known models:\n"
 	for _, k := range d.l.KnownLLMs {
-		reply += "- [`" + k.Basename + "`](" + k.URL + ") "
-		parts := strings.SplitN(k.URL[len("https://huggingface.co/"):], "/", 2)
-		info := huggingface.Model{Author: parts[0], Repo: parts[1]}
-		if err := d.l.HF.GetModel(d.ctx, &info); err != nil {
+		reply += "- [`" + k.Basename + "`](" + k.URL() + ") "
+		parts := strings.SplitN(k.RepoID, "/", 2)
+		info := huggingface.Model{ModelRef: huggingface.ModelRef{Author: parts[0], Repo: parts[1]}}
+		if err := d.l.HF.GetModelInfo(d.ctx, &info); err != nil {
 			reply += " Oh no, we failed to query: " + err.Error()
 			slog.Error("discord", "command", data.Name, "error", err)
 		} else {
@@ -389,24 +390,30 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 				if !strings.HasPrefix(f, k.Basename) {
 					continue
 				}
+				if strings.HasPrefix(filepath.Ext(f), ".cat") {
+					// TODO: Support split files. For now just hide them. They are large
+					// anyway so it's only for power users.
+					continue
+				}
 				f = f[len(k.Basename):]
 				f = strings.TrimSuffix(f, ".gguf")
 				f = strings.TrimSuffix(f, ".llamafile")
 				reply += f + ", "
 			}
-			parts = strings.SplitN(k.Upstream[len("https://huggingface.co/"):], "/", 2)
-			infoUpstream := huggingface.Model{Author: parts[0], Repo: parts[1]}
-			if err = d.l.HF.GetModel(d.ctx, &infoUpstream); err != nil {
-				reply += " Oh no, we failed to query: " + err.Error()
-				slog.Error("discord", "command", data.Name, "error", err)
-			} else {
-				if infoUpstream.NumWeights != 0 {
-					reply += fmt.Sprintf(" Tensors: %s in %.fB", infoUpstream.TensorType, float64(infoUpstream.NumWeights)*0.000000001)
-				}
-				if infoUpstream.LicenseURL != "" {
-					reply += " License: [" + infoUpstream.License + "](" + infoUpstream.LicenseURL + ")"
+			if info.Upstream.Author != "" && info.Upstream.Repo != "" {
+				infoUpstream := huggingface.Model{ModelRef: info.Upstream}
+				if err = d.l.HF.GetModelInfo(d.ctx, &infoUpstream); err != nil {
+					reply += " Oh no, we failed to query: " + err.Error()
+					slog.Error("discord", "command", data.Name, "error", err)
 				} else {
-					reply += " License: " + infoUpstream.License
+					if infoUpstream.NumWeights != 0 {
+						reply += fmt.Sprintf(" Tensors: %s in %.fB", infoUpstream.TensorType, float64(infoUpstream.NumWeights)*0.000000001)
+					}
+					if infoUpstream.LicenseURL != "" {
+						reply += " License: [" + infoUpstream.License + "](" + infoUpstream.LicenseURL + ")"
+					} else {
+						reply += " License: " + infoUpstream.License
+					}
 				}
 			}
 		}

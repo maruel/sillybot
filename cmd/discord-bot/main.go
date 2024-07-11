@@ -82,7 +82,7 @@ func mainImpl() error {
 					}
 				}
 				for _, k := range cfg.KnownLLMs {
-					fmt.Fprintf(o, "  %-*s: %s\n", l, k.Basename+"*", k.URL)
+					fmt.Fprintf(o, "  %-*s: %s\n", l, k.Basename+"*", k.URL())
 				}
 			}
 		}

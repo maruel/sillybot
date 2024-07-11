@@ -20,20 +20,19 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
-// Model is a model stored on https://huggingface.co
-type Model struct {
+// ModelRef is a reference to a model stored on https://huggingface.co
+type ModelRef struct {
 	// Author is the owner, either a person or an organization.
 	Author string
 	// Repo is the name of the repository owned by the Author.
 	Repo string
+}
+
+// Model is a model stored on https://huggingface.co
+type Model struct {
+	ModelRef
 	// Upstream is the upstream repo when the model is based on another one.
-	Upstream string
-	// PackagingType is the file format used in the model. It can be one of
-	// "safetensors", "gguf" or "llamafile".
-	PackagingType string
-	// Basename is the base filename when PackagingType is one of "gguf" or
-	// "llamafile".
-	Basename string
+	Upstream ModelRef
 
 	// Information filled by GetModel():
 
@@ -118,6 +117,7 @@ type modelInfoResponse struct {
 		Filename string `json:"rfilename"`
 	}
 	CardData struct {
+		BaseModel  string `json:"base_model"`
 		License    string
 		LicenseURL string `json:"license_link"`
 	} `json:"cardData"`
@@ -128,8 +128,9 @@ type modelInfoResponse struct {
 	} `json:"safetensors"`
 }
 
-// GetModel fills the supplied Model with information from the HuggingFace Hub.
-func (c *Client) GetModel(ctx context.Context, m *Model) error {
+// GetModelInfo fills the supplied Model with information from the HuggingFace Hub.
+func (c *Client) GetModelInfo(ctx context.Context, m *Model) error {
+	slog.Info("hf", "model", m.RepoID())
 	url := c.serverBase + "/api/models/" + m.RepoID() + "/revision/main"
 	resp, err := authGet(ctx, url, c.token)
 	if err != nil {
@@ -147,6 +148,11 @@ func (c *Client) GetModel(ctx context.Context, m *Model) error {
 	m.Files = make([]string, len(r.Siblings))
 	m.Created = r.CreatedAt
 	m.Modified = r.LastModified
+	parts := strings.Split(r.CardData.BaseModel, "/")
+	if len(parts) == 2 {
+		m.Upstream.Author = parts[0]
+		m.Upstream.Repo = parts[1]
+	}
 	m.License = r.CardData.License
 	m.LicenseURL = r.CardData.LicenseURL
 	for i := range r.Siblings {

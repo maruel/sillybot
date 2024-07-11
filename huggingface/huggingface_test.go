@@ -37,15 +37,19 @@ func TestGetModel(t *testing.T) {
 	c.serverBase = server.URL
 
 	got := Model{
-		Author: "microsoft",
-		Repo:   "Phi-3-mini-4k-instruct",
+		ModelRef: ModelRef{
+			Author: "microsoft",
+			Repo:   "Phi-3-mini-4k-instruct",
+		},
 	}
 	if err := c.GetModel(context.Background(), &got); err != nil {
 		t.Fatal(err)
 	}
 	want := Model{
-		Author: "microsoft",
-		Repo:   "Phi-3-mini-4k-instruct",
+		ModelRef: ModelRef{
+			Author: "microsoft",
+			Repo:   "Phi-3-mini-4k-instruct",
+		},
 		Files: []string{
 			".gitattributes",
 			"CODE_OF_CONDUCT.md",

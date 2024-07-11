@@ -37,6 +37,15 @@ type Config struct {
 	KnownLLMs []KnownLLM
 }
 
+func (c *Config) validate() error {
+	for i := range c.KnownLLMs {
+		if err := c.KnownLLMs[i].validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // LoadOrDefault loads a config or write the default to disk.
 func (c *Config) LoadOrDefault(config string) error {
 	b, err := os.ReadFile(config)
