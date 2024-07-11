@@ -25,7 +25,7 @@ import (
 
 // Default configuration with well known models and sane presets.
 //
-//go:embed config.yml
+//go:embed default_config.yml
 var DefaultConfig []byte
 
 // Config defines the configuration format.
