@@ -453,7 +453,7 @@ func (l *LLM) ensureModel(ctx context.Context, model string, knownLLMs []KnownLL
 	repo := url[len(urlhf):]
 	switch t {
 	case "gguf":
-		if dst, err = l.hf.ensure(ctx, repo, model+".gguf", 0o644); err != nil {
+		if dst, err = l.hf.ensureFile(ctx, repo, model+".gguf", 0o644); err != nil {
 			err = fmt.Errorf("can't find model %q at %s: %w", model, url, err)
 		}
 	case "llamafile":

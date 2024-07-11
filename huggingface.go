@@ -7,6 +7,7 @@ package sillybot
 import (
 	"archive/zip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,16 +16,21 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/schollz/progressbar/v3"
 )
 
 type huggingface struct {
-	token string
-	cache string
+	// serverBase is mocked in test.
+	serverBase string
+	token      string
+	cache      string
 }
 
 // newHuggingFace returns a new huggingface client to download files.
+//
+// It uses the endpoints as described at https://huggingface.co/docs/hub/api.
 func newHuggingFace(token string, cache string) (*huggingface, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -43,18 +49,77 @@ func newHuggingFace(token string, cache string) (*huggingface, error) {
 			}
 		}
 	}
-	return &huggingface{token: token, cache: cache}, nil
+	return &huggingface{serverBase: "https://huggingface.co", token: token, cache: cache}, nil
 }
 
-// ensure ensures the file is available, downloads it otherwise.
+// https://huggingface.co/docs/hub/api#get-apimodelsrepoid-or-apimodelsrepoidrevisionrevision
+type modelInfoResponse struct {
+	Siblings []struct {
+		Filename string `json:"rfilename"`
+	}
+	LastModified time.Time `json:"lastModified"`
+	CreatedAt    time.Time `json:"createdAt"`
+	SafeTensors  struct {
+		Parameters map[string]int64
+		Total      int64
+	} `json:"safetensors"`
+}
+
+type modelInfo struct {
+	files    []string
+	created  time.Time
+	modified time.Time
+	tensor   string
+	size     int64
+}
+
+// listRepo returns the list of files in the repo.
 //
 // TODO: Support split files.
-func (h *huggingface) ensure(ctx context.Context, repo string, filename string, mode os.FileMode) (string, error) {
+func (h *huggingface) listRepo(ctx context.Context, repo string) (*modelInfo, error) {
+	url := h.serverBase + "/api/models/" + repo + "/revision/main"
+	resp, err := authGet(ctx, url, h.token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list repo %s: %w", repo, err)
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list repo %s: %w", repo, err)
+	}
+	r := modelInfoResponse{}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, fmt.Errorf("failed to parse list repo %s response: %w", repo, err)
+	}
+	out := &modelInfo{
+		files:    make([]string, len(r.Siblings)),
+		created:  r.CreatedAt,
+		modified: r.LastModified,
+	}
+	for i := range r.Siblings {
+		out.files[i] = r.Siblings[i].Filename
+	}
+	for k, m := range r.SafeTensors.Parameters {
+		if m > out.size {
+			out.tensor = k
+			out.size = m
+		}
+	}
+	if out.size == 0 {
+		out.size = r.SafeTensors.Total
+	}
+	return out, nil
+}
+
+// ensureFile ensures the file is available, downloads it otherwise.
+//
+// TODO: Support split files.
+func (h *huggingface) ensureFile(ctx context.Context, repo string, filename string, mode os.FileMode) (string, error) {
 	dst := filepath.Join(h.cache, filename)
 	if _, err := os.Stat(dst); err == nil {
 		return dst, err
 	}
-	url := "https://huggingface.co/" + repo + "/resolve/main/" + filename + "?download=true"
+	url := h.serverBase + "/" + repo + "/resolve/main/" + filename + "?download=true"
 	return dst, downloadFile(ctx, url, dst, h.token, mode)
 }
 
@@ -66,7 +131,7 @@ func (h *huggingface) ensureGGUFFromLlamafile(ctx context.Context, repo string, 
 		return dstgguf, err
 	}
 	// Get the llamafile first.
-	src, err := h.ensure(ctx, repo, model+".llamafile", 0o755)
+	src, err := h.ensureFile(ctx, repo, model+".llamafile", 0o755)
 	if err != nil {
 		return dstgguf, err
 	}
@@ -97,27 +162,11 @@ func (h *huggingface) ensureGGUFFromLlamafile(ctx context.Context, repo string, 
 // downloadFile downloads a file optionally with a bearer token.
 func downloadFile(ctx context.Context, url, dst string, token string, mode os.FileMode) error {
 	slog.Info("hf", "downloading", url)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to download %q: %w", dst, err)
-	}
-	if token != "" {
-		req.Header.Add("Authorization", "Bearer "+token)
-	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := authGet(ctx, url, token)
 	if err != nil {
 		return fmt.Errorf("failed to download %q: %w", dst, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == 401 {
-		if token != "" {
-			return errors.New("double check if your token is valid")
-		}
-		return errors.New("a valid token is likely required")
-	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("request status: %s", resp.Status)
-	}
 	// Only then create the file.
 	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
@@ -129,4 +178,28 @@ func downloadFile(ctx context.Context, url, dst string, token string, mode os.Fi
 	bar := progressbar.DefaultBytes(resp.ContentLength, "downloading")
 	_, err = io.Copy(io.MultiWriter(f, bar), resp.Body)
 	return err
+}
+
+func authGet(ctx context.Context, url, token string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		// Unlikely.
+		return nil, err
+	}
+	if token != "" {
+		req.Header.Add("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if resp.StatusCode != 200 {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode == 401 {
+			if token != "" {
+				return nil, fmt.Errorf("double check if your token is valid: %s", resp.Status)
+			}
+			return nil, fmt.Errorf("a valid token is likely required: %s", resp.Status)
+		}
+		return nil, fmt.Errorf("request status: %s", resp.Status)
+	}
+	return resp, err
 }
