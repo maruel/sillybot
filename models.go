@@ -51,6 +51,17 @@ func (c *Config) LoadOrDefault(config string) error {
 	if err = d.Decode(c); err != nil {
 		return fmt.Errorf("failed to read %q: %w", config, err)
 	}
+	if len(c.KnownLLMs) == 0 {
+		// Load the default knownllms from the default config if it was stripped
+		// out.
+		d := yaml.NewDecoder(bytes.NewReader(DefaultConfig))
+		d.KnownFields(true)
+		defaultCfg := Config{}
+		if err = d.Decode(&defaultCfg); err == nil {
+			slog.Info("models", "message", "using default_config.yml's knownllms")
+			c.KnownLLMs = defaultCfg.KnownLLMs
+		}
+	}
 	return nil
 }
 
