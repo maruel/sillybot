@@ -137,9 +137,17 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 				return nil, fmt.Errorf("failed to create llm server log file: %w", err)
 			}
 			defer log.Close()
-			cmd := mangleForLlamafile(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port), "--nobrowser")
+			// Surprisingly llama-server seems to be hardcoded to 8 threads.
+			threads := runtime.NumCPU() - 1
+			if threads == 0 {
+				threads = 1
+			}
+			common := []string{
+				llamasrv, "--model", modelFile, "-ngl", "9999", "--threads", strconv.Itoa(threads), "--port", strconv.Itoa(port),
+			}
+			cmd := mangleForLlamafile(isLlamafile, append(common, "--nobrowser")...)
 			if !isLlamafile {
-				cmd = mangleForLlamafile(isLlamafile, llamasrv, "--model", modelFile, "-ngl", "9999", "--port", strconv.Itoa(port))
+				cmd = mangleForLlamafile(isLlamafile, common...)
 			}
 			slog.Debug("llm", "command", cmd, "cwd", cache, "log", log.Name())
 			l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
@@ -181,7 +189,7 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 	for ctx.Err() == nil {
 		if resp, err := l.Prompt(ctx, msgs, 1, 0.1); err == nil {
 			// Phi-3 can't follow orders properly.
-			if strings.ToLower(resp) != "ok" {
+			if !strings.HasPrefix(strings.ToLower(resp), "ok") {
 				_ = l.Close()
 				return nil, fmt.Errorf("failed to get initial query from llm server: unexpected response from llm. expected \"ok\", got %q", resp)
 			}
@@ -570,11 +578,11 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		execSuffix = ".exe"
 	}
 	llamaserver := filepath.Join(cache, "llama-server"+execSuffix)
-	if i, err := os.Stat(llamaserver); err == nil && i.Size() > 100000 {
+	if _, err := os.Stat(llamaserver); err == nil {
 		return llamaserver, false, nil
 	}
 	llamafile := filepath.Join(cache, "llamafile"+execSuffix)
-	if i, err := os.Stat(llamaserver); err == nil && i.Size() > 100000 {
+	if _, err := os.Stat(llamafile); err == nil {
 		return llamafile, true, nil
 	}
 
