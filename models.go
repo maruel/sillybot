@@ -61,6 +61,14 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (*LLM, *ImageGen
 	start := time.Now()
 	slog.Info("models", "state", "initializing")
 
+	// Hack, since both may create <cache>/py and it would be racy, create it here.
+	if cfg.Bot.LLM.Model == "python" || cfg.Bot.ImageGen.Model == "python" {
+		cachePy := filepath.Join(cache, "py")
+		if err := os.MkdirAll(cachePy, 0o755); err != nil {
+			return nil, nil, fmt.Errorf("failed to create the directory to cache python: %w", err)
+		}
+	}
+
 	eg := errgroup.Group{}
 	var l *LLM
 	var s *ImageGen

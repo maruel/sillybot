@@ -77,13 +77,17 @@ type LLM struct {
 func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []KnownLLM) (*LLM, error) {
 	svr := "remote"
 	l := &LLM{loading: true}
+	cachePy := filepath.Join(cache, "py")
 	if opts.Remote == "" {
 		llamasrv := ""
 		isLlamafile := false
 		modelFile := ""
 		if opts.Model == "python" {
-			if pyNeedRecreate(cache) {
-				if err := pyRecreate(ctx, cache); err != nil {
+			if err := os.MkdirAll(cachePy, 0o755); err != nil {
+				return nil, fmt.Errorf("failed to create the directory to cache python: %w", err)
+			}
+			if pyNeedRecreate(cachePy) {
+				if err := pyRecreate(ctx, cachePy); err != nil {
 					return nil, fmt.Errorf("failed to load llm: %w", err)
 				}
 			}
@@ -102,8 +106,12 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 			}
 			slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
 
+			cacheModels := filepath.Join(cache, "models")
+			if err := os.MkdirAll(cacheModels, 0o755); err != nil {
+				return nil, fmt.Errorf("failed to create the directory to cache models: %w", err)
+			}
 			// Make sure the model is available.
-			if modelFile, err = getModel(ctx, cache, opts.Model, knownLLMs); err != nil {
+			if modelFile, err = getModel(ctx, cacheModels, opts.Model, knownLLMs); err != nil {
 				return nil, fmt.Errorf("failed to get llm model: %w", err)
 			}
 		}
@@ -112,8 +120,8 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 		port := findFreePort()
 		l.url = fmt.Sprintf("http://localhost:%d/v1/chat/completions", port)
 		if opts.Model == "python" {
-			cmd := []string{filepath.Join(cache, "llm.py"), "--port", strconv.Itoa(port)}
-			done, cancel, err := runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "llm.log"))
+			cmd := []string{filepath.Join(cachePy, "llm.py"), "--port", strconv.Itoa(port)}
+			done, cancel, err := runPython(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "llm.log"))
 			if err != nil {
 				return nil, fmt.Errorf("failed to start python llm server: %w", err)
 			}

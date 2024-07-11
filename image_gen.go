@@ -15,6 +15,7 @@ import (
 	"image/png"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -53,15 +54,19 @@ func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*Ima
 		if opts.Model != "python" {
 			return nil, fmt.Errorf("unknown model %q", opts.Model)
 		}
-		if pyNeedRecreate(cache) {
-			if err := pyRecreate(ctx, cache); err != nil {
+		cachePy := filepath.Join(cache, "py")
+		if err := os.MkdirAll(cachePy, 0o755); err != nil {
+			return nil, fmt.Errorf("failed to create the directory to cache python: %w", err)
+		}
+		if pyNeedRecreate(cachePy) {
+			if err := pyRecreate(ctx, cachePy); err != nil {
 				return nil, err
 			}
 		}
 		port := findFreePort()
-		cmd := []string{filepath.Join(cache, "image_gen.py"), "--port", strconv.Itoa(port)}
+		cmd := []string{filepath.Join(cachePy, "image_gen.py"), "--port", strconv.Itoa(port)}
 		var err error
-		ig.done, ig.cancel, err = runPython(ctx, filepath.Join(cache, "venv"), cmd, cache, filepath.Join(cache, "image_gen.log"))
+		ig.done, ig.cancel, err = runPython(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "image_gen.log"))
 		if err != nil {
 			return nil, err
 		}
