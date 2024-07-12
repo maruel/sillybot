@@ -68,7 +68,7 @@ func (c *Config) LoadOrDefault(config string) error {
 			c.KnownLLMs = defaultCfg.KnownLLMs
 		}
 	}
-	return nil
+	return c.validate()
 }
 
 // LoadModels loads the LLM and ImageGen models.
