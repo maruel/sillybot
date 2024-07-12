@@ -6,15 +6,24 @@ package sillybot
 
 import (
 	"context"
+	"flag"
 	"image"
+	"log/slog"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lmittmann/tint"
 	"github.com/maruel/sillybot/py"
+	"github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
 )
 
 func TestImageGen(t *testing.T) {
+	// This test is really slow in CPU mode on Intel, close to 2 minutes even on
+	// a i7.
 	if testing.Short() {
 		t.Skip("skipping test case in short mode")
 	}
@@ -62,4 +71,20 @@ func TestIsHostPort(t *testing.T) {
 	if !py.IsHostPort("aa.bb.ts.net:1") {
 		t.Fatal()
 	}
+}
+
+// TestMain sets up the verbose logging.
+func TestMain(m *testing.M) {
+	flag.Parse()
+	l := slog.LevelWarn
+	if testing.Verbose() {
+		l = slog.LevelDebug
+	}
+	logger := slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
+		Level:      l,
+		TimeFormat: time.TimeOnly,
+		NoColor:    !isatty.IsTerminal(os.Stderr.Fd()),
+	}))
+	slog.SetDefault(logger)
+	os.Exit(m.Run())
 }
