@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
@@ -38,8 +39,11 @@ type Options struct {
 	//
 	// Use "python" to use the integrated python backend.
 	Model string
-	// Default system prompt to use.
-	SystemPrompt string
+	// Default system prompt to use. Is a Go template as documented at
+	// https://pkg.go.dev/text/template. Values provided are:
+	// - Now: current time in ISO-8601, including the server's time zone.
+	// - Model: the model name.
+	SystemPrompt string `yaml:"system_prompt"`
 
 	_ struct{}
 }
@@ -88,6 +92,7 @@ func (k *KnownLLM) Validate() error {
 type LLM struct {
 	HF        *huggingface.Client
 	KnownLLMs []KnownLLM
+	model     string
 
 	c       *exec.Cmd
 	done    <-chan error
@@ -101,6 +106,9 @@ type LLM struct {
 // New instantiates a llama.cpp or llamafile server, or optionally uses
 // python instead.
 func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM) (*LLM, error) {
+	if opts.SystemPrompt == "" {
+		return nil, errors.New("did you forget to specify a system prompt?")
+	}
 	svr := "remote"
 	cacheModels := filepath.Join(cache, "models")
 	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
@@ -110,7 +118,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	if err != nil {
 		return nil, err
 	}
-	l := &LLM{HF: hf, KnownLLMs: knownLLMs, loading: true}
+	l := &LLM{HF: hf, KnownLLMs: knownLLMs, model: opts.Model, loading: true}
 	cachePy := filepath.Join(cache, "py")
 	if opts.Remote == "" {
 		llamasrv := ""
@@ -270,6 +278,9 @@ func (l *LLM) Close() error {
 // values can result in nonsensical responses.
 //
 // It is recommended to use 1.0 by default.
+//
+// The first message is assumed to be the system prompt. It will be processed
+// as described in Options.SystemPrompt.
 func (l *LLM) Prompt(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
 	start := time.Now()
 	lvl := slog.LevelInfo
@@ -277,6 +288,7 @@ func (l *LLM) Prompt(ctx context.Context, msgs []Message, seed int, temperature 
 		// Otherwise it storms on startup.
 		lvl = slog.LevelDebug
 	}
+	msgs = l.processMsgs(msgs)
 	slog.Log(ctx, lvl, "llm", "msgs", msgs)
 	reply, err := l.promptBlocking(ctx, msgs, seed, temperature)
 	if err != nil {
@@ -309,6 +321,9 @@ func (l *LLM) Prompt(ctx context.Context, msgs []Message, seed int, temperature 
 // values can result in nonsensical responses.
 //
 // It is recommended to use 1.0 by default.
+//
+// The first message is assumed to be the system prompt. It will be processed
+// as described in Options.SystemPrompt.
 func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) error {
 	start := time.Now()
 	lvl := slog.LevelInfo
@@ -316,6 +331,7 @@ func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, seed int, tem
 		// Otherwise it storms on startup.
 		lvl = slog.LevelDebug
 	}
+	msgs = l.processMsgs(msgs)
 	slog.Log(ctx, lvl, "llm", "msgs", msgs)
 	reply, err := l.promptStreaming(ctx, msgs, seed, temperature, words)
 	if err != nil {
@@ -518,6 +534,31 @@ func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
 		err = fmt.Errorf("internal error: implement packaging type %s", known.PackagingType)
 	}
 	return dst, err
+}
+
+// processMsgs process the system prompt.
+func (l *LLM) processMsgs(msgs []Message) []Message {
+	if len(msgs) == 0 || msgs[0].Role != System {
+		return msgs
+	}
+	t, err := template.New("").Parse(msgs[0].Content)
+	if err != nil {
+		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Content, "error", err)
+		return msgs
+	}
+	keys := map[string]string{
+		"Now":   time.Now().Format("Monday 2006-01-02T15:04:05 MST"),
+		"Model": l.model,
+	}
+	b := bytes.Buffer{}
+	if err = t.Execute(&b, keys); err != nil {
+		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Content, "error", err)
+		return msgs
+	}
+	out := make([]Message, len(msgs))
+	copy(out, msgs)
+	out[0].Content = b.String()
+	return out
 }
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests

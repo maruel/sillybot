@@ -26,6 +26,8 @@ type ModelRef struct {
 	Author string
 	// Repo is the name of the repository owned by the Author.
 	Repo string
+
+	_ struct{}
 }
 
 // RepoID is a shorthand to return .m.Author + "/" + m.Repo

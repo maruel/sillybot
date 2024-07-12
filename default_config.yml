@@ -22,7 +22,7 @@ bot:
     # Use "python" to use the embedded pytorch generator.
     model: Mistral-7B-Instruct-v0.3.Q5_K_M
     # Default system prompt to use.
-    systemprompt: "You are a terse assistant. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic."
+    system_prompt: "You are an AI assistant. You are the LLM model {{.Model}}. You reply with short answers. You are often joyful, sometimes humorous, sometimes sarcastic. Now is {{.Now}}."
   image_gen:
     # Specify a "host:port" of an already running py/image_gen.py server.
     #
