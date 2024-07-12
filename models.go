@@ -35,7 +35,8 @@ type Config struct {
 	KnownLLMs []llm.KnownLLM
 }
 
-func (c *Config) validate() error {
+// Validate checks for obvious errors in the fields.
+func (c *Config) Validate() error {
 	for i := range c.KnownLLMs {
 		if err := c.KnownLLMs[i].Validate(); err != nil {
 			return err
@@ -69,7 +70,7 @@ func (c *Config) LoadOrDefault(config string) error {
 			c.KnownLLMs = defaultCfg.KnownLLMs
 		}
 	}
-	return c.validate()
+	return c.Validate()
 }
 
 // LoadModels loads the LLM and ImageGen models.

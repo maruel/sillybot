@@ -41,41 +41,48 @@ bot:
 # automatically.
 knownllms:
   # Gemma 2 family
-  - repo: jartine/gemma-2-9b-it-llamafile
-    packagingtype: llamafile
-    basename: gemma-2-9b-it.
+  - repo: bartowski/gemma-2-9b-it-GGUF
+    packagingtype: gguf
+    basename: gemma-2-9b-it-
     upstream: google/gemma-2-9b-it
-  - repo: jartine/gemma-2-27b-it-llamafile
-    packagingtype: llamafile
-    basename: gemma-2-27b-it.
+  - repo: bartowski/gemma-2-27b-it-GGUF
+    packagingtype: gguf
+    basename: gemma-2-27b-it-
     upstream: google/gemma-2-27b-it
 
   # Llama 3 family
-  - repo: Mozilla/Meta-Llama-3-8B-Instruct-llamafile
-    packagingtype: llamafile
-    basename: Meta-Llama-3-8B-Instruct.
+  - repo: bartowski/Meta-Llama-3-8B-Instruct-GGUF
+    packagingtype: gguf
+    basename: Meta-Llama-3-8B-Instruct-
     upstream: meta-llama/Meta-Llama-3-8B-Instruct
-  - repo: Mozilla/Meta-Llama-3-70B-Instruct-llamafile
-    packagingtype: llamafile
-    basename: Meta-Llama-3-70B-Instruct.
+    # TODO: This repo put Q5_K_L and higher into subdirectories, which is
+    # unsupported.
+  - repo: bartowski/Meta-Llama-3-70B-Instruct-GGUF
+    packagingtype: gguf
+    basename: Meta-Llama-3-70B-Instruct-
     upstream: meta-llama/Meta-Llama-3-70B-Instruct
 
   # Mistral family
+    # bartowski/Mistral-7B-Instruct-v0.3-GGUF doesn't contain F16 which is
+    # useful on a Mac.
   - repo: MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF
     packagingtype: gguf
     basename: Mistral-7B-Instruct-v0.3.
     upstream: mistralai/Mistral-7B-Instruct-v0.3
-  - repo: Mozilla/Mixtral-8x7B-Instruct-v0.1-llamafile
-    packagingtype: llamafile
-    basename: mixtral-8x7b-instruct-v0.1
+    # bartowski didn't upload this one.
+  - repo: MaziyarPanahi/Mixtral-8x7B-Instruct-v0.1-GGUF
+    packagingtype: gguf
+    basename: mixtral-8x7b-instruct-v0.1.
     upstream: mistralai/Mixtral-8x7B-Instruct-v0.1
 
   # Phi-3 family
-  - repo: Mozilla/Phi-3-mini-4k-instruct-llamafile
-    packagingtype: llamafile
-    basename: Phi-3-mini-4k-instruct.
+    # bartowski/Phi-3-mini-4k-instruct-GGUF doesn't contain F16 which is useful
+    # on a Mac.
+  - repo: SanctumAI/Phi-3-mini-4k-instruct-GGUF
+    packagingtype: gguf
+    basename: Phi-3-mini-4k-instruct-
     upstream: microsoft/Phi-3-mini-4k-instruct
-  - repo: Mozilla/Phi-3-medium-128k-instruct-llamafile
-    packagingtype: llamafile
-    basename: Phi-3-medium-128k-instruct.
+  - repo: bartowski/Phi-3-medium-128k-instruct-GGUF
+    packagingtype: gguf
+    basename: Phi-3-medium-128k-instruct-
     upstream: microsoft/Phi-3-medium-128k-instruct

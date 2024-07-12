@@ -5,7 +5,6 @@
 package llm
 
 import (
-	"archive/zip"
 	"bufio"
 	"bytes"
 	"context"
@@ -33,7 +32,11 @@ type Options struct {
 	// Remote is the host:port of a pre-existing server to use instead of
 	// starting our own.
 	Remote string
-	// Model specifies a model to use. Use "python" to use the python backend.
+	// Model specifies a model to use.
+	//
+	// It will be selected automatically from KnownLLMs.
+	//
+	// Use "python" to use the integrated python backend.
 	Model string
 	// Default system prompt to use.
 	SystemPrompt string
@@ -43,15 +46,14 @@ type Options struct {
 
 // KnownLLM is a known model.
 //
-// Currently assumes it is hosted on HuggingFace.
+// Currently assumes the model is hosted on HuggingFace.
 type KnownLLM struct {
 	// RepoID is the repository in the form <author>/<repo>.
 	RepoID string `yaml:"repo"`
 	// PackagingType is the file format used in the model. It can be one of
-	// "safetensors", "gguf" or "llamafile".
+	// "safetensors" or "gguf".
 	PackagingType string
-	// Basename is the base filename when PackagingType is one of "gguf" or
-	// "llamafile".
+	// Basename is the base filename when PackagingType is one of "gguf".
 	Basename string
 	// UpstreamID is the upstream repo when the model is based on another one.
 	UpstreamID string `yaml:"upstream"`
@@ -67,16 +69,19 @@ func (k *KnownLLM) URL() string {
 // Validate checks for obvious errors in the fields.
 func (k *KnownLLM) Validate() error {
 	if strings.Count(k.RepoID, "/") != 1 {
-		return errors.New("invalid repo")
+		return fmt.Errorf("invalid repo %q", k.RepoID)
+	}
+	if k.PackagingType != "safetensors" && k.PackagingType != "gguf" {
+		return fmt.Errorf("invalid packaginetype %q", k.PackagingType)
 	}
 	if strings.Count(k.UpstreamID, "/") != 1 {
-		return errors.New("invalid upstream")
+		return fmt.Errorf("invalid upstream %q", k.UpstreamID)
 	}
 	// TODO: more validation.
 	return nil
 }
 
-// LLM runs a llamafile server and runs queries on it.
+// LLM runs a llama.cpp or llamafile server and runs queries on it.
 //
 // While it is expected that the model is an Instruct form, it is not a
 // requirement.
@@ -199,6 +204,10 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		if !py.IsHostPort(opts.Remote) {
 			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
 		}
+		// TODO: Support online paid backends:
+		// https://platform.openai.com/docs/api-reference/chat/create
+		// https://docs.anthropic.com/en/api/messages-examples
+		// https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstarts/quickstart-multimodal
 		l.url = "http://" + opts.Remote + "/v1/chat/completions"
 		slog.Info("llm", "state", "loading")
 	}
@@ -422,8 +431,8 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, seed int, tem
 
 // ensureModel gets the model if missing.
 //
-// Currently hard-coded to GGUF or llamafile files and Hugging Face. Doesn't
-// support split files.
+// Currently hard-coded to GGUF files and Hugging Face. Doesn't support split
+// files.
 func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
 	// TODO: This is very "meh".
 	switch strings.ToUpper(filepath.Ext(model)) {
@@ -436,7 +445,7 @@ func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
 		}
 
 		// Well known quantizations.
-	case ".F16", ".FP16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K":
+	case "F32", ".F16", ".FP16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_K", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K", ".IQ4_NL", ".IQ3_XXS", ".IQ3_XS", ".IQ3_S", "IQ3_M", "IQ2_XXS", ".IQ2_XS", ".IQ2_S", ".IQ2_M", "IQ1_S", ".IQ1_M":
 
 	case "":
 		return "", fmt.Errorf("you forgot to add a quantization suffix like '.BF16', '.F16', '.Q8_0' or '.Q5_K_M' when specifying model %q", model)
@@ -477,51 +486,10 @@ func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
 		if dst, err = l.HF.EnsureFile(ctx, repo, model+".gguf", 0o644); err != nil {
 			err = fmt.Errorf("can't find model %q at %s: %w", model, url, err)
 		}
-	case "llamafile":
-		// TODO: Remove support for llamafile.
-		if dst, err = l.ensureGGUFFromLlamafile(ctx, repo, model); err != nil {
-			err = fmt.Errorf("can't find model %q at %s: %w", model, url, err)
-		}
 	default:
 		err = errors.New("internal error: unknown type")
 	}
 	return dst, err
-}
-
-// ensureGGUFFromLlamafile retrieves a file from an HuggingFace repository if missing.
-func (l *LLM) ensureGGUFFromLlamafile(ctx context.Context, repo string, model string) (string, error) {
-	gguf := model + ".gguf"
-	dstgguf := filepath.Join(l.HF.Cache, gguf)
-	if _, err := os.Stat(dstgguf); err == nil {
-		return dstgguf, err
-	}
-	// Get the llamafile first.
-	src, err := l.HF.EnsureFile(ctx, repo, model+".llamafile", 0o755)
-	if err != nil {
-		return dstgguf, err
-	}
-	z, err := zip.OpenReader(src)
-	if err != nil {
-		return dstgguf, err
-	}
-	defer z.Close()
-	for _, i := range z.File {
-		if i.Name == gguf {
-			s, err := i.Open()
-			if err != nil {
-				return dstgguf, err
-			}
-			defer s.Close()
-			d, err := os.OpenFile(dstgguf, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-			if err != nil {
-				return dstgguf, err
-			}
-			defer d.Close()
-			_, err = io.CopyN(d, s, int64(i.UncompressedSize64))
-			return dstgguf, err
-		}
-	}
-	return dstgguf, errors.New("gguf not found")
 }
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
