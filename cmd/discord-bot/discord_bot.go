@@ -36,9 +36,9 @@ import (
 type discordBot struct {
 	ctx          context.Context
 	dg           *discordgo.Session
-	l            *llm.LLM
-	ig           *imagegen.Session
+	l            *llm.Session
 	mem          *llm.Memory
+	ig           *imagegen.Session
 	systemPrompt string
 	f            *opentype.Font
 	chat         chan msgReq
@@ -47,7 +47,7 @@ type discordBot struct {
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.LLM, mem *llm.Memory, ig *imagegen.Session, systPrmpt string) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Session, mem *llm.Memory, ig *imagegen.Session, systPrmpt string) (*discordBot, error) {
 	f, err := opentype.Parse(goitalic.TTF)
 	if err != nil {
 		slog.Error("discord", "message", "failed decoding png", "error", err)

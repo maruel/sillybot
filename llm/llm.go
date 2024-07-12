@@ -85,11 +85,11 @@ func (k *KnownLLM) Validate() error {
 	return nil
 }
 
-// LLM runs a llama.cpp or llamafile server and runs queries on it.
+// Session runs a llama.cpp or llamafile server and runs queries on it.
 //
 // While it is expected that the model is an Instruct form, it is not a
 // requirement.
-type LLM struct {
+type Session struct {
 	HF        *huggingface.Client
 	KnownLLMs []KnownLLM
 	model     string
@@ -105,7 +105,7 @@ type LLM struct {
 
 // New instantiates a llama.cpp or llamafile server, or optionally uses
 // python instead.
-func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM) (*LLM, error) {
+func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM) (*Session, error) {
 	if opts.SystemPrompt == "" {
 		return nil, errors.New("did you forget to specify a system prompt?")
 	}
@@ -118,7 +118,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	if err != nil {
 		return nil, err
 	}
-	l := &LLM{HF: hf, KnownLLMs: knownLLMs, model: opts.Model, loading: true}
+	l := &Session{HF: hf, KnownLLMs: knownLLMs, model: opts.Model, loading: true}
 	cachePy := filepath.Join(cache, "py")
 	if opts.Remote == "" {
 		llamasrv := ""
@@ -245,7 +245,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	return l, nil
 }
 
-func (l *LLM) Close() error {
+func (l *Session) Close() error {
 	slog.Info("llm", "state", "terminating")
 	if l.done == nil {
 		// Using a remote server.
@@ -281,7 +281,7 @@ func (l *LLM) Close() error {
 //
 // The first message is assumed to be the system prompt. It will be processed
 // as described in Options.SystemPrompt.
-func (l *LLM) Prompt(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
+func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
 	start := time.Now()
 	lvl := slog.LevelInfo
 	if l.loading {
@@ -324,7 +324,7 @@ func (l *LLM) Prompt(ctx context.Context, msgs []Message, seed int, temperature 
 //
 // The first message is assumed to be the system prompt. It will be processed
 // as described in Options.SystemPrompt.
-func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) error {
+func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) error {
 	start := time.Now()
 	lvl := slog.LevelInfo
 	if l.loading {
@@ -346,7 +346,7 @@ func (l *LLM) PromptStreaming(ctx context.Context, msgs []Message, seed int, tem
 	return nil
 }
 
-func (l *LLM) promptBlocking(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
+func (l *Session) promptBlocking(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",
 		Messages:    msgs,
@@ -380,7 +380,7 @@ func (l *LLM) promptBlocking(ctx context.Context, msgs []Message, seed int, temp
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) (string, error) {
+func (l *Session) promptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) (string, error) {
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",
 		Messages:    msgs,
@@ -449,7 +449,7 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, seed int, tem
 //
 // Currently hard-coded to GGUF files and Hugging Face. Doesn't support split
 // files.
-func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
+func (l *Session) ensureModel(ctx context.Context, model string) (string, error) {
 	// TODO: This is very "meh".
 	ext := strings.TrimLeft(strings.ToUpper(filepath.Ext(model)), ".")
 	if ext == "" {
@@ -537,7 +537,7 @@ func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
 }
 
 // processMsgs process the system prompt.
-func (l *LLM) processMsgs(msgs []Message) []Message {
+func (l *Session) processMsgs(msgs []Message) []Message {
 	if len(msgs) == 0 || msgs[0].Role != System {
 		return msgs
 	}

@@ -26,7 +26,7 @@ import (
 type slackBot struct {
 	api          *slack.Client
 	sc           *socketmode.Client
-	l            *llm.LLM
+	l            *llm.Session
 	mem          *llm.Memory
 	ig           *imagegen.Session
 	systemPrompt string
@@ -52,7 +52,7 @@ type ilog interface {
 	Output(int, string) error
 }
 
-func newSlackBot(apptoken, bottoken string, verbose bool, l *llm.LLM, mem *llm.Memory, ig *imagegen.Session, systPrmpt string) (*slackBot, error) {
+func newSlackBot(apptoken, bottoken string, verbose bool, l *llm.Session, mem *llm.Memory, ig *imagegen.Session, systPrmpt string) (*slackBot, error) {
 	if !strings.HasPrefix(apptoken, "xapp-") {
 		return nil, errors.New("slack apptoken must have the prefix \"xapp-\"")
 	}

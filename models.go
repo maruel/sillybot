@@ -77,7 +77,7 @@ func (c *Config) LoadOrDefault(config string) error {
 // LoadModels loads the LLM and ImageGen models.
 //
 // Both take a while to start, so load them in parallel for faster initialization.
-func LoadModels(ctx context.Context, cache string, cfg *Config) (*llm.LLM, *imagegen.Session, error) {
+func LoadModels(ctx context.Context, cache string, cfg *Config) (*llm.Session, *imagegen.Session, error) {
 	start := time.Now()
 	slog.Info("models", "state", "initializing")
 
@@ -90,7 +90,7 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (*llm.LLM, *imag
 	}
 
 	eg := errgroup.Group{}
-	var l *llm.LLM
+	var l *llm.Session
 	var s *imagegen.Session
 	eg.Go(func() error {
 		if cfg.Bot.LLM.Remote == "" && cfg.Bot.LLM.Model == "" {
