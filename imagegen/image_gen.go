@@ -2,7 +2,8 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package sillybot
+// Package imagegen runs an image generator.
+package imagegen
 
 import (
 	"bytes"
@@ -23,8 +24,8 @@ import (
 	"github.com/maruel/sillybot/py"
 )
 
-// ImageGenOptions for NewImageGen.
-type ImageGenOptions struct {
+// Options for New.
+type Options struct {
 	// Remote is the host:port of a pre-existing server to use instead of
 	// starting our own.
 	Remote string
@@ -35,8 +36,8 @@ type ImageGenOptions struct {
 	_ struct{}
 }
 
-// ImageGen manages an image generation server.
-type ImageGen struct {
+// Session manages an image generation server.
+type Session struct {
 	url    string
 	done   <-chan error
 	cancel func() error
@@ -45,9 +46,9 @@ type ImageGen struct {
 	loading bool
 }
 
-// NewImageGen initializes a new image generation server.
-func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*ImageGen, error) {
-	ig := &ImageGen{
+// New initializes a new image generation server.
+func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
+	ig := &Session{
 		steps:   1,
 		loading: true,
 	}
@@ -97,7 +98,7 @@ func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*Ima
 	return ig, nil
 }
 
-func (ig *ImageGen) Close() error {
+func (ig *Session) Close() error {
 	if ig.cancel == nil {
 		return nil
 	}
@@ -109,7 +110,7 @@ func (ig *ImageGen) Close() error {
 // GenImage returns an image based on the prompt.
 //
 // Use a non-zero seed to get deterministic output (without strong guarantees).
-func (ig *ImageGen) GenImage(ctx context.Context, prompt string, seed int) (*image.NRGBA, error) {
+func (ig *Session) GenImage(ctx context.Context, prompt string, seed int) (*image.NRGBA, error) {
 	start := time.Now()
 	if !ig.loading || slog.Default().Enabled(ctx, slog.LevelDebug) {
 		// Otherwise it storms on startup.

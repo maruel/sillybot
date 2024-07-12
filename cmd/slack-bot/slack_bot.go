@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maruel/sillybot"
+	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -28,7 +28,7 @@ type slackBot struct {
 	sc           *socketmode.Client
 	l            *llm.LLM
 	mem          *llm.Memory
-	ig           *sillybot.ImageGen
+	ig           *imagegen.Session
 	systemPrompt string
 	chat         chan msgReq
 	image        chan *imgReq
@@ -52,7 +52,7 @@ type ilog interface {
 	Output(int, string) error
 }
 
-func newSlackBot(apptoken, bottoken string, verbose bool, l *llm.LLM, mem *llm.Memory, ig *sillybot.ImageGen, systPrmpt string) (*slackBot, error) {
+func newSlackBot(apptoken, bottoken string, verbose bool, l *llm.LLM, mem *llm.Memory, ig *imagegen.Session, systPrmpt string) (*slackBot, error) {
 	if !strings.HasPrefix(apptoken, "xapp-") {
 		return nil, errors.New("slack apptoken must have the prefix \"xapp-\"")
 	}

@@ -2,7 +2,7 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package sillybot
+package imagegen
 
 import (
 	"context"
@@ -31,9 +31,9 @@ func TestImageGen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := ImageGenOptions{Model: "python"}
+	opts := Options{Model: "python"}
 	ctx := context.Background()
-	s, err := NewImageGen(ctx, cache, &opts)
+	s, err := New(ctx, cache, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +58,8 @@ func TestImageGen_Remote_Fail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := ImageGenOptions{Remote: "host"}
-	if _, err = NewImageGen(context.Background(), cache, &opts); err == nil {
+	opts := Options{Remote: "host"}
+	if _, err = New(context.Background(), cache, &opts); err == nil {
 		t.Fatal("expected error")
 	}
 }

@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/huggingface"
+	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/goitalic"
@@ -37,7 +37,7 @@ type discordBot struct {
 	ctx          context.Context
 	dg           *discordgo.Session
 	l            *llm.LLM
-	ig           *sillybot.ImageGen
+	ig           *imagegen.Session
 	mem          *llm.Memory
 	systemPrompt string
 	f            *opentype.Font
@@ -47,7 +47,7 @@ type discordBot struct {
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.LLM, mem *llm.Memory, ig *sillybot.ImageGen, systPrmpt string) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.LLM, mem *llm.Memory, ig *imagegen.Session, systPrmpt string) (*discordBot, error) {
 	f, err := opentype.Parse(goitalic.TTF)
 	if err != nil {
 		slog.Error("discord", "message", "failed decoding png", "error", err)
