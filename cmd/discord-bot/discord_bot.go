@@ -623,7 +623,7 @@ func splitResponse(t string) int {
 	isEnum := strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ")
 	if !isEnum {
 		var err error
-		isEnum, err = regexp.MatchString(t, `^\d+\. .*`)
+		isEnum, err = regexp.MatchString(`^\d+\. .*`, t)
 		if err != nil {
 			panic(err)
 		}

@@ -25,7 +25,7 @@ func TestSplitResponse(t *testing.T) {
 		{"This is code:\n```Foo```", 23},
 		{"This is code:\n```Foo```\nAnd happiness", 23},
 		{"This is enumeration:\n1. ", 21},
-		{"1. Do stuff.", 12},
+		{"1. Do stuff.", 0},
 		{"1. Do.", 0},
 		{"- Do stuff.", 0},
 		{"To do what you want, use `os.ReadFile", 0},
