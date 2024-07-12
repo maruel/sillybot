@@ -28,6 +28,16 @@ type ModelRef struct {
 	Repo string
 }
 
+// RepoID is a shorthand to return .m.Author + "/" + m.Repo
+func (m *ModelRef) RepoID() string {
+	return m.Author + "/" + m.Repo
+}
+
+// URL returns the Model's canonical URL.
+func (m *ModelRef) URL() string {
+	return "https://huggingface.co/" + m.RepoID()
+}
+
 // Model is a model stored on https://huggingface.co
 type Model struct {
 	ModelRef
@@ -61,16 +71,6 @@ type Model struct {
 	Modified time.Time
 
 	_ struct{}
-}
-
-// RepoID is a shorthand to return .m.Author + "/" + m.Repo
-func (m *Model) RepoID() string {
-	return m.Author + "/" + m.Repo
-}
-
-// URL returns the Model's canonical URL.
-func (m *Model) URL() string {
-	return "https://huggingface.co/" + m.RepoID()
 }
 
 // Client is the client for https://huggingface.co/.
@@ -228,7 +228,7 @@ func authGet(ctx context.Context, url, token string) (*http.Response, error) {
 			}
 			if resp.StatusCode == 429 {
 				// Sleep and retry.
-				time.Sleep((i + 1) * time.Second)
+				time.Sleep(time.Duration(i+1) * time.Second)
 				continue
 			}
 			return nil, fmt.Errorf("request status: %s", resp.Status)

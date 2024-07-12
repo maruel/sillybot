@@ -170,7 +170,7 @@ func mainImpl() error {
 
 func main() {
 	if err := mainImpl(); err != nil && err != context.Canceled {
-		fmt.Fprintf(os.Stderr, "slack-bot: %v\n", err.Error())
+		fmt.Fprintf(os.Stderr, "\nslack-bot: %v\n", err.Error())
 		os.Exit(1)
 	}
 }

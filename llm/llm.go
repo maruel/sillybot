@@ -435,59 +435,87 @@ func (l *LLM) promptStreaming(ctx context.Context, msgs []Message, seed int, tem
 // files.
 func (l *LLM) ensureModel(ctx context.Context, model string) (string, error) {
 	// TODO: This is very "meh".
-	switch strings.ToUpper(filepath.Ext(model)) {
-	case ".GGUF":
+	ext := strings.TrimLeft(strings.ToUpper(filepath.Ext(model)), ".")
+	if ext == "" {
+		if i := strings.LastIndexByte(model, '-'); i > 0 {
+			ext = model[i+1:]
+		}
+	}
+	switch ext {
+	case "GGUF":
 		return "", fmt.Errorf("do not include the .gguf suffix for model %q", model)
 
-	case ".BF16":
+	case "BF16":
 		if runtime.GOOS == "darwin" {
 			slog.Warn("llm", "message", "As of July 2024, bfloat16 was not fully supported on Apple Silicon system. Remove this warning once this is fixed.")
 		}
 
 		// Well known quantizations.
-	case "F32", ".F16", ".FP16", ".Q8_0", ".Q6_K", ".Q5_K_S", ".Q5_K_M", ".Q5_1", ".Q5_0", ".Q4_K_S", ".Q4_K_M", ".Q4_K", ".Q4_1", ".Q4_0", ".Q3_K_S", ".Q3_K_M", ".Q3_K_L", ".Q2_K", ".IQ4_NL", ".IQ3_XXS", ".IQ3_XS", ".IQ3_S", "IQ3_M", "IQ2_XXS", ".IQ2_XS", ".IQ2_S", ".IQ2_M", "IQ1_S", ".IQ1_M":
+	case "F32", "F16", "FP16":
+	case "Q8_0", "Q6_K", "Q5_K_S", "Q5_K_M", "Q5_1", "Q5_0", "Q4_K_S", "Q4_K_M", "Q4_K", "Q4_1", "Q4_0", "Q3_K_S", "Q3_K_M", "Q3_K_L", "Q2_K":
+	case "IQ4_NL", "IQ3_XXS", "IQ3_XS", "IQ3_S", "IQ3_M", "IQ2_XXS", "IQ2_XS", "IQ2_S", "IQ2_M", "IQ1_S", "IQ1_M":
 
 	case "":
-		return "", fmt.Errorf("you forgot to add a quantization suffix like '.BF16', '.F16', '.Q8_0' or '.Q5_K_M' when specifying model %q", model)
+		return "", fmt.Errorf("you forgot to add a quantization suffix like 'BF16', 'F16', 'Q8_0' or 'Q5_K_M' when specifying model %q", model)
 
 	default:
-		return "", fmt.Errorf("unknown quantization for model %q, did you forget a suffix like '.BF16' or '.Q5_K_M'?", model)
+		return "", fmt.Errorf("unknown quantization for model %q, did you forget a suffix like 'BF16' or 'Q5_K_M'?", model)
 	}
 
-	// TODO: It'd be great to enumerate the GGUF files in the repo to help the user.
-
-	// Hack.
+	// Hack: quickly check if the file is there, if so, just return this.
 	dst := filepath.Join(l.HF.Cache, model+".gguf")
 	_, err := os.Stat(dst)
 	if err == nil {
 		return dst, nil
 	}
 	slog.Info("llm", "model", model, "state", "missing")
-	url := ""
-	t := ""
+	var known KnownLLM
 	for _, k := range l.KnownLLMs {
 		if strings.HasPrefix(model, k.Basename) {
-			url = k.URL()
-			t = k.PackagingType
+			known = k
 			break
 		}
 	}
-	if url == "" {
+	if known.RepoID == "" {
 		return "", fmt.Errorf("can't guess model %q huggingface repo", model)
 	}
-	// Hack.
-	urlhf := "https://huggingface.co/"
-	if !strings.HasPrefix(url, urlhf) {
-		return "", fmt.Errorf("can't guess model %q source", model)
-	}
-	repo := url[len(urlhf):]
-	switch t {
+	// Hack: we assume everything is on HuggingFace.
+	switch known.PackagingType {
 	case "gguf":
-		if dst, err = l.HF.EnsureFile(ctx, repo, model+".gguf", 0o644); err != nil {
-			err = fmt.Errorf("can't find model %q at %s: %w", model, url, err)
+		if dst, err = l.HF.EnsureFile(ctx, known.RepoID, model+".gguf", 0o644); err != nil {
+			// Get the list of files to help the user.
+			parts := strings.SplitN(known.RepoID, "/", 2)
+			m := huggingface.Model{ModelRef: huggingface.ModelRef{Author: parts[0], Repo: parts[1]}}
+			err = fmt.Errorf("can't find model %q at %s: %w", model, m.URL(), err)
+			if err2 := l.HF.GetModelInfo(ctx, &m); err2 != nil {
+				return dst, errors.Join(err, err2)
+			}
+			msg := "Supported quantizations: "
+			added := false
+			for _, f := range m.Files {
+				// TODO: Move this into a common function.
+				if !strings.HasPrefix(f, known.Basename) {
+					continue
+				}
+				if strings.Contains(f, "/") {
+					// Skip files in subdirectories for now.
+					continue
+				}
+				if strings.HasPrefix(filepath.Ext(f), ".cat") {
+					// TODO: Support split files. For now just hide them. They are large
+					// anyway so it's only for power users.
+					continue
+				}
+				if added {
+					msg += ", "
+				}
+				msg += strings.TrimSuffix(f[len(known.Basename):], ".gguf")
+				added = true
+			}
+			return dst, fmt.Errorf("%w; %s", err, msg)
 		}
 	default:
-		err = errors.New("internal error: unknown type")
+		err = fmt.Errorf("internal error: implement packaging type %s", known.PackagingType)
 	}
 	return dst, err
 }

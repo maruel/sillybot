@@ -387,7 +387,9 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 			slog.Error("discord", "command", data.Name, "error", err)
 		} else {
 			reply += " Quantizations: "
+			added := false
 			for _, f := range info.Files {
+				// TODO: Move this into a common function.
 				if !strings.HasPrefix(f, k.Basename) {
 					continue
 				}
@@ -400,10 +402,11 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 					// anyway so it's only for power users.
 					continue
 				}
-				f = f[len(k.Basename):]
-				f = strings.TrimSuffix(f, ".gguf")
-				f = strings.TrimSuffix(f, ".llamafile")
-				reply += f + ", "
+				if added {
+					reply += ", "
+				}
+				reply += strings.TrimSuffix(f[len(k.Basename):], ".gguf")
+				added = true
 			}
 			if info.Upstream.Author == "" && info.Upstream.Repo == "" {
 				// Some forks are not setting up upstream properly. What a shame.
