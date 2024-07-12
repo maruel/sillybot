@@ -143,6 +143,11 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 					Description: "Description used to generate both the meme labels and background image. The LLM will enhance both.",
 					Required:    true,
 				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "seed",
+					Description: "Seed to use to enable (or disable with 0) deterministic image generation. Defaults to 1",
+				},
 			},
 		},
 		{
@@ -162,6 +167,11 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 					Description: "Exact text to overlay on the image. Use comma to split lines.",
 					Required:    true,
 				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "seed",
+					Description: "Seed to use to enable (or disable with 0) deterministic image generation. Defaults to 1",
+				},
 			},
 		},
 		{
@@ -174,6 +184,11 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 					Name:        "description",
 					Description: "Description to use to generate the meme labels. The LLM will enhance both.",
 					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "seed",
+					Description: "Seed to use to enable (or disable with 0) deterministic image generation. Defaults to 1",
 				},
 			},
 		},
@@ -190,6 +205,11 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 					Description: "Description to use to generate the image. The LLM will enhance it.",
 					Required:    true,
 				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "seed",
+					Description: "Seed to use to enable (or disable with 0) deterministic image generation. Defaults to 1",
+				},
 			},
 		},
 		{
@@ -202,6 +222,11 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 					Name:        "image_prompt",
 					Description: "Exact Stable Diffusion style prompt to use to generate the image.",
 					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "seed",
+					Description: "Seed to use to enable (or disable with 0) deterministic image generation. Defaults to 1",
 				},
 			},
 		},
@@ -461,7 +486,9 @@ func (d *discordBot) onImage(event *discordgo.InteractionCreate, data discordgo.
 		ImagePrompt string `json:"image_prompt"`
 		// meme_manual
 		LabelsContent string `json:"labels_content"`
-	}{}
+		// meme_auto, meme_manual, image_auto, image_manual
+		Seed int `json:"seed"`
+	}{Seed: 1}
 	if err := optionsToStruct(data.Options, &opts); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed decoding command options", "error", err)
 		return
@@ -476,6 +503,7 @@ func (d *discordBot) onImage(event *discordgo.InteractionCreate, data discordgo.
 		description:   opts.Description,
 		imagePrompt:   opts.ImagePrompt,
 		labelsContent: opts.LabelsContent,
+		seed:          opts.Seed,
 		cmdName:       data.Name,
 		int:           event.Interaction,
 	}
@@ -671,7 +699,7 @@ func (d *discordBot) handleImage(req intReq) {
 			{Role: llm.System, Content: imagePrompt},
 			{Role: llm.User, Content: req.description},
 		}
-		if reply, err := d.l.Prompt(d.ctx, msgs, 0, 1.0); err != nil {
+		if reply, err := d.l.Prompt(d.ctx, msgs, req.seed, 1.0); err != nil {
 			slog.Error("discord", "command", req.cmdName, "message", "failed to enhance prompt", "error", err)
 			content += "*LLM Error*: " + escapeMarkdown(err.Error()) + "\n"
 		} else {
@@ -690,7 +718,7 @@ func (d *discordBot) handleImage(req intReq) {
 			{Role: llm.System, Content: memePrompt},
 			{Role: llm.User, Content: req.description},
 		}
-		if meme, err := d.l.Prompt(d.ctx, msgs, 0, 1.0); err != nil {
+		if meme, err := d.l.Prompt(d.ctx, msgs, req.seed, 1.0); err != nil {
 			slog.Error("discord", "command", req.cmdName, "message", "failed to make meme prompt", "error", err)
 			content += "*LLM Error*: " + escapeMarkdown(err.Error()) + "\n"
 		} else {
@@ -710,7 +738,7 @@ func (d *discordBot) handleImage(req intReq) {
 	}
 
 	// TODO: Generate multiple images when the queue is empty?
-	img, err := d.ig.GenImage(d.ctx, req.imagePrompt, 1)
+	img, err := d.ig.GenImage(d.ctx, req.imagePrompt, req.seed)
 	if err != nil {
 		content += "*ImageGen Error*: " + escapeMarkdown(err.Error())
 		if _, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{Content: &content}); err != nil {
@@ -837,6 +865,7 @@ type intReq struct {
 	description   string
 	imagePrompt   string
 	labelsContent string
+	seed          int
 	cmdName       string
 	// Only there for ID and Token.
 	int *discordgo.Interaction
