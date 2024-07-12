@@ -711,6 +711,9 @@ func (d *discordBot) handleImage(req intReq) {
 		newreq := req
 		newreq.seed = seed
 		img, err := d.genImage(&newreq)
+		if seed != 0 {
+			content += "*Seed*: " + strconv.Itoa(seed) + "\n"
+		}
 		if newreq.description != req.description {
 			content += "*Description*: " + escapeMarkdown(newreq.description) + "\n"
 		}
@@ -719,9 +722,6 @@ func (d *discordBot) handleImage(req intReq) {
 		}
 		if newreq.labelsContent != req.labelsContent {
 			content += "*Labels*: " + escapeMarkdown(newreq.labelsContent) + "\n"
-		}
-		if seed != 0 {
-			content += "*Seed*: " + strconv.Itoa(seed) + "\n"
 		}
 		if err != nil {
 			slog.Error("discord", "imagereq", req, "error", err)
