@@ -27,13 +27,13 @@ func TestImageGen(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test case in short mode")
 	}
-	cache, err := filepath.Abs("cache")
+	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
 	opts := Options{Model: "python"}
 	ctx := context.Background()
-	s, err := New(ctx, cache, &opts)
+	s, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,12 +54,12 @@ func TestImageGen(t *testing.T) {
 }
 
 func TestImageGen_Remote_Fail(t *testing.T) {
-	cache, err := filepath.Abs("cache")
+	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
 	opts := Options{Remote: "host"}
-	if _, err = New(context.Background(), cache, &opts); err == nil {
+	if _, err = New(context.Background(), filepath.Join(filepath.Dir(wd), "cache"), &opts); err == nil {
 		t.Fatal("expected error")
 	}
 }

@@ -9,10 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"image"
 	"image/png"
 	"log/slog"
-	"math"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -23,10 +21,6 @@ import (
 	"github.com/maruel/sillybot/huggingface"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
-	"golang.org/x/image/font"
-	"golang.org/x/image/font/gofont/goitalic"
-	"golang.org/x/image/font/opentype"
-	"golang.org/x/image/math/fixed"
 )
 
 // discordBot is the live instance of the bot talking to the Discord API.
@@ -40,7 +34,6 @@ type discordBot struct {
 	mem          *llm.Memory
 	ig           *imagegen.Session
 	systemPrompt string
-	f            *opentype.Font
 	chat         chan msgReq
 	image        chan intReq
 	wg           sync.WaitGroup
@@ -48,10 +41,6 @@ type discordBot struct {
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
 func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Session, mem *llm.Memory, ig *imagegen.Session, systPrmpt string) (*discordBot, error) {
-	f, err := opentype.Parse(goitalic.TTF)
-	if err != nil {
-		slog.Error("discord", "message", "failed decoding png", "error", err)
-	}
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
@@ -83,7 +72,6 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Sessi
 		mem:          mem,
 		ig:           ig,
 		systemPrompt: systPrmpt,
-		f:            f,
 		chat:         make(chan msgReq, 5),
 		image:        make(chan intReq, 3),
 	}
@@ -748,7 +736,7 @@ func (d *discordBot) handleImage(req intReq) {
 	}
 
 	if req.labelsContent != "" {
-		drawMemeOnImage(img, d.f, req.labelsContent)
+		imagegen.DrawLabelsOnImage(img, req.labelsContent)
 	}
 	w := bytes.Buffer{}
 	if err = png.Encode(&w, img); err != nil {
@@ -768,83 +756,6 @@ func (d *discordBot) handleImage(req intReq) {
 	if err != nil {
 		slog.Error("discord", "command", req.cmdName, "message", "failed posting interaction", "error", err)
 	}
-}
-
-func drawMemeOnImage(img *image.NRGBA, f *opentype.Font, meme string) {
-	lines := strings.Split(meme, ",")
-	switch len(lines) {
-	case 1:
-		drawTextOnImage(img, f, 0, lines[0])
-	case 2:
-		drawTextOnImage(img, f, 0, lines[0])
-		drawTextOnImage(img, f, 100, lines[1])
-	case 3:
-		drawTextOnImage(img, f, 0, lines[0])
-		drawTextOnImage(img, f, 50, lines[1])
-		drawTextOnImage(img, f, 100, lines[2])
-	case 4:
-		drawTextOnImage(img, f, 0, lines[0])
-		drawTextOnImage(img, f, 30, lines[1])
-		drawTextOnImage(img, f, 60, lines[2])
-		drawTextOnImage(img, f, 100, lines[3])
-	default:
-		drawTextOnImage(img, f, 0, lines[0])
-		drawTextOnImage(img, f, 20, lines[1])
-		drawTextOnImage(img, f, 50, lines[2])
-		drawTextOnImage(img, f, 80, lines[3])
-		drawTextOnImage(img, f, 100, lines[4])
-	}
-}
-
-func drawTextOnImage(img *image.NRGBA, f *opentype.Font, top int, text string) {
-	bounds := img.Bounds()
-	w := bounds.Dx()
-	h := bounds.Dy()
-	d := font.Drawer{Dst: img, Src: image.Black}
-
-	// Do once with a size way too large, then adjust the size.
-	var err error
-	if d.Face, err = opentype.NewFace(f, &opentype.FaceOptions{Size: 1000, DPI: 72}); err != nil {
-		slog.Error("discord", "message", "failed loading typeface", "error", err)
-		return
-	}
-	textWidth := d.MeasureString(text).Round()
-	// TODO: This code needs proper fine tuning.
-	if d.Face, err = opentype.NewFace(f, &opentype.FaceOptions{Size: 1000. * float64(w) / (250. + float64(textWidth)), DPI: 72}); err != nil {
-		slog.Error("discord", "message", "failed loading typeface", "error", err)
-		return
-	}
-	textWidth = d.MeasureString(text).Round()
-	textHeight := d.Face.Metrics().Height.Ceil()
-	// The text tends to offshoot on the right so offset it on the left, divide
-	// by 4 instead of 2.
-	x := (w - textWidth) / 4
-	y := top * h / 100
-	if y < textHeight {
-		y = textHeight
-	} else if y > h-40 {
-		y = h - 40
-	}
-	// Draw a crude outline.
-	// TODO: It's not super efficient to draw this many (36) times! Make it
-	// faster unless it's good enough.
-	// TODO: Rasterize at 8x then downsize to reduce aliasing and not have to
-	// render so many times.
-	radius := 5.
-	for i := 0; i < 360; i += 10 {
-		a := math.Pi / 180. * float64(i)
-		dx := math.Cos(a) * radius
-		dy := math.Sin(a) * radius
-		dot := fixed.Point26_6{X: fixed.Int26_6((float64(x) + dx) * 64), Y: fixed.Int26_6((float64(y) + dy) * 64)}
-		if dot != d.Dot {
-			d.Dot = dot
-			d.DrawString(text)
-		}
-	}
-	// Draw the final text.
-	d.Src = image.White
-	d.Dot = fixed.P(x, y)
-	d.DrawString(text)
 }
 
 // msgReq is an incoming message pending to be processed.
