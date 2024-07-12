@@ -2,6 +2,9 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
+// Package llm runs a LLM locally via llama.cpp, llamafile, or with a python
+// server. It takes care of everything, including fetching gguf packed models
+// from hugging face.
 package llm
 
 import (
