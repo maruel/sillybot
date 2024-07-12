@@ -111,7 +111,7 @@ func (ig *ImageGen) Close() error {
 // Use a non-zero seed to get deterministic output (without strong guarantees).
 func (ig *ImageGen) GenImage(ctx context.Context, prompt string, seed int) (*image.NRGBA, error) {
 	start := time.Now()
-	if !ig.loading {
+	if !ig.loading || slog.Default().Enabled(ctx, slog.LevelDebug) {
 		// Otherwise it storms on startup.
 		slog.Info("ig", "prompt", prompt)
 	}
@@ -134,7 +134,7 @@ func (ig *ImageGen) GenImage(ctx context.Context, prompt string, seed int) (*ima
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		if !ig.loading {
+		if !ig.loading || slog.Default().Enabled(ctx, slog.LevelDebug) {
 			// Otherwise it storms on startup.
 			slog.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		}
