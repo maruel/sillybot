@@ -215,17 +215,25 @@ func authGet(ctx context.Context, url, token string) (*http.Response, error) {
 	if token != "" {
 		req.Header.Add("Authorization", "Bearer "+token)
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if resp.StatusCode != 200 {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-		if resp.StatusCode == 401 {
-			if token != "" {
-				return nil, fmt.Errorf("double check if your token is valid: %s", resp.Status)
+	for i := 0; i < 10; i++ {
+		resp, err := http.DefaultClient.Do(req)
+		if resp.StatusCode != 200 {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode == 401 {
+				if token != "" {
+					return nil, fmt.Errorf("double check if your token is valid: %s", resp.Status)
+				}
+				return nil, fmt.Errorf("a valid token is likely required: %s", resp.Status)
 			}
-			return nil, fmt.Errorf("a valid token is likely required: %s", resp.Status)
+			if resp.StatusCode == 429 {
+				// Sleep and retry.
+				time.Sleep((i + 1) * time.Second)
+				continue
+			}
+			return nil, fmt.Errorf("request status: %s", resp.Status)
 		}
-		return nil, fmt.Errorf("request status: %s", resp.Status)
+		return resp, err
 	}
-	return resp, err
+	return nil, errors.New("failed retrying on 429")
 }

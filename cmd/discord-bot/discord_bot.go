@@ -391,6 +391,10 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 				if !strings.HasPrefix(f, k.Basename) {
 					continue
 				}
+				if strings.Contains(f, "/") {
+					// Skip files in subdirectories for now.
+					continue
+				}
 				if strings.HasPrefix(filepath.Ext(f), ".cat") {
 					// TODO: Support split files. For now just hide them. They are large
 					// anyway so it's only for power users.
@@ -400,6 +404,13 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 				f = strings.TrimSuffix(f, ".gguf")
 				f = strings.TrimSuffix(f, ".llamafile")
 				reply += f + ", "
+			}
+			if info.Upstream.Author == "" && info.Upstream.Repo == "" {
+				// Some forks are not setting up upstream properly. What a shame.
+				if parts := strings.SplitN(k.UpstreamID, "/", 2); len(parts) == 2 {
+					info.Upstream.Author = parts[0]
+					info.Upstream.Repo = parts[1]
+				}
 			}
 			if info.Upstream.Author != "" && info.Upstream.Repo != "" {
 				infoUpstream := huggingface.Model{ModelRef: info.Upstream}

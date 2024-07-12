@@ -72,7 +72,7 @@ knownllms:
     # bartowski didn't upload this one.
   - repo: MaziyarPanahi/Mixtral-8x7B-Instruct-v0.1-GGUF
     packagingtype: gguf
-    basename: mixtral-8x7b-instruct-v0.1.
+    basename: Mixtral-8x7B-Instruct-v0.1.
     upstream: mistralai/Mixtral-8x7B-Instruct-v0.1
 
   # Phi-3 family
@@ -80,7 +80,7 @@ knownllms:
     # on a Mac.
   - repo: SanctumAI/Phi-3-mini-4k-instruct-GGUF
     packagingtype: gguf
-    basename: Phi-3-mini-4k-instruct-
+    basename: phi-3-mini-4k-instruct.
     upstream: microsoft/Phi-3-mini-4k-instruct
   - repo: bartowski/Phi-3-medium-128k-instruct-GGUF
     packagingtype: gguf
