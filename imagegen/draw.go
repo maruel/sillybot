@@ -13,6 +13,7 @@ import (
 	"image/png"
 	"math"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/goitalic"
@@ -22,29 +23,45 @@ import (
 
 // DrawLabelsOnImage draw text on an image.
 func DrawLabelsOnImage(img *image.NRGBA, meme string) {
-	f := memeFont
-	lines := strings.Split(meme, ",")
+	if meme = strings.Trim(meme, ","); len(meme) == 0 {
+		return
+	}
+	// We want to split each lines on comma "," but the LLMs are trained on US
+	// numbering, which means that 1000000 will be output as "1,000,000". I
+	// didn't find a way to make it work with regexp.Regexp.Split() so do it
+	// manually.
+	lines := []string{""}
+	var prev rune
+	for i, r := range meme {
+		if r == ',' && !(isNum(prev) && isNum(nextRune(meme[i+utf8.RuneLen(r):]))) {
+			lines = append(lines, "")
+		} else {
+			lines[len(lines)-1] = lines[len(lines)-1] + string(r)
+		}
+		prev = r
+	}
 	switch len(lines) {
+	case 0:
 	case 1:
-		drawTextOnImage(img, f, 0, lines[0])
+		drawTextOnImage(img, memeFont, 0, lines[0])
 	case 2:
-		drawTextOnImage(img, f, 0, lines[0])
-		drawTextOnImage(img, f, 100, lines[1])
+		drawTextOnImage(img, memeFont, 0, lines[0])
+		drawTextOnImage(img, memeFont, 100, lines[1])
 	case 3:
-		drawTextOnImage(img, f, 0, lines[0])
-		drawTextOnImage(img, f, 50, lines[1])
-		drawTextOnImage(img, f, 100, lines[2])
+		drawTextOnImage(img, memeFont, 0, lines[0])
+		drawTextOnImage(img, memeFont, 50, lines[1])
+		drawTextOnImage(img, memeFont, 100, lines[2])
 	case 4:
-		drawTextOnImage(img, f, 0, lines[0])
-		drawTextOnImage(img, f, 30, lines[1])
-		drawTextOnImage(img, f, 60, lines[2])
-		drawTextOnImage(img, f, 100, lines[3])
+		drawTextOnImage(img, memeFont, 0, lines[0])
+		drawTextOnImage(img, memeFont, 30, lines[1])
+		drawTextOnImage(img, memeFont, 60, lines[2])
+		drawTextOnImage(img, memeFont, 100, lines[3])
 	default:
-		drawTextOnImage(img, f, 0, lines[0])
-		drawTextOnImage(img, f, 20, lines[1])
-		drawTextOnImage(img, f, 50, lines[2])
-		drawTextOnImage(img, f, 80, lines[3])
-		drawTextOnImage(img, f, 100, lines[4])
+		drawTextOnImage(img, memeFont, 0, lines[0])
+		drawTextOnImage(img, memeFont, 20, lines[1])
+		drawTextOnImage(img, memeFont, 50, lines[2])
+		drawTextOnImage(img, memeFont, 80, lines[3])
+		drawTextOnImage(img, memeFont, 100, lines[4])
 	}
 }
 
@@ -53,7 +70,7 @@ func DrawLabelsOnImage(img *image.NRGBA, meme string) {
 var (
 	//go:embed mascot.png
 	mascotPNG []byte
-	//go:embed NotoEmoji-Regular.ttf
+	//go:embed NotoEmoji-Medium.ttf
 	notoEmojiTTF []byte
 
 	mascot        = mustDecodePNG(mascotPNG)
@@ -156,4 +173,13 @@ func decodePNG(b []byte) (*image.NRGBA, error) {
 	default:
 		return nil, fmt.Errorf("failed to decode PNG: expected NRGBA, got %T", img)
 	}
+}
+
+func isNum(r rune) bool {
+	return r >= '0' && r <= '9'
+}
+
+func nextRune(s string) rune {
+	r, _ := utf8.DecodeRuneInString(s)
+	return r
 }

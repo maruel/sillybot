@@ -9,10 +9,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/png"
 	"log/slog"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +23,7 @@ import (
 	"github.com/maruel/sillybot/huggingface"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
+	"golang.org/x/sync/errgroup"
 )
 
 // discordBot is the live instance of the bot talking to the Discord API.
@@ -487,6 +490,20 @@ func (d *discordBot) onImage(event *discordgo.InteractionCreate, data discordgo.
 		}
 		return
 	}
+	if d.l == nil && strings.HasSuffix(data.Name, "_auto") {
+		if err := d.interactionRespond(event.Interaction, "LLM is not enabled. Restart with bot.llm.model set in config.yml."); err != nil {
+			slog.Error("discord", "command", data.Name, "message", "failed reply to enable", "error", err)
+		}
+		return
+	}
+	if strings.HasSuffix(data.Name, "_auto") {
+		if opts.Description = strings.TrimSpace(opts.Description); opts.Description == "" {
+			if err := d.interactionRespond(event.Interaction, "Description is required."); err != nil {
+				slog.Error("discord", "command", data.Name, "message", "failed reply to enable", "error", err)
+			}
+			return
+		}
+	}
 	req := intReq{
 		description:   opts.Description,
 		imagePrompt:   opts.ImagePrompt,
@@ -669,93 +686,109 @@ func splitResponse(t string) int {
 	return start + i + 1
 }
 
+// TODO: fine-tune.
+const imagePrompt = "You are autoregressive language model that specializes in creating perfect, outstanding prompts for generative art models like Stable Diffusion. Your job is to take user ideas, capture ALL main parts, and turn into amazing prompts. You have to capture everything from the user's prompt and then use your talent to make it amazing. You are a master of art styles, terminology, pop culture, and photography across the globe. Respond only with the new prompt. Exclude article words."
+
+// TODO: fine-tune.
+const memeLabelsPrompt = "You are autoregressive language model that specializes in creating perfect, outstanding meme text. Your job is to take user ideas, capture ALL main parts, and turn into amazing meme labels. You have to capture everything from the user's prompt and then use your talent to make it amazing filled with sarcasm. Respond only with the new meme text. Make it as succinct as possible. Use few words. Use exactly one comma. Exclude article words."
+
 // handleImage generates an image based on the user prompt.
 func (d *discordBot) handleImage(req intReq) {
+	// Generate multiple images when the queue is empty.
+	resp := discordgo.WebhookEdit{}
 	content := ""
 	if req.description != "" {
 		content += "*Description*: " + escapeMarkdown(req.description) + "\n"
 	}
-	// Optionally use the LLM to generate the prompt(s) based on the description.
-	// TODO: We could do the two requests in parallel to reduce latency. Only
-	// important in "meme_auto".
-
-	// Image
-	if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
-		// TODO: fine-tune.
-		const imagePrompt = "You are autoregressive language model that specializes in creating perfect, outstanding prompts for generative art models like Stable Diffusion. Your job is to take user ideas, capture ALL main parts, and turn into amazing prompts. You have to capture everything from the user's prompt and then use your talent to make it amazing. You are a master of art styles, terminology, pop culture, and photography across the globe. Respond only with the new prompt. Exclude article words."
-		msgs := []llm.Message{
-			{Role: llm.System, Content: imagePrompt},
-			{Role: llm.User, Content: req.description},
-		}
-		if reply, err := d.l.Prompt(d.ctx, msgs, req.seed, 1.0); err != nil {
-			slog.Error("discord", "command", req.cmdName, "message", "failed to enhance prompt", "error", err)
-			content += "*LLM Error*: " + escapeMarkdown(err.Error()) + "\n"
-		} else {
-			req.imagePrompt = reply
-		}
-	}
 	if req.imagePrompt != "" {
 		content += "*Image prompt*: " + escapeMarkdown(req.imagePrompt) + "\n"
-	}
-
-	// Labels
-	if req.cmdName == "meme_auto" || req.cmdName == "meme_labels_auto" {
-		// TODO: fine-tune.
-		const memePrompt = "You are autoregressive language model that specializes in creating perfect, outstanding meme text. Your job is to take user ideas, capture ALL main parts, and turn into amazing meme labels. You have to capture everything from the user's prompt and then use your talent to make it amazing filled with sarcasm. Respond only with the new meme text. Make it as succinct as possible. Use few words. Use exactly one comma. Exclude article words."
-		msgs := []llm.Message{
-			{Role: llm.System, Content: memePrompt},
-			{Role: llm.User, Content: req.description},
-		}
-		if meme, err := d.l.Prompt(d.ctx, msgs, req.seed, 1.0); err != nil {
-			slog.Error("discord", "command", req.cmdName, "message", "failed to make meme prompt", "error", err)
-			content += "*LLM Error*: " + escapeMarkdown(err.Error()) + "\n"
-		} else {
-			req.labelsContent = strings.Trim(meme, "\",.")
-		}
-		if req.cmdName == "meme_labels_auto" {
-			// Special case since we don't actually need an image.
-			content += "*Labels*: " + escapeMarkdown(req.labelsContent)
-			if _, err := d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{Content: &content}); err != nil {
-				slog.Error("discord", "command", req.cmdName, "message", "failed posting interaction", "error", err)
-			}
-			return
-		}
 	}
 	if req.labelsContent != "" {
 		content += "*Labels*: " + escapeMarkdown(req.labelsContent) + "\n"
 	}
-
-	// TODO: Generate multiple images when the queue is empty?
-	img, err := d.ig.GenImage(d.ctx, req.imagePrompt, req.seed)
-	if err != nil {
-		content += "*ImageGen Error*: " + escapeMarkdown(err.Error())
-		if _, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{Content: &content}); err != nil {
-			slog.Error("discord", "command", req.cmdName, "message", "failed posting interaction", "error", err)
+	seed := req.seed
+	for i := 0; i < 4; i++ {
+		newreq := req
+		newreq.seed = seed
+		img, err := d.genImage(&newreq)
+		if newreq.description != req.description {
+			content += "*Description*: " + escapeMarkdown(newreq.description) + "\n"
 		}
-		return
+		if newreq.imagePrompt != req.imagePrompt {
+			content += "*Image prompt*: " + escapeMarkdown(newreq.imagePrompt) + "\n"
+		}
+		if newreq.labelsContent != req.labelsContent {
+			content += "*Labels*: " + escapeMarkdown(newreq.labelsContent) + "\n"
+		}
+		if seed != 0 {
+			content += "*Seed*: " + strconv.Itoa(seed) + "\n"
+		}
+		if err != nil {
+			slog.Error("discord", "imagereq", req, "error", err)
+			content += "\n*LLM Eror*: " + escapeMarkdown(err.Error()) + "\n"
+		}
+		resp.Content = &content
+		if len(img) != 0 {
+			resp.Files = []*discordgo.File{{Name: "prompt.png", ContentType: "image/png", Reader: bytes.NewReader(img)}}
+		}
+		if _, err2 := d.dg.InteractionResponseEdit(req.int, &resp); err2 != nil {
+			slog.Error("discord", "imagereq", req, "message", "failed posting interaction", "error", err2)
+			break
+		}
+		// If there were an error or there's another request pending, stop.
+		if err != nil || len(d.image) != 0 || len(d.chat) != 0 {
+			break
+		}
+		seed++
+		if err := d.dg.ChannelTyping(req.int.ChannelID); err != nil {
+			slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+			break
+		}
 	}
+}
 
-	if req.labelsContent != "" {
-		imagegen.DrawLabelsOnImage(img, req.labelsContent)
+func (d *discordBot) genImage(req *intReq) ([]byte, error) {
+	if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
+		// Image: use the LLM to generate the image prompt based on the description.
+		msgs := []llm.Message{{Role: llm.System, Content: imagePrompt}, {Role: llm.User, Content: req.description}}
+		reply, err := d.l.Prompt(d.ctx, msgs, req.seed, 1.0)
+		if err != nil {
+			return nil, fmt.Errorf("failed to enhance image generation prompt: %w", err)
+		}
+		req.imagePrompt = reply
 	}
-	w := bytes.Buffer{}
-	if err = png.Encode(&w, img); err != nil {
-		slog.Error("discord", "command", req.cmdName, "message", "failed encoding PNG", "error", err)
-		return
-	}
-	_, err = d.dg.InteractionResponseEdit(req.int, &discordgo.WebhookEdit{
-		Content: &content,
-		Files: []*discordgo.File{
-			{
-				Name:        "prompt.png",
-				ContentType: "image/png",
-				Reader:      &w,
-			},
-		},
+	var img *image.NRGBA
+	eg, ctx := errgroup.WithContext(d.ctx)
+	eg.Go(func() error {
+		// Labels: use the LLM to generate the labels based on the description.
+		if req.cmdName == "meme_auto" || req.cmdName == "meme_labels_auto" {
+			msgs := []llm.Message{{Role: llm.System, Content: memeLabelsPrompt}, {Role: llm.User, Content: req.description}}
+			meme, err2 := d.l.Prompt(ctx, msgs, req.seed, 1.0)
+			if err2 != nil {
+				return fmt.Errorf("failed to enhance labels: %w", err2)
+			}
+			req.labelsContent = strings.Trim(meme, "\",.")
+		}
+		return nil
 	})
-	if err != nil {
-		slog.Error("discord", "command", req.cmdName, "message", "failed posting interaction", "error", err)
+	if req.cmdName != "meme_labels_auto" {
+		// Generate the image.
+		// "meme_labels_auto" is a special case where we don't actually need an image.
+		eg.Go(func() error {
+			var err2 error
+			img, err2 = d.ig.GenImage(ctx, req.imagePrompt, req.seed)
+			return err2
+		})
 	}
+	err := eg.Wait()
+	w := bytes.Buffer{}
+	if img != nil {
+		imagegen.DrawLabelsOnImage(img, req.labelsContent)
+		if err2 := png.Encode(&w, img); err == nil {
+			err = err2
+		}
+	}
+	return w.Bytes(), err
 }
 
 // msgReq is an incoming message pending to be processed.
