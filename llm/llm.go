@@ -2,7 +2,7 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package sillybot
+package llm
 
 import (
 	"archive/zip"
@@ -28,8 +28,8 @@ import (
 	"github.com/maruel/sillybot/py"
 )
 
-// LLMOptions for NewLLM.
-type LLMOptions struct {
+// Options for NewLLM.
+type Options struct {
 	// Remote is the host:port of a pre-existing server to use instead of
 	// starting our own.
 	Remote string
@@ -64,7 +64,8 @@ func (k *KnownLLM) URL() string {
 	return "https://huggingface.co/" + k.RepoID
 }
 
-func (k *KnownLLM) validate() error {
+// Validate checks for obvious errors in the fields.
+func (k *KnownLLM) Validate() error {
 	if strings.Count(k.RepoID, "/") != 1 {
 		return errors.New("invalid repo")
 	}
@@ -92,9 +93,9 @@ type LLM struct {
 	_ struct{}
 }
 
-// NewLLM instantiates a llama.cpp or llamafile server, or optionally uses
+// New instantiates a llama.cpp or llamafile server, or optionally uses
 // python instead.
-func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []KnownLLM) (*LLM, error) {
+func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM) (*LLM, error) {
 	svr := "remote"
 	cacheModels := filepath.Join(cache, "models")
 	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
@@ -195,7 +196,7 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 			svr = "llama-server"
 		}
 	} else {
-		if !isHostPort(opts.Remote) {
+		if !py.IsHostPort(opts.Remote) {
 			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
 		}
 		l.url = "http://" + opts.Remote + "/v1/chat/completions"

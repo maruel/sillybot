@@ -22,6 +22,7 @@ import (
 
 	"github.com/lmittmann/tint"
 	"github.com/maruel/sillybot"
+	"github.com/maruel/sillybot/llm"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 )
@@ -132,7 +133,7 @@ func mainImpl() error {
 		return err
 	}
 	// Load memory.
-	mem := &sillybot.Memory{}
+	mem := &llm.Memory{}
 	memcache := filepath.Join(*cache, "slack_memory.json")
 	f, err := os.Open(memcache)
 	if err == nil {
@@ -146,7 +147,7 @@ func mainImpl() error {
 		slog.Info("main", "memory", "no memory to load", "error", err)
 	}
 
-	s, err := newSlackBot(*apptoken, *bottoken, *verbose, l, ig, mem, cfg.Bot.LLM.SystemPrompt)
+	s, err := newSlackBot(*apptoken, *bottoken, *verbose, l, mem, ig, cfg.Bot.LLM.SystemPrompt)
 	if err != nil {
 		return err
 	}

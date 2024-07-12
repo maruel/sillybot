@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/maruel/sillybot"
+	"github.com/maruel/sillybot/llm"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
@@ -25,9 +26,9 @@ import (
 type slackBot struct {
 	api          *slack.Client
 	sc           *socketmode.Client
-	l            *sillybot.LLM
+	l            *llm.LLM
+	mem          *llm.Memory
 	ig           *sillybot.ImageGen
-	mem          *sillybot.Memory
 	systemPrompt string
 	chat         chan msgReq
 	image        chan *imgReq
@@ -51,7 +52,7 @@ type ilog interface {
 	Output(int, string) error
 }
 
-func newSlackBot(apptoken, bottoken string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen, mem *sillybot.Memory, systPrmpt string) (*slackBot, error) {
+func newSlackBot(apptoken, bottoken string, verbose bool, l *llm.LLM, mem *llm.Memory, ig *sillybot.ImageGen, systPrmpt string) (*slackBot, error) {
 	if !strings.HasPrefix(apptoken, "xapp-") {
 		return nil, errors.New("slack apptoken must have the prefix \"xapp-\"")
 	}
@@ -77,8 +78,8 @@ func newSlackBot(apptoken, bottoken string, verbose bool, l *sillybot.LLM, ig *s
 		api:          api,
 		sc:           sc,
 		l:            l,
-		ig:           ig,
 		mem:          mem,
+		ig:           ig,
 		systemPrompt: systPrmpt,
 		chat:         make(chan msgReq, 5),
 		image:        make(chan *imgReq, 3),
@@ -297,13 +298,13 @@ func (s *slackBot) onAppMention(ctx context.Context, req msgReq) {
 func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	c := s.mem.Get(req.userid, req.channel)
 	if len(c.Messages) == 0 {
-		c.Messages = []sillybot.Message{{Role: sillybot.System, Content: s.systemPrompt}}
+		c.Messages = []llm.Message{{Role: llm.System, Content: s.systemPrompt}}
 	}
 	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false), slack.MsgOptionTS(req.ts))
 	if err != nil {
 		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
-	c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.User, Content: req.msg})
+	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
 	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -324,7 +325,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 						}
 					}
 					// Remember our own answer.
-					c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.Assistant, Content: text})
+					c.Messages = append(c.Messages, llm.Message{Role: llm.Assistant, Content: text})
 					t.Stop()
 					wg.Done()
 					return
@@ -362,9 +363,9 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	// Use the LLM to improve the prompt!
 	if s.l != nil {
 		const systemPrompt = "You are autoregressive language model that specializes in creating perfect, outstanding prompts for generative art models like Stable Diffusion. Your job is to take user ideas, capture ALL main parts, and turn into amazing prompts. You have to capture everything from the user's prompt and then use your talent to make it amazing. You are a master of art styles, terminology, pop culture, and photography across the globe. Respond only with the new prompt. Exclude article words."
-		msgs := []sillybot.Message{
-			{Role: sillybot.System, Content: systemPrompt},
-			{Role: sillybot.User, Content: req.msg},
+		msgs := []llm.Message{
+			{Role: llm.System, Content: systemPrompt},
+			{Role: llm.User, Content: req.msg},
 		}
 
 		if reply, err := s.l.Prompt(ctx, msgs, 0, 1.0); err != nil {

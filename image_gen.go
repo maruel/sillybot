@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -72,7 +71,7 @@ func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*Ima
 		}
 		ig.url = fmt.Sprintf("http://localhost:%d/", port)
 	} else {
-		if !isHostPort(opts.Remote) {
+		if !py.IsHostPort(opts.Remote) {
 			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
 		}
 		ig.url = "http://" + opts.Remote + "/"
@@ -201,18 +200,4 @@ func decodePNG(b []byte) (*image.NRGBA, error) {
 	default:
 		return nil, fmt.Errorf("failed to decode PNG: expected NRGBA, got %T", img)
 	}
-}
-
-// isHostPort returns true if the string seems like a valid "host:port" string.
-func isHostPort(s string) bool {
-	// Simplified regexp that supports IPv4, IPv6 and hostname and requires a port.
-	ipv4 := `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`
-	ipv6 := `\[[a-fA-F0-9:]+\]`
-	hostname := `[a-zA-Z0-9\-\.]{2,}`
-	r := `^(?:` + ipv4 + `|` + ipv6 + `|` + hostname + `):\d{1,5}$`
-	ok, err := regexp.MatchString(r, s)
-	if err != nil {
-		panic(err)
-	}
-	return ok
 }

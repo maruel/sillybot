@@ -22,6 +22,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/huggingface"
+	"github.com/maruel/sillybot/llm"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/goitalic"
 	"golang.org/x/image/font/opentype"
@@ -35,9 +36,9 @@ import (
 type discordBot struct {
 	ctx          context.Context
 	dg           *discordgo.Session
-	l            *sillybot.LLM
+	l            *llm.LLM
 	ig           *sillybot.ImageGen
-	mem          *sillybot.Memory
+	mem          *llm.Memory
 	systemPrompt string
 	f            *opentype.Font
 	chat         chan msgReq
@@ -46,7 +47,7 @@ type discordBot struct {
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.LLM, ig *sillybot.ImageGen, mem *sillybot.Memory, systPrmpt string) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.LLM, mem *llm.Memory, ig *sillybot.ImageGen, systPrmpt string) (*discordBot, error) {
 	f, err := opentype.Parse(goitalic.TTF)
 	if err != nil {
 		slog.Error("discord", "message", "failed decoding png", "error", err)
@@ -79,8 +80,8 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *sillybot.
 		ctx:          ctx,
 		dg:           dg,
 		l:            l,
-		ig:           ig,
 		mem:          mem,
+		ig:           ig,
 		systemPrompt: systPrmpt,
 		f:            f,
 		chat:         make(chan msgReq, 5),
@@ -368,7 +369,7 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 		reply = "The memory of our past conversations just got zapped."
 	}
 	reply += "\n*System prompt*: " + escapeMarkdown(opts.SystemPrompt)
-	c.Messages = []sillybot.Message{{Role: sillybot.System, Content: opts.SystemPrompt}}
+	c.Messages = []llm.Message{{Role: llm.System, Content: opts.SystemPrompt}}
 	if err := d.interactionRespond(event.Interaction, reply); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
 	}
@@ -511,9 +512,9 @@ func (d *discordBot) imageRoutine() {
 func (d *discordBot) handlePrompt(req msgReq) {
 	c := d.mem.Get(req.authorID, req.channelID)
 	if len(c.Messages) == 0 {
-		c.Messages = []sillybot.Message{{Role: sillybot.System, Content: d.systemPrompt}}
+		c.Messages = []llm.Message{{Role: llm.System, Content: d.systemPrompt}}
 	}
-	c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.User, Content: req.msg})
+	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
 	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -537,7 +538,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 						}
 					}
 					// Remember our own answer.
-					c.Messages = append(c.Messages, sillybot.Message{Role: sillybot.Assistant, Content: text})
+					c.Messages = append(c.Messages, llm.Message{Role: llm.Assistant, Content: text})
 					t.Stop()
 					wg.Done()
 					return
@@ -652,9 +653,9 @@ func (d *discordBot) handleImage(req intReq) {
 	if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
 		// TODO: fine-tune.
 		const imagePrompt = "You are autoregressive language model that specializes in creating perfect, outstanding prompts for generative art models like Stable Diffusion. Your job is to take user ideas, capture ALL main parts, and turn into amazing prompts. You have to capture everything from the user's prompt and then use your talent to make it amazing. You are a master of art styles, terminology, pop culture, and photography across the globe. Respond only with the new prompt. Exclude article words."
-		msgs := []sillybot.Message{
-			{Role: sillybot.System, Content: imagePrompt},
-			{Role: sillybot.User, Content: req.description},
+		msgs := []llm.Message{
+			{Role: llm.System, Content: imagePrompt},
+			{Role: llm.User, Content: req.description},
 		}
 		if reply, err := d.l.Prompt(d.ctx, msgs, 0, 1.0); err != nil {
 			slog.Error("discord", "command", req.cmdName, "message", "failed to enhance prompt", "error", err)
@@ -671,9 +672,9 @@ func (d *discordBot) handleImage(req intReq) {
 	if req.cmdName == "meme_auto" || req.cmdName == "meme_labels_auto" {
 		// TODO: fine-tune.
 		const memePrompt = "You are autoregressive language model that specializes in creating perfect, outstanding meme text. Your job is to take user ideas, capture ALL main parts, and turn into amazing meme labels. You have to capture everything from the user's prompt and then use your talent to make it amazing filled with sarcasm. Respond only with the new meme text. Make it as succinct as possible. Use few words. Use exactly one comma. Exclude article words."
-		msgs := []sillybot.Message{
-			{Role: sillybot.System, Content: memePrompt},
-			{Role: sillybot.User, Content: req.description},
+		msgs := []llm.Message{
+			{Role: llm.System, Content: memePrompt},
+			{Role: llm.User, Content: req.description},
 		}
 		if meme, err := d.l.Prompt(d.ctx, msgs, 0, 1.0); err != nil {
 			slog.Error("discord", "command", req.cmdName, "message", "failed to make meme prompt", "error", err)

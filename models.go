@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/maruel/sillybot/llm"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 )
@@ -28,15 +29,15 @@ var DefaultConfig []byte
 // Config defines the configuration format.
 type Config struct {
 	Bot struct {
-		LLM      LLMOptions
+		LLM      llm.Options
 		ImageGen ImageGenOptions `yaml:"image_gen"`
 	}
-	KnownLLMs []KnownLLM
+	KnownLLMs []llm.KnownLLM
 }
 
 func (c *Config) validate() error {
 	for i := range c.KnownLLMs {
-		if err := c.KnownLLMs[i].validate(); err != nil {
+		if err := c.KnownLLMs[i].Validate(); err != nil {
 			return err
 		}
 	}
@@ -74,7 +75,7 @@ func (c *Config) LoadOrDefault(config string) error {
 // LoadModels loads the LLM and ImageGen models.
 //
 // Both take a while to start, so load them in parallel for faster initialization.
-func LoadModels(ctx context.Context, cache string, cfg *Config) (*LLM, *ImageGen, error) {
+func LoadModels(ctx context.Context, cache string, cfg *Config) (*llm.LLM, *ImageGen, error) {
 	start := time.Now()
 	slog.Info("models", "state", "initializing")
 
@@ -87,7 +88,7 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (*LLM, *ImageGen
 	}
 
 	eg := errgroup.Group{}
-	var l *LLM
+	var l *llm.LLM
 	var s *ImageGen
 	eg.Go(func() error {
 		if cfg.Bot.LLM.Remote == "" && cfg.Bot.LLM.Model == "" {
@@ -95,7 +96,7 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (*LLM, *ImageGen
 			return nil
 		}
 		var err error
-		if l, err = NewLLM(ctx, cache, &cfg.Bot.LLM, cfg.KnownLLMs); err != nil {
+		if l, err = llm.New(ctx, cache, &cfg.Bot.LLM, cfg.KnownLLMs); err != nil {
 			slog.Info("llm", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
 		}
 		return err

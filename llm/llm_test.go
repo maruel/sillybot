@@ -2,7 +2,7 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package sillybot
+package llm
 
 import (
 	"context"
@@ -51,15 +51,15 @@ func testModel(t *testing.T, model string) {
 	if testing.Short() {
 		t.Skip("skipping test case in short mode")
 	}
-	cache, err := filepath.Abs("cache")
+	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	opts := LLMOptions{
+	opts := Options{
 		Model: model,
 	}
-	l, err := NewLLM(ctx, cache, &opts, nil)
+	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,15 +86,15 @@ func testModelStreaming(t *testing.T, model string) {
 	if testing.Short() {
 		t.Skip("skipping test case in short mode")
 	}
-	cache, err := filepath.Abs("cache")
+	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	opts := LLMOptions{
+	opts := Options{
 		Model: model,
 	}
-	l, err := NewLLM(ctx, cache, &opts, nil)
+	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

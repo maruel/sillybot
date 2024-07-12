@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/maruel/sillybot/py"
 )
 
 func TestImageGen(t *testing.T) {
@@ -55,10 +56,10 @@ func TestImageGen_Remote_Fail(t *testing.T) {
 }
 
 func TestIsHostPort(t *testing.T) {
-	if isHostPort("a:1") {
+	if py.IsHostPort("a:1") {
 		t.Fatal()
 	}
-	if !isHostPort("aa.bb.ts.net:1") {
+	if !py.IsHostPort("aa.bb.ts.net:1") {
 		t.Fatal()
 	}
 }
