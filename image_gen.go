@@ -20,6 +20,8 @@ import (
 	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/maruel/sillybot/py"
 )
 
 // ImageGenOptions for NewImageGen.
@@ -58,15 +60,13 @@ func NewImageGen(ctx context.Context, cache string, opts *ImageGenOptions) (*Ima
 		if err := os.MkdirAll(cachePy, 0o755); err != nil {
 			return nil, fmt.Errorf("failed to create the directory to cache python: %w", err)
 		}
-		if pyNeedRecreate(cachePy) {
-			if err := pyRecreate(ctx, cachePy); err != nil {
-				return nil, err
-			}
+		if err := py.RecreateVirtualEnvIfNeeded(ctx, cachePy); err != nil {
+			return nil, fmt.Errorf("failed to load image_gen: %w", err)
 		}
-		port := findFreePort()
+		port := py.FindFreePort()
 		cmd := []string{filepath.Join(cachePy, "image_gen.py"), "--port", strconv.Itoa(port)}
 		var err error
-		ig.done, ig.cancel, err = runPython(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "image_gen.log"))
+		ig.done, ig.cancel, err = py.Run(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "image_gen.log"))
 		if err != nil {
 			return nil, err
 		}

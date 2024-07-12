@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/maruel/sillybot/huggingface"
+	"github.com/maruel/sillybot/py"
 )
 
 // LLMOptions for NewLLM.
@@ -113,10 +114,8 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 			if err := os.MkdirAll(cachePy, 0o755); err != nil {
 				return nil, fmt.Errorf("failed to create the directory to cache python: %w", err)
 			}
-			if pyNeedRecreate(cachePy) {
-				if err := pyRecreate(ctx, cachePy); err != nil {
-					return nil, fmt.Errorf("failed to load llm: %w", err)
-				}
+			if err := py.RecreateVirtualEnvIfNeeded(ctx, cachePy); err != nil {
+				return nil, fmt.Errorf("failed to load llm: %w", err)
 			}
 			slog.Info("llm", "message", "using python")
 		} else {
@@ -140,11 +139,11 @@ func NewLLM(ctx context.Context, cache string, opts *LLMOptions, knownLLMs []Kno
 		}
 
 		// Create the log file to redirect llamafile's output which is quite verbose.
-		port := findFreePort()
+		port := py.FindFreePort()
 		l.url = fmt.Sprintf("http://localhost:%d/v1/chat/completions", port)
 		if opts.Model == "python" {
 			cmd := []string{filepath.Join(cachePy, "llm.py"), "--port", strconv.Itoa(port)}
-			done, cancel, err := runPython(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "llm.log"))
+			done, cancel, err := py.Run(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "llm.log"))
 			if err != nil {
 				return nil, fmt.Errorf("failed to start python llm server: %w", err)
 			}

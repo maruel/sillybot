@@ -21,7 +21,7 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-func TestGetModel(t *testing.T) {
+func TestGetModelInfo(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/models/microsoft/Phi-3-mini-4k-instruct/revision/main" {
 			t.Errorf("unexpected path, got: %s", r.URL.Path)
@@ -42,7 +42,7 @@ func TestGetModel(t *testing.T) {
 			Repo:   "Phi-3-mini-4k-instruct",
 		},
 	}
-	if err := c.GetModel(context.Background(), &got); err != nil {
+	if err := c.GetModelInfo(context.Background(), &got); err != nil {
 		t.Fatal(err)
 	}
 	want := Model{
