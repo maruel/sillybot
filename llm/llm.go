@@ -64,8 +64,22 @@ type KnownLLM struct {
 	Basename string
 	// UpstreamID is the upstream repo when the model is based on another one.
 	UpstreamID string `yaml:"upstream"`
+	// PromptEncoding is only necessary when using llama-server in /completion mode.
+	PromptEncoding PromptEncoding `yaml:"prompt_encoding"`
 
 	_ struct{}
+}
+
+// PromptEncoding describes how to encode the prompt.
+type PromptEncoding struct {
+	// Prompt encoding.
+	BeginOfText      string `yaml:"begin_of_text"`
+	StartTokenSystem string `yaml:"start_token_system"`
+	EndTokenSystem   string `yaml:"end_token_system"`
+	StartTokenUser   string `yaml:"start_token_user"`
+	EndTokenUser     string `yaml:"end_token_user"`
+	StartTokenModel  string `yaml:"start_token_model"`
+	EndTokenModel    string `yaml:"end_token_model"`
 }
 
 // URL returns the canonical URL for this repository.
