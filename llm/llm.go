@@ -96,12 +96,12 @@ type Session struct {
 	HF        *huggingface.Client
 	KnownLLMs []KnownLLM
 	model     string
+	baseURL   string
+	backend   string
 
-	c       *exec.Cmd
-	done    <-chan error
-	cancel  func() error
-	url     string
-	loading bool
+	c      *exec.Cmd
+	done   <-chan error
+	cancel func() error
 
 	_ struct{}
 }
@@ -112,7 +112,6 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	if opts.SystemPrompt == "" {
 		return nil, errors.New("did you forget to specify a system prompt?")
 	}
-	svr := "remote"
 	cacheModels := filepath.Join(cache, "models")
 	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create the directory to cache models: %w", err)
@@ -121,7 +120,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	if err != nil {
 		return nil, err
 	}
-	l := &Session{HF: hf, KnownLLMs: knownLLMs, model: opts.Model, loading: true}
+	l := &Session{HF: hf, KnownLLMs: knownLLMs, model: opts.Model}
 	cachePy := filepath.Join(cache, "py")
 	if opts.Remote == "" {
 		llamasrv := ""
@@ -135,11 +134,15 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 				return nil, fmt.Errorf("failed to load llm: %w", err)
 			}
 			slog.Info("llm", "message", "using python")
+			l.backend = "python"
 		} else {
 			// Make sure the server is available.
 			var err error
 			if llamasrv, isLlamafile, err = getLlama(ctx, cache); err != nil {
 				return nil, fmt.Errorf("failed to load llm: %w", err)
+			}
+			if l.backend = "llamacpp"; isLlamafile {
+				l.backend = "llamafile"
 			}
 			cmd := mangleForLlamafile(isLlamafile, llamasrv, "--version")
 			c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
@@ -157,7 +160,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 
 		// Create the log file to redirect llamafile's output which is quite verbose.
 		port := py.FindFreePort()
-		l.url = fmt.Sprintf("http://localhost:%d/v1/chat/completions", port)
+		l.baseURL = fmt.Sprintf("http://localhost:%d", port)
 		if opts.Model == "python" {
 			cmd := []string{filepath.Join(cachePy, "llm.py"), "--port", strconv.Itoa(port)}
 			done, cancel, err := py.Run(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "llm.log"))
@@ -204,13 +207,6 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			}()
 			slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", port)
 		}
-		if opts.Model == "python" {
-			svr = "llm.py"
-		} else if isLlamafile {
-			svr = "llamafile"
-		} else {
-			svr = "llama-server"
-		}
 	} else {
 		if !py.IsHostPort(opts.Remote) {
 			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
@@ -219,21 +215,13 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		// https://platform.openai.com/docs/api-reference/chat/create
 		// https://docs.anthropic.com/en/api/messages-examples
 		// https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstarts/quickstart-multimodal
-		l.url = "http://" + opts.Remote + "/v1/chat/completions"
+		l.baseURL = "http://" + opts.Remote
 		slog.Info("llm", "state", "loading")
+		l.backend = "remote"
 	}
 
-	msgs := []Message{
-		{Role: System, Content: "You are an AI assistant. You strictly follow orders. Do not add punctuation. Do not use uppercase letters."},
-		{Role: User, Content: "reply with \"ok\""},
-	}
 	for ctx.Err() == nil {
-		if resp, err := l.Prompt(ctx, msgs, 1, 0.1); err == nil {
-			// Phi-3 can't follow orders properly.
-			if !strings.HasPrefix(strings.ToLower(resp), "ok") {
-				_ = l.Close()
-				return nil, fmt.Errorf("failed to get initial query from llm server: unexpected response from llm. expected \"ok\", got %q", resp)
-			}
+		if status, _ := l.GetHealth(ctx); status == "ok" {
 			break
 		}
 		select {
@@ -243,8 +231,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	slog.Info("llm", "state", "ready", "model", opts.Model, "using", svr, "url", l.url)
-	l.loading = false
+	slog.Info("llm", "state", "ready", "model", opts.Model, "using", l.backend, "url", l.baseURL)
 	return l, nil
 }
 
@@ -271,6 +258,28 @@ func (l *Session) Close() error {
 	return err
 }
 
+// GetHealth retrieves the heath of the server.
+func (l *Session) GetHealth(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", l.baseURL+"/health", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get health response: %w", err)
+	}
+	d := json.NewDecoder(resp.Body)
+	d.DisallowUnknownFields()
+	msg := llamaCPPHealthResponse{}
+	err = d.Decode(&msg)
+	_ = resp.Body.Close()
+	if err != nil {
+		return msg.Status, fmt.Errorf("failed to get health response: %w", err)
+	}
+	return msg.Status, nil
+}
+
 // Prompt prompts the LLM and returns the reply.
 //
 // Use a non-zero seed to get deterministic output (without strong guarantees).
@@ -286,20 +295,17 @@ func (l *Session) Close() error {
 // as described in Options.SystemPrompt.
 func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
 	start := time.Now()
-	lvl := slog.LevelInfo
-	if l.loading {
-		// Otherwise it storms on startup.
-		lvl = slog.LevelDebug
-	}
 	msgs = l.processMsgs(msgs)
-	slog.Log(ctx, lvl, "llm", "msgs", msgs)
-	reply, err := l.promptBlocking(ctx, msgs, seed, temperature)
+	slog.Info("llm", "msgs", msgs)
+	reply := ""
+	var err error
+	if false {
+		reply, err = l.llamaCPPPromptBlocking(ctx, msgs, seed, temperature)
+	} else {
+		reply, err = l.openAIPromptBlocking(ctx, msgs, seed, temperature)
+	}
 	if err != nil {
-		lvl := slog.LevelDebug
-		if !l.loading || err == context.Canceled {
-			lvl = slog.LevelError
-		}
-		slog.Log(ctx, lvl, "llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return reply, err
 	}
 	// Llama-3
@@ -329,27 +335,24 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperat
 // as described in Options.SystemPrompt.
 func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) error {
 	start := time.Now()
-	lvl := slog.LevelInfo
-	if l.loading {
-		// Otherwise it storms on startup.
-		lvl = slog.LevelDebug
-	}
 	msgs = l.processMsgs(msgs)
-	slog.Log(ctx, lvl, "llm", "msgs", msgs)
-	reply, err := l.promptStreaming(ctx, msgs, seed, temperature, words)
+	slog.Info("llm", "msgs", msgs)
+	reply := ""
+	var err error
+	if false {
+		reply, err = l.llamaCPPPromptStreaming(ctx, msgs, seed, temperature, words)
+	} else {
+		reply, err = l.openAIPromptStreaming(ctx, msgs, seed, temperature, words)
+	}
 	if err != nil {
-		lvl := slog.LevelDebug
-		if !l.loading || err == context.Canceled {
-			lvl = slog.LevelError
-		}
-		slog.Log(ctx, lvl, "llm", "reply", reply, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		slog.Error("llm", "reply", reply, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return err
 	}
 	slog.Info("llm", "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
-func (l *Session) promptBlocking(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
+func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",
 		Messages:    msgs,
@@ -360,7 +363,7 @@ func (l *Session) promptBlocking(ctx context.Context, msgs []Message, seed int, 
 	if err != nil {
 		return "", fmt.Errorf("internal error: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", l.url, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, "POST", l.baseURL+"/v1/chat/completions", bytes.NewReader(b))
 	if err != nil {
 		return "", fmt.Errorf("failed to create HTTP request: %w", err)
 	}
@@ -383,7 +386,7 @@ func (l *Session) promptBlocking(ctx context.Context, msgs []Message, seed int, 
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *Session) promptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) (string, error) {
+func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) (string, error) {
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",
 		Messages:    msgs,
@@ -395,7 +398,7 @@ func (l *Session) promptStreaming(ctx context.Context, msgs []Message, seed int,
 	if err != nil {
 		return "", fmt.Errorf("internal error: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", l.url, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, "POST", l.baseURL+"/v1/chat/completions", bytes.NewReader(b))
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
@@ -444,6 +447,104 @@ func (l *Session) promptStreaming(ctx context.Context, msgs []Message, seed int,
 		default:
 			words <- word
 			reply += word
+		}
+	}
+}
+
+func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
+	data := llamaCPPCompletionRequest{Seed: int64(seed), Temperature: temperature}
+	if seed == 0 {
+		// Doc mentions it causes non-determinism otherwise.
+		data.CachePrompt = true
+	}
+	if err := data.initPrompt(msgs); err != nil {
+		return "", err
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		return "", fmt.Errorf("internal error: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", l.baseURL+"/completion", bytes.NewReader(b))
+	if err != nil {
+		return "", fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
+	}
+	d := json.NewDecoder(resp.Body)
+	d.DisallowUnknownFields()
+	msg := llamaCPPCompletionResponse{}
+	err = d.Decode(&msg)
+	_ = resp.Body.Close()
+	if err != nil {
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
+	}
+	return msg.Content, nil
+}
+
+func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) (string, error) {
+	data := llamaCPPCompletionRequest{
+		Stream:      true,
+		Seed:        int64(seed),
+		Temperature: temperature,
+	}
+	if seed == 0 {
+		// Doc mentions it causes non-determinism otherwise.
+		data.CachePrompt = true
+	}
+	if err := data.initPrompt(msgs); err != nil {
+		return "", err
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		return "", fmt.Errorf("internal error: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", l.baseURL+"/completion", bytes.NewReader(b))
+	if err != nil {
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	r := bufio.NewReader(resp.Body)
+	reply := ""
+	for {
+		line, err := r.ReadBytes('\n')
+		line = bytes.TrimSpace(line)
+		if err == io.EOF {
+			err = nil
+			if len(line) == 0 {
+				return reply, nil
+			}
+		}
+		if err != nil {
+			return reply, fmt.Errorf("failed to get llama server response: %w", err)
+		}
+		if len(line) == 0 {
+			continue
+		}
+		if !bytes.HasPrefix(line, []byte("data: ")) {
+			return reply, fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
+		}
+		d := json.NewDecoder(bytes.NewReader(line[len("data: "):]))
+		d.DisallowUnknownFields()
+		msg := llamaCPPCompletionResponse{}
+		if err = d.Decode(&msg); err != nil {
+			return reply, fmt.Errorf("failed to decode llama server response %q: %w", string(line), err)
+		}
+		word := msg.Content
+		slog.Debug("llm", "word", word, "stop", msg.Stop)
+		if word != "" {
+			words <- word
+			reply += word
+		}
+		if msg.Stop {
+			return reply, nil
 		}
 	}
 }
@@ -565,6 +666,99 @@ func (l *Session) processMsgs(msgs []Message) []Message {
 }
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
+
+type errorResponse struct {
+	Code    int
+	Message string
+	Type    string
+}
+
+// llamaCPPHealthResponse is documented at
+// https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#api-endpoints
+type llamaCPPHealthResponse struct {
+	Status          string
+	SlotsIdle       int `json:"slots_idle"`
+	SlotsProcessing int `json:"slots_processing"`
+}
+
+// llamaCPPCompletionRequest is documented at
+// https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#api-endpoints
+type llamaCPPCompletionRequest struct {
+	SystemPrompt     string      `json:"system_prompt"`
+	Prompt           string      `json:"prompt"`
+	Grammar          string      `json:"grammar,omitempty"`
+	JSONSchema       interface{} `json:"json_schema,omitempty"`
+	Seed             int64       `json:"seed"`
+	Temperature      float64     `json:"temperature,omitempty"`
+	DynaTempRange    float64     `json:"dynatemp_range,omitempty"`
+	DynaTempExponent float64     `json:"dynatemp_exponent,omitempty"`
+	CachePrompt      bool        `json:"cache_prompt,omitempty"`
+	Stream           bool
+	// top_k             float64
+	// top_p             float64
+	// min_p             float64
+	// n_predict         int64
+	// n_keep            int64
+	// stop              []string
+	// tfs_z             float64
+	// typical_p         float64
+	// repeat_penalty    float64
+	// repeat_last_n     int64
+	// penalize_nl       bool
+	// presence_penalty  float64
+	// frequency_penalty float64
+	// penalty_prompt    *string
+	// mirostat          int32
+	// mirostat_tau      float64
+	// mirostat_eta      float64
+	// ignore_eos   bool
+	// logit_bias   []interface{}
+	// n_probs      int64
+	// min_keep     int64
+	// image_data   []byte
+	// id_slot      int64
+	// samplers     []string
+}
+
+func (l *llamaCPPCompletionRequest) initPrompt(msgs []Message) error {
+	for i, m := range msgs {
+		if m.Role == System {
+			if i != 0 {
+				return fmt.Errorf("unexpected system message at index %d", i)
+			}
+			l.SystemPrompt = m.Content
+			continue
+		}
+		l.Prompt += string(m.Role) + ": " + m.Content + "\n"
+	}
+	return nil
+}
+
+// llamaCPPCompletionResponse is documented at
+// https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#result-json
+type llamaCPPCompletionResponse struct {
+	Content                 string
+	Stop                    bool
+	GenerationSettings      interface{} `json:"generation_settings"`
+	Model                   string
+	Prompt                  string
+	StoppedEOS              bool   `json:"stopped_eos"`
+	StoppedLimit            bool   `json:"stopped_limit"`
+	StoppedWord             bool   `json:"stopped_word"`
+	StoppingWord            string `json:"stopping_word"`
+	Timings                 string
+	TokensCached            int64 `json:"tokens_cached"`
+	TokensEvaluated         int64 `json:"tokens_evaluated"`
+	Truncated               bool
+	CompletionProbabilities []struct {
+		Content string
+		Probs   []struct {
+			Prob   float64
+			TokStr string `json:"tok_str"`
+		}
+	} `json:"completion_probabilities"`
+	Error errorResponse
+}
 
 // openAIChatCompletionRequest is documented at
 // https://platform.openai.com/docs/api-reference/chat/create

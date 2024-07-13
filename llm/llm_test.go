@@ -57,7 +57,8 @@ func testModel(t *testing.T, model string) {
 	}
 	ctx := context.Background()
 	opts := Options{
-		Model: model,
+		Model:        model,
+		SystemPrompt: "Transcript of a never ending dialog, where the User interacts with an Assistant.\nThe Assistant is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.",
 	}
 	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, nil)
 	if err != nil {
@@ -92,7 +93,8 @@ func testModelStreaming(t *testing.T, model string) {
 	}
 	ctx := context.Background()
 	opts := Options{
-		Model: model,
+		Model:        model,
+		SystemPrompt: "Transcript of a never ending dialog, where the User interacts with an Assistant.\nThe Assistant is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.",
 	}
 	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, nil)
 	if err != nil {
