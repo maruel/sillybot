@@ -22,7 +22,7 @@ import (
 )
 
 func TestLLM_Mistral(t *testing.T) {
-	testModel(t, "Mistral-7B-Instruct-v0.3.Q2_K")
+	testModel(t, "Mistral-7B-Instruct-v0.3.Q1_S")
 }
 
 func TestLLM_Llama_3(t *testing.T) {
@@ -41,7 +41,7 @@ func TestLLM_Phi_3_Mini(t *testing.T) {
 }
 
 func TestLLM_Stream_Mistral(t *testing.T) {
-	testModelStreaming(t, "Mistral-7B-Instruct-v0.3.Q2_K")
+	testModelStreaming(t, "Mistral-7B-Instruct-v0.3.Q1_S")
 }
 
 func TestLLM_Stream_Llama_3(t *testing.T) {
