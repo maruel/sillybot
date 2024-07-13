@@ -60,9 +60,6 @@ func TestLLM_Stream_Phi_3_Mini(t *testing.T) {
 }
 
 func testModel(t *testing.T, model string) {
-	if testing.Short() {
-		t.Skip("skipping test case in short mode")
-	}
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -96,9 +93,6 @@ func testModel(t *testing.T, model string) {
 }
 
 func testModelStreaming(t *testing.T, model string) {
-	if testing.Short() {
-		t.Skip("skipping test case in short mode")
-	}
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
