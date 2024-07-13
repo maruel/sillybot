@@ -174,7 +174,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 			d, err := c.CombinedOutput()
 			if err != nil {
-				return nil, fmt.Errorf("failed to get llm version: %w\n%d", err, string(d))
+				return nil, fmt.Errorf("failed to get llm version: %w\n%s", err, string(d))
 			}
 			slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
 

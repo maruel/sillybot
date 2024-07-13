@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -86,6 +87,8 @@ func testModel(t *testing.T, model string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Very small model will add random stuff around.
+	got = strings.TrimSpace(got)
 	want := "ok chief"
 	// Work around for Mistral on llamafile
 	if got != want && got != want+"</s>" {
@@ -132,6 +135,8 @@ func testModelStreaming(t *testing.T, model string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Very small model will add random stuff around.
+	got = strings.TrimSpace(got)
 	want := "ok chief"
 	// Work around for Mistral on llamafile
 	if got != want && got != want+"</s>" {
