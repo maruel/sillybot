@@ -167,7 +167,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			if llamasrv, isLlamafile, err = getLlama(ctx, cache); err != nil {
 				return nil, fmt.Errorf("failed to load llm: %w", err)
 			}
-			if l.backend = "llamacpp"; isLlamafile {
+			if l.backend = "llama-server"; isLlamafile {
 				l.backend = "llamafile"
 			}
 			cmd := mangleForLlamafile(isLlamafile, llamasrv, "--version")
@@ -301,7 +301,7 @@ func (l *Session) GetHealth(ctx context.Context) (string, error) {
 	err = d.Decode(&msg)
 	_ = resp.Body.Close()
 	if err != nil {
-		return msg.Status, fmt.Errorf("failed to get health response: %w", err)
+		return msg.Status, fmt.Errorf("failed to decode health response: %w", err)
 	}
 	return msg.Status, nil
 }
@@ -404,7 +404,7 @@ func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, seed
 	err = d.Decode(&msg)
 	_ = resp.Body.Close()
 	if err != nil {
-		return "", fmt.Errorf("failed to get llama server response: %w", err)
+		return "", fmt.Errorf("failed to decode llama server response: %w", err)
 	}
 	if len(msg.Choices) != 1 {
 		return "", fmt.Errorf("llama server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
@@ -505,7 +505,7 @@ func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, se
 	err = d.Decode(&msg)
 	_ = resp.Body.Close()
 	if err != nil {
-		return "", fmt.Errorf("failed to get llama server response: %w", err)
+		return "", fmt.Errorf("failed to decode llama server response: %w", err)
 	}
 	return msg.Content, nil
 }
@@ -554,10 +554,7 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, s
 		if len(line) == 0 {
 			continue
 		}
-		if !bytes.HasPrefix(line, []byte("data: ")) {
-			return reply, fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
-		}
-		d := json.NewDecoder(bytes.NewReader(line[len("data: "):]))
+		d := json.NewDecoder(bytes.NewReader(line))
 		d.DisallowUnknownFields()
 		msg := llamaCPPCompletionResponse{}
 		if err = d.Decode(&msg); err != nil {
@@ -763,16 +760,26 @@ type llamaCPPCompletionRequest struct {
 // llamaCPPCompletionResponse is documented at
 // https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#result-json
 type llamaCPPCompletionResponse struct {
-	Content                 string
-	Stop                    bool
-	GenerationSettings      interface{} `json:"generation_settings"`
-	Model                   string
-	Prompt                  string
-	StoppedEOS              bool   `json:"stopped_eos"`
-	StoppedLimit            bool   `json:"stopped_limit"`
-	StoppedWord             bool   `json:"stopped_word"`
-	StoppingWord            string `json:"stopping_word"`
-	Timings                 string
+	Content            string
+	Stop               bool
+	GenerationSettings interface{} `json:"generation_settings"`
+	Model              string
+	Prompt             string
+	StoppedEOS         bool   `json:"stopped_eos"`
+	StoppedLimit       bool   `json:"stopped_limit"`
+	StoppedWord        bool   `json:"stopped_word"`
+	StoppingWord       string `json:"stopping_word"`
+	Timings            struct {
+		// Undocumented:
+		PromptN             int64   `json:"prompt_n"`
+		PromptMS            float64 `json:"prompt_ms"`
+		PromptPerTokenMS    float64 `json:"prompt_per_token_ms"`
+		PromptPerSecond     float64 `json:"prompt_per_second"`
+		PredictedN          int64   `json:"predicted_n"`
+		PredictedMS         float64 `json:"predicted_ms"`
+		PredictedPerTokenMS float64 `json:"predicted_per_token_ms"`
+		PredictedPerSecond  float64 `json:"predicted_per_second"`
+	}
 	TokensCached            int64 `json:"tokens_cached"`
 	TokensEvaluated         int64 `json:"tokens_evaluated"`
 	Truncated               bool
@@ -783,6 +790,10 @@ type llamaCPPCompletionResponse struct {
 			TokStr string `json:"tok_str"`
 		}
 	} `json:"completion_probabilities"`
+	// Undocumented:
+	IDSlot          int64 `json:"id_slot"`
+	TokensPredicted int64 `json:"tokens_predicted"`
+	// Error case:
 	Error errorResponse
 }
 

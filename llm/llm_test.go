@@ -5,6 +5,7 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"log/slog"
@@ -17,10 +18,16 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"gopkg.in/yaml.v3"
 )
 
+func TestLLM_Mistral(t *testing.T) {
+	testModel(t, "Mistral-7B-Instruct-v0.3.Q2_K")
+}
+
 func TestLLM_Llama_3(t *testing.T) {
-	testModel(t, "Meta-Llama-3-8B-Instruct.Q5_K_M")
+	t.Skip("skipping by default; it's a bit slow")
+	testModel(t, "Meta-Llama-3-8B-Instruct-Q5_K_M")
 }
 
 func TestLLM_Gemma_2(t *testing.T) {
@@ -33,8 +40,13 @@ func TestLLM_Phi_3_Mini(t *testing.T) {
 	testModel(t, "Phi-3-mini-4k-instruct.Q5_K_M")
 }
 
+func TestLLM_Stream_Mistral(t *testing.T) {
+	testModelStreaming(t, "Mistral-7B-Instruct-v0.3.Q2_K")
+}
+
 func TestLLM_Stream_Llama_3(t *testing.T) {
-	testModelStreaming(t, "Meta-Llama-3-8B-Instruct.Q5_K_M")
+	t.Skip("skipping by default; it's a bit slow")
+	testModelStreaming(t, "Meta-Llama-3-8B-Instruct-Q5_K_M")
 }
 
 func TestLLM_Stream_Gemma_2(t *testing.T) {
@@ -60,7 +72,7 @@ func testModel(t *testing.T, model string) {
 		Model:        model,
 		SystemPrompt: "Transcript of a never ending dialog, where the User interacts with an Assistant.\nThe Assistant is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.",
 	}
-	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, nil)
+	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, loadKnownLLMs(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +108,7 @@ func testModelStreaming(t *testing.T, model string) {
 		Model:        model,
 		SystemPrompt: "Transcript of a never ending dialog, where the User interacts with an Assistant.\nThe Assistant is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.",
 	}
-	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, nil)
+	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, loadKnownLLMs(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,6 +141,24 @@ func testModelStreaming(t *testing.T, model string) {
 	if got != want {
 		t.Fatalf("expected %s, got %s", want, got)
 	}
+}
+
+func loadKnownLLMs(t *testing.T) []KnownLLM {
+	b, err := os.ReadFile("../default_config.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := struct {
+		KnownLLMs []KnownLLM
+	}{}
+	d := yaml.NewDecoder(bytes.NewReader(b))
+	if err = d.Decode(&c); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.KnownLLMs) < 5 {
+		t.Fatalf("Expected more known LLMs\n%# v", c.KnownLLMs)
+	}
+	return c.KnownLLMs
 }
 
 // TestMain sets up the verbose logging.
