@@ -946,7 +946,8 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	defer z.Close()
 	desired := filepath.Base(llamaserver)
 	for _, f := range z.File {
-		if f.Name == desired {
+		// Files are under build/bin/
+		if filepath.Base(f.Name) == desired {
 			src, err := f.Open()
 			if err != nil {
 				return "", false, err
