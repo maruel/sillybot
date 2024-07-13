@@ -8,6 +8,7 @@
 package llm
 
 import (
+	"archive/zip"
 	"bufio"
 	"bytes"
 	"context"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/maruel/sillybot/huggingface"
 	"github.com/maruel/sillybot/py"
+	"golang.org/x/sys/cpu"
 )
 
 // Options for NewLLM.
@@ -892,8 +894,8 @@ func mangleForLlamafile(isLlamafile bool, cmd ...string) []string {
 // if it is llama-server from llama.cpp.
 //
 // It first look for llama-server or llamafile if one of them is PATH. Then it
-// checks if one of them is s in the cache directory, otherwise downloads the
-// latest version of llamafile from GitHub.
+// checks if one of them is s in the cache directory, otherwise downloads an
+// hard coded version of llama-server from GitHub.
 func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	if s, err := exec.LookPath("llama-server"); err == nil {
 		return s, false, nil
@@ -915,22 +917,51 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	}
 
 	// Time to download.
-	// Download llamafile from GitHub. We always want the latest and greatest
-	// as it is very actively developed and the model we download likely use an
-	// older version.
-	url, name, err := getGitHubLatestRelease("Mozilla-Ocho", "llamafile", "application/octet-stream")
-	if err != nil {
-		return "", false, fmt.Errorf("failed to find latest llamafile release from github: %w", err)
+	// Do not get the latest version because the odds of it breaking is just too high.
+	// This is best effort.
+	url := "https://github.com/ggerganov/llama.cpp/releases/download/b3386/"
+	zipname := ""
+	switch runtime.GOOS {
+	case "darwin":
+		zipname = "llama-b3386-bin-macos-arm64.zip"
+	case "linux":
+		zipname = "llama-b3386-bin-ubuntu-x64.zip"
+	case "windows":
+		if cpu.X86.HasAVX512BF16 {
+			zipname = "llama-b3386-bin-win-avx512-x64.zip"
+		} else if cpu.X86.HasAVX2 {
+			zipname = "llama-b3386-bin-win-avx2-x64.zip"
+		} else {
+			zipname = "llama-b3386-bin-win-avx-x64.zip"
+		}
 	}
-	versioned := filepath.Join(cache, name+execSuffix)
-	if err = huggingface.DownloadFile(ctx, url, versioned, "", 0o755); err != nil {
+	zippath := filepath.Join(cache, zipname)
+	if err := huggingface.DownloadFile(ctx, url+zipname, zippath, "", 0o644); err != nil {
 		return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
 	}
-	// Copy it as the default executable to use.
-	if err = copyFile(llamafile, versioned); err != nil {
-		return "", false, fmt.Errorf("failed to copy llamafile in cache: %w", err)
+	z, err := zip.OpenReader(zippath)
+	if err != nil {
+		return "", false, err
 	}
-	return llamafile, true, nil
+	defer z.Close()
+	desired := filepath.Base(llamaserver)
+	for _, f := range z.File {
+		if f.Name == desired {
+			src, err := f.Open()
+			if err != nil {
+				return "", false, err
+			}
+			defer src.Close()
+			dst, err := os.OpenFile(llamaserver, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
+			if err != nil {
+				return "", false, err
+			}
+			defer dst.Close()
+			_, err = io.CopyN(dst, src, int64(f.UncompressedSize64))
+			return llamaserver, false, err
+		}
+	}
+	return "", false, fmt.Errorf("failed to find %q in %q", desired, zipname)
 }
 
 // getGitHubLatestRelease returns the latest release for a github repository.
@@ -964,24 +995,4 @@ func getGitHubLatestRelease(owner, repo, contentType string) (string, string, er
 		}
 	}
 	return "", "", nil
-}
-
-// copyFile copy a file while keeping the file mode.
-func copyFile(dst, src string) error {
-	s, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-	st, err := s.Stat()
-	if err != nil {
-		return err
-	}
-	d, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, st.Mode())
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	_, err = io.Copy(d, s)
-	return err
 }

@@ -23,9 +23,6 @@ import (
 )
 
 func TestLLM_Mistral(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping until we switch to llama-server on github actions runner")
-	}
 	testModel(t, "Mistral-7B-Instruct-v0.3.Q2_K")
 }
 
@@ -45,9 +42,6 @@ func TestLLM_Phi_3_Mini(t *testing.T) {
 }
 
 func TestLLM_Stream_Mistral(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping until we switch to llama-server on github actions runner")
-	}
 	testModelStreaming(t, "Mistral-7B-Instruct-v0.3.Q2_K")
 }
 
