@@ -174,7 +174,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 			d, err := c.CombinedOutput()
 			if err != nil {
-				return nil, fmt.Errorf("failed to get llm version: %w", err)
+				return nil, fmt.Errorf("failed to get llm version: %w\n%d", err, string(d))
 			}
 			slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
 
@@ -623,7 +623,7 @@ func (l *Session) ensureModel(ctx context.Context, model string, k KnownLLM) (st
 		return "", fmt.Errorf("you forgot to add a quantization suffix like 'BF16', 'F16', 'Q8_0' or 'Q5_K_M' when specifying model %q", model)
 
 	default:
-		return "", fmt.Errorf("unknown quantization for model %q, did you forget a suffix like 'BF16' or 'Q5_K_M'?", model)
+		return "", fmt.Errorf("unknown quantization %q for model %q, did you forget a suffix like 'BF16' or 'Q5_K_M'?", ext, model)
 	}
 
 	// Hack: quickly check if the file is there, if so, just return this.
