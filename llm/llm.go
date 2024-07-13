@@ -107,11 +107,11 @@ func (k *KnownLLM) Validate() error {
 // While it is expected that the model is an Instruct form, it is not a
 // requirement.
 type Session struct {
-	HF        *huggingface.Client
-	KnownLLMs []KnownLLM
-	model     string
-	baseURL   string
-	backend   string
+	HF       *huggingface.Client
+	model    string
+	baseURL  string
+	backend  string
+	encoding PromptEncoding
 
 	c      *exec.Cmd
 	done   <-chan error
@@ -134,7 +134,19 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	if err != nil {
 		return nil, err
 	}
-	l := &Session{HF: hf, KnownLLMs: knownLLMs, model: opts.Model}
+	l := &Session{HF: hf, model: opts.Model}
+	known := -1
+	for i, k := range knownLLMs {
+		if strings.HasPrefix(opts.Model, k.Basename) {
+			known = i
+			l.encoding = k.PromptEncoding
+			break
+		}
+	}
+	if known == -1 {
+		return nil, fmt.Errorf("unknown LLM model %q, add to knownllms section first", l.model)
+	}
+
 	cachePy := filepath.Join(cache, "py")
 	if opts.Remote == "" {
 		llamasrv := ""
@@ -167,7 +179,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
 
 			// Make sure the model is available.
-			if modelFile, err = l.ensureModel(ctx, opts.Model); err != nil {
+			if modelFile, err = l.ensureModel(ctx, opts.Model, knownLLMs[known]); err != nil {
 				return nil, fmt.Errorf("failed to get llm model: %w", err)
 			}
 		}
@@ -471,7 +483,7 @@ func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, se
 		// Doc mentions it causes non-determinism otherwise.
 		data.CachePrompt = true
 	}
-	if err := data.initPrompt(msgs); err != nil {
+	if err := l.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
 	b, err := json.Marshal(data)
@@ -508,7 +520,7 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, s
 		// Doc mentions it causes non-determinism otherwise.
 		data.CachePrompt = true
 	}
-	if err := data.initPrompt(msgs); err != nil {
+	if err := l.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
 	b, err := json.Marshal(data)
@@ -563,11 +575,32 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, s
 	}
 }
 
+func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []Message) error {
+	data.Prompt = l.encoding.BeginOfText
+	for i, m := range msgs {
+		switch m.Role {
+		case System:
+			if i != 0 {
+				return fmt.Errorf("unexpected system message at index %d", i)
+			}
+			data.Prompt += l.encoding.StartTokenSystem + m.Content + l.encoding.EndTokenSystem
+			continue
+		case User:
+			data.Prompt += l.encoding.StartTokenUser + m.Content + l.encoding.EndTokenUser
+		case Assistant:
+			data.Prompt += l.encoding.StartTokenModel + m.Content + l.encoding.EndTokenModel
+		default:
+			return fmt.Errorf("unexpected role %q", m.Role)
+		}
+	}
+	return nil
+}
+
 // ensureModel gets the model if missing.
 //
 // Currently hard-coded to GGUF files and Hugging Face. Doesn't support split
 // files.
-func (l *Session) ensureModel(ctx context.Context, model string) (string, error) {
+func (l *Session) ensureModel(ctx context.Context, model string, k KnownLLM) (string, error) {
 	// TODO: This is very "meh".
 	ext := strings.TrimLeft(strings.ToUpper(filepath.Ext(model)), ".")
 	if ext == "" {
@@ -603,22 +636,15 @@ func (l *Session) ensureModel(ctx context.Context, model string) (string, error)
 		return dst, nil
 	}
 	slog.Info("llm", "model", model, "state", "missing")
-	var known KnownLLM
-	for _, k := range l.KnownLLMs {
-		if strings.HasPrefix(model, k.Basename) {
-			known = k
-			break
-		}
-	}
-	if known.RepoID == "" {
+	if k.RepoID == "" {
 		return "", fmt.Errorf("can't guess model %q huggingface repo", model)
 	}
 	// Hack: we assume everything is on HuggingFace.
-	switch known.PackagingType {
+	switch k.PackagingType {
 	case "gguf":
-		if dst, err = l.HF.EnsureFile(ctx, known.RepoID, model+".gguf", 0o644); err != nil {
+		if dst, err = l.HF.EnsureFile(ctx, k.RepoID, model+".gguf", 0o644); err != nil {
 			// Get the list of files to help the user.
-			parts := strings.SplitN(known.RepoID, "/", 2)
+			parts := strings.SplitN(k.RepoID, "/", 2)
 			m := huggingface.Model{ModelRef: huggingface.ModelRef{Author: parts[0], Repo: parts[1]}}
 			err = fmt.Errorf("can't find model %q at %s: %w", model, m.URL(), err)
 			if err2 := l.HF.GetModelInfo(ctx, &m); err2 != nil {
@@ -628,7 +654,7 @@ func (l *Session) ensureModel(ctx context.Context, model string) (string, error)
 			added := false
 			for _, f := range m.Files {
 				// TODO: Move this into a common function.
-				if !strings.HasPrefix(f, known.Basename) {
+				if !strings.HasPrefix(f, k.Basename) {
 					continue
 				}
 				if strings.Contains(f, "/") {
@@ -643,13 +669,13 @@ func (l *Session) ensureModel(ctx context.Context, model string) (string, error)
 				if added {
 					msg += ", "
 				}
-				msg += strings.TrimSuffix(f[len(known.Basename):], ".gguf")
+				msg += strings.TrimSuffix(f[len(k.Basename):], ".gguf")
 				added = true
 			}
 			return dst, fmt.Errorf("%w; %s", err, msg)
 		}
 	default:
-		err = fmt.Errorf("internal error: implement packaging type %s", known.PackagingType)
+		err = fmt.Errorf("internal error: implement packaging type %s", k.PackagingType)
 	}
 	return dst, err
 }
@@ -732,20 +758,6 @@ type llamaCPPCompletionRequest struct {
 	// image_data   []byte
 	// id_slot      int64
 	// samplers     []string
-}
-
-func (l *llamaCPPCompletionRequest) initPrompt(msgs []Message) error {
-	for i, m := range msgs {
-		if m.Role == System {
-			if i != 0 {
-				return fmt.Errorf("unexpected system message at index %d", i)
-			}
-			l.SystemPrompt = m.Content
-			continue
-		}
-		l.Prompt += string(m.Role) + ": " + m.Content + "\n"
-	}
-	return nil
 }
 
 // llamaCPPCompletionResponse is documented at

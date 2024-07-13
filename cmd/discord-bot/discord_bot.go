@@ -35,6 +35,7 @@ type discordBot struct {
 	dg           *discordgo.Session
 	l            *llm.Session
 	mem          *llm.Memory
+	knownLLMs    []llm.KnownLLM
 	ig           *imagegen.Session
 	systemPrompt string
 	chat         chan msgReq
@@ -43,7 +44,7 @@ type discordBot struct {
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Session, mem *llm.Memory, ig *imagegen.Session, systPrmpt string) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, systPrmpt string) (*discordBot, error) {
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
@@ -73,6 +74,7 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Sessi
 		dg:           dg,
 		l:            l,
 		mem:          mem,
+		knownLLMs:    knownLLMs,
 		ig:           ig,
 		systemPrompt: systPrmpt,
 		chat:         make(chan msgReq, 5),
@@ -394,7 +396,7 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
 	var replies []string
 	reply := "Known models:\n"
-	for _, k := range d.l.KnownLLMs {
+	for _, k := range d.knownLLMs {
 		reply += "- [`" + k.Basename + "`](" + k.URL() + ") "
 		parts := strings.SplitN(k.RepoID, "/", 2)
 		info := huggingface.Model{ModelRef: huggingface.ModelRef{Author: parts[0], Repo: parts[1]}}
