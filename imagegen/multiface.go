@@ -61,7 +61,7 @@ func (f *multiface) GlyphBounds(r rune) (bounds fixed.Rectangle26_6, advance fix
 }
 
 func (f *multiface) Kern(r0, r1 rune) fixed.Int26_6 {
-	idxr0 := -1
+	idxr0 := 0
 	if r0 == f.r0 && f.idxr0 >= 0 {
 		idxr0 = f.idxr0
 	} else if r0 == f.r1 && f.idxr1 >= 0 {
@@ -70,7 +70,7 @@ func (f *multiface) Kern(r0, r1 rune) fixed.Int26_6 {
 		idxr0 = f.findFont(r0)
 	}
 
-	idxr1 := -1
+	idxr1 := 0
 	if r1 == f.r0 && f.idxr0 >= 0 {
 		idxr1 = f.idxr0
 	} else if r1 == f.r1 && f.idxr1 >= 0 {
