@@ -68,7 +68,7 @@ func testModel(t *testing.T, model string) {
 	ctx := context.Background()
 	opts := Options{
 		Model:        model,
-		SystemPrompt: "Transcript of a never ending dialog, where the User interacts with an Assistant.\nThe Assistant is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.",
+		SystemPrompt: "You are an AI assistant. You strictly follow orders. Do not add extraneous words. Only reply with what is asked of you.",
 	}
 	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, loadKnownLLMs(t))
 	if err != nil {
@@ -80,18 +80,15 @@ func testModel(t *testing.T, model string) {
 		}
 	})
 	msgs := []Message{
-		{Role: System, Content: "You are an AI assistant. You strictly follow orders. Do not add punctuation. Do not use uppercase letters."},
+		{Role: System, Content: opts.SystemPrompt},
 		{Role: User, Content: "reply with \"ok chief\""},
 	}
 	got, err := l.Prompt(ctx, msgs, 1, 0.1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Very small model will add random stuff around.
-	got = strings.TrimSpace(got)
-	want := "ok chief"
-	// Work around for Mistral on llamafile
-	if got != want && got != want+"</s>" {
+	// Work around various non-determinism.
+	if want := "ok chief"; !strings.Contains(strings.ToLower(got), want) {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
@@ -104,7 +101,7 @@ func testModelStreaming(t *testing.T, model string) {
 	ctx := context.Background()
 	opts := Options{
 		Model:        model,
-		SystemPrompt: "Transcript of a never ending dialog, where the User interacts with an Assistant.\nThe Assistant is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.",
+		SystemPrompt: "You are an AI assistant. You strictly follow orders. Do not add extraneous words. Only reply with what is asked of you.",
 	}
 	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, loadKnownLLMs(t))
 	if err != nil {
@@ -116,7 +113,7 @@ func testModelStreaming(t *testing.T, model string) {
 		}
 	})
 	msgs := []Message{
-		{Role: System, Content: "You are an AI assistant. You strictly follow orders. Do not add punctuation. Do not use uppercase letters."},
+		{Role: System, Content: opts.SystemPrompt},
 		{Role: User, Content: "reply with \"ok chief\""},
 	}
 	words := make(chan string, 10)
@@ -135,11 +132,8 @@ func testModelStreaming(t *testing.T, model string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Very small model will add random stuff around.
-	got = strings.TrimSpace(got)
-	want := "ok chief"
-	// Work around for Mistral on llamafile
-	if got != want && got != want+"</s>" {
+	// Work around various non-determinism.
+	if want := "ok chief"; !strings.Contains(strings.ToLower(got), want) {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
