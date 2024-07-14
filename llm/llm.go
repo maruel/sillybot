@@ -282,6 +282,11 @@ func (l *Session) Close() error {
 			// It was simply killed.
 			err = nil
 		}
+		if runtime.GOOS == "windows" {
+			// We need to figure out how to differentiate between normal quitting and
+			// an error.
+			err = nil
+		}
 	}
 	return err
 }
