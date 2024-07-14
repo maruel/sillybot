@@ -43,17 +43,22 @@ func TestLLM(t *testing.T) {
 			if !strings.HasPrefix(k.Basename, "Mistral") && testing.Short() {
 				t.Skip("skipping this model when -short is used")
 			}
-			if strings.HasPrefix("phi-3") {
+			if strings.HasPrefix(k.Basename, "phi-3") {
 				// I suspect it's because it's already a small model so it fails at
 				// high quantization.
 				t.Skip("phi-3-mini is misbehaving. TODO: investigate")
 			}
+			quant := "Q3_K_M"
+			// Hack: naming conventions are not figured out.
+			if strings.Contains(strings.ToLower(k.Basename), "qwen") {
+				quant = strings.ToLower(quant)
+			}
 			// I tested with Q2_K and results are unreliable.
 			t.Run("Blocking", func(t *testing.T) {
-				testModelBlocking(t, k.Basename+"Q3_K_M")
+				testModelBlocking(t, k.Basename+quant)
 			})
 			t.Run("Stream", func(t *testing.T) {
-				testModelStreaming(t, k.Basename+"Q3_K_M")
+				testModelStreaming(t, k.Basename+quant)
 			})
 		})
 	}

@@ -610,7 +610,7 @@ func (l *Session) ensureModel(ctx context.Context, model string, k KnownLLM) (st
 	ext := strings.TrimLeft(strings.ToUpper(filepath.Ext(model)), ".")
 	if ext == "" {
 		if i := strings.LastIndexByte(model, '-'); i > 0 {
-			ext = model[i+1:]
+			ext = strings.ToUpper(model[i+1:])
 		}
 	}
 	switch ext {

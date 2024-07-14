@@ -40,7 +40,8 @@ bot:
 # https://github.com/maruel/sillybot/blob/main/default_config.yml will be used
 # automatically.
 knownllms:
-  # Gemma 2 family
+  # Gemma 2 family:
+  # https://huggingface.co/collections/google/gemma-2-release-667d6600fd5220e7b967f315
   - repo: bartowski/gemma-2-9b-it-GGUF
     packagingtype: gguf
     basename: gemma-2-9b-it-
@@ -68,7 +69,8 @@ knownllms:
       start_token_model: "<start_of_turn>model\n"
       end_token_model: "<end_of_turn>\n"
 
-  # Llama 3 family
+  # Llama 3 family:
+  # https://huggingface.co/collections/meta-llama/meta-llama-3-66214712577ca38149ebb2b6
   - repo: bartowski/Meta-Llama-3-8B-Instruct-GGUF
     packagingtype: gguf
     basename: Meta-Llama-3-8B-Instruct-
@@ -99,6 +101,7 @@ knownllms:
       end_token_model: "<|eot_id|>\n"
 
   # Mistral family
+  # https://huggingface.co/mistralai
     # bartowski/Mistral-7B-Instruct-v0.3-GGUF doesn't contain F16 which is
     # useful on a Mac.
   - repo: MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF
@@ -130,6 +133,7 @@ knownllms:
       end_token_model: "</s>\n"
 
   # Phi-3 family
+  # https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3
     # bartowski/Phi-3-mini-4k-instruct-GGUF doesn't contain F16 which is useful
     # on a Mac.
   - repo: SanctumAI/Phi-3-mini-4k-instruct-GGUF
@@ -158,3 +162,19 @@ knownllms:
       end_token_user: "<|end|>\n"
       start_token_model: "<|assistant|>\n"
       end_token_model: "<|end|>\n"
+
+  # Qwen 2 family
+  # https://huggingface.co/collections/Qwen/qwen2-6659360b33528ced941e557f
+  - repo: Qwen/Qwen2-7B-Instruct-GGUF
+    packagingtype: gguf
+    basename: qwen2-7b-instruct-
+    upstream: Qwen/Qwen2-7B-Instruct
+      # https://github.com/QwenLM/Qwen/blob/main/tokenization_note.md#special-tokens
+    prompt_encoding:
+      begin_of_text: ""
+      start_token_system: "<|im_start|>\n"
+      end_token_system: "<|im_end|>\n"
+      start_token_user: "<|im_start|>\n"
+      end_token_user: "<|im_end|>\n"
+      start_token_model: ""
+      end_token_model: "<|end_of_text|>\n"
