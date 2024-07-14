@@ -921,9 +921,11 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	// This is best effort.
 	url := "https://github.com/ggerganov/llama.cpp/releases/download/b3386/"
 	zipname := ""
+	files := []string{filepath.Base(llamaserver)}
 	switch runtime.GOOS {
 	case "darwin":
 		zipname = "llama-b3386-bin-macos-arm64.zip"
+		files = append(files, "ggml-metal.metal")
 	case "linux":
 		zipname = "llama-b3386-bin-ubuntu-x64.zip"
 	case "windows":
@@ -934,33 +936,43 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		} else {
 			zipname = "llama-b3386-bin-win-avx-x64.zip"
 		}
+		files = append(files, "ggml.dll", "llama.dll")
 	}
 	zippath := filepath.Join(cache, zipname)
-	if err := huggingface.DownloadFile(ctx, url+zipname, zippath, "", 0o644); err != nil {
-		return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
+	if _, err := os.Stat(zippath); err != nil {
+		if err := huggingface.DownloadFile(ctx, url+zipname, zippath, "", 0o644); err != nil {
+			return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
+		}
 	}
 	z, err := zip.OpenReader(zippath)
 	if err != nil {
 		return "", false, err
 	}
 	defer z.Close()
-	desired := filepath.Base(llamaserver)
 	for _, f := range z.File {
 		// Files are under build/bin/
-		if filepath.Base(f.Name) == desired {
-			src, err := f.Open()
-			if err != nil {
-				return "", false, err
+		n := filepath.Base(f.Name)
+		for i, desired := range files {
+			if n == desired {
+				src, err := f.Open()
+				if err != nil {
+					return "", false, err
+				}
+				dst, err := os.OpenFile(filepath.Join(cache, desired), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
+				if err == nil {
+					_, err = io.CopyN(dst, src, int64(f.UncompressedSize64))
+				}
+				src.Close()
+				dst.Close()
+				if err != nil {
+					return "", false, fmt.Errorf("failed to write %q: %w", desired, err)
+				}
+				copy(files[i:], files[i+1:])
+				if files = files[:len(files)-1]; len(files) == 0 {
+					return llamaserver, false, err
+				}
 			}
-			defer src.Close()
-			dst, err := os.OpenFile(llamaserver, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
-			if err != nil {
-				return "", false, err
-			}
-			defer dst.Close()
-			_, err = io.CopyN(dst, src, int64(f.UncompressedSize64))
-			return llamaserver, false, err
 		}
 	}
-	return "", false, fmt.Errorf("failed to find %q in %q", desired, zipname)
+	return "", false, fmt.Errorf("failed to find %q in %q", files, zipname)
 }
