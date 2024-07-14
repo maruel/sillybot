@@ -92,7 +92,7 @@ func testModel(t *testing.T, model string) {
 	want := "ok chief"
 	// Work around for Mistral on llamafile
 	if got != want && got != want+"</s>" {
-		t.Fatalf("expected %s, got %s", want, got)
+		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
 
@@ -140,7 +140,7 @@ func testModelStreaming(t *testing.T, model string) {
 	want := "ok chief"
 	// Work around for Mistral on llamafile
 	if got != want && got != want+"</s>" {
-		t.Fatalf("expected %s, got %s", want, got)
+		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
 

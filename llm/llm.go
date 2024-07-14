@@ -962,8 +962,12 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 				if err == nil {
 					_, err = io.CopyN(dst, src, int64(f.UncompressedSize64))
 				}
-				src.Close()
-				dst.Close()
+				if err2 := src.Close(); err == nil {
+					err = err2
+				}
+				if err2 := dst.Close(); err == nil {
+					err = err2
+				}
 				if err != nil {
 					return "", false, fmt.Errorf("failed to write %q: %w", desired, err)
 				}
