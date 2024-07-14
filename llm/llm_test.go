@@ -11,7 +11,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -23,45 +25,38 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestLLM_Mistral(t *testing.T) {
-	testModel(t, "Mistral-7B-Instruct-v0.3.Q2_K")
+const skipMost = false
+
+func TestLLM(t *testing.T) {
+	re := regexp.MustCompile(`-(\d+)[bBk]-`)
+	for _, k := range loadKnownLLMs(t) {
+		t.Run(k.Basename, func(t *testing.T) {
+			b := re.FindStringSubmatch(k.Basename)
+			if len(b) != 2 {
+				t.Skip("skipping complex")
+			}
+			size, err := strconv.Atoi(b[1])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if size > 9 {
+				t.Skip("too large")
+			}
+			if !strings.HasPrefix(k.Basename, "Mistral") && testing.Short() {
+				t.Skip("skipping this model when -short is used")
+			}
+			// I tested with Q2_K and results are unreliable.
+			t.Run("Blocking", func(t *testing.T) {
+				testModelBlocking(t, k.Basename+"Q3_K_M")
+			})
+			t.Run("Stream", func(t *testing.T) {
+				testModelStreaming(t, k.Basename+"Q3_K_M")
+			})
+		})
+	}
 }
 
-func TestLLM_Llama_3(t *testing.T) {
-	t.Skip("skipping by default; it's a bit slow")
-	testModel(t, "Meta-Llama-3-8B-Instruct-Q5_K_M")
-}
-
-func TestLLM_Gemma_2(t *testing.T) {
-	t.Skip("skipping by default; it's a bit slow")
-	testModel(t, "gemma-2-27b-it.Q6_K")
-}
-
-func TestLLM_Phi_3_Mini(t *testing.T) {
-	t.Skip("skipping because it's broken when using llamafile")
-	testModel(t, "Phi-3-mini-4k-instruct.Q5_K_M")
-}
-
-func TestLLM_Stream_Mistral(t *testing.T) {
-	testModelStreaming(t, "Mistral-7B-Instruct-v0.3.Q2_K")
-}
-
-func TestLLM_Stream_Llama_3(t *testing.T) {
-	t.Skip("skipping by default; it's a bit slow")
-	testModelStreaming(t, "Meta-Llama-3-8B-Instruct-Q5_K_M")
-}
-
-func TestLLM_Stream_Gemma_2(t *testing.T) {
-	t.Skip("skipping by default; it's a bit slow")
-	testModelStreaming(t, "gemma-2-27b-it.Q6_K")
-}
-
-func TestLLM_Stream_Phi_3_Mini(t *testing.T) {
-	t.Skip("skipping because it's broken when using llamafile")
-	testModelStreaming(t, "Phi-3-mini-4k-instruct.Q5_K_M")
-}
-
-func testModel(t *testing.T, model string) {
+func testModelBlocking(t *testing.T, model string) {
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -169,7 +164,7 @@ func loadKnownLLMs(t *testing.T) []KnownLLM {
 func TestMain(m *testing.M) {
 	flag.Parse()
 	l := slog.LevelWarn
-	if testing.Verbose() {
+	if os.Getenv("LLM_TEST_VERBOSE") == "true" {
 		l = slog.LevelDebug
 	}
 	logger := slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{

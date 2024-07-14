@@ -109,11 +109,12 @@ func (k *KnownLLM) Validate() error {
 // While it is expected that the model is an Instruct form, it is not a
 // requirement.
 type Session struct {
-	HF       *huggingface.Client
-	model    string
-	baseURL  string
-	backend  string
-	encoding PromptEncoding
+	HF        *huggingface.Client
+	model     string
+	baseURL   string
+	backend   string
+	encoding  PromptEncoding
+	useOpenAI bool
 
 	c      *exec.Cmd
 	done   <-chan error
@@ -136,7 +137,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	if err != nil {
 		return nil, err
 	}
-	l := &Session{HF: hf, model: opts.Model}
+	l := &Session{HF: hf, model: opts.Model, useOpenAI: true}
 	known := -1
 	for i, k := range knownLLMs {
 		if strings.HasPrefix(opts.Model, k.Basename) {
@@ -332,10 +333,10 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperat
 	slog.Info("llm", "msgs", msgs)
 	reply := ""
 	var err error
-	if false {
-		reply, err = l.llamaCPPPromptBlocking(ctx, msgs, seed, temperature)
-	} else {
+	if l.useOpenAI {
 		reply, err = l.openAIPromptBlocking(ctx, msgs, seed, temperature)
+	} else {
+		reply, err = l.llamaCPPPromptBlocking(ctx, msgs, seed, temperature)
 	}
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
@@ -372,10 +373,10 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, seed int,
 	slog.Info("llm", "msgs", msgs)
 	reply := ""
 	var err error
-	if false {
-		reply, err = l.llamaCPPPromptStreaming(ctx, msgs, seed, temperature, words)
-	} else {
+	if l.useOpenAI {
 		reply, err = l.openAIPromptStreaming(ctx, msgs, seed, temperature, words)
+	} else {
+		reply, err = l.llamaCPPPromptStreaming(ctx, msgs, seed, temperature, words)
 	}
 	if err != nil {
 		slog.Error("llm", "reply", reply, "error", err, "duration", time.Since(start).Round(time.Millisecond))
