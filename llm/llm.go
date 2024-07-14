@@ -964,36 +964,3 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	}
 	return "", false, fmt.Errorf("failed to find %q in %q", desired, zipname)
 }
-
-// getGitHubLatestRelease returns the latest release for a github repository.
-func getGitHubLatestRelease(owner, repo, contentType string) (string, string, error) {
-	resp, err := http.Get("https://api.github.com/repos/" + owner + "/" + repo + "/releases")
-	if err != nil {
-		return "", "", err
-	}
-	// Just enough of the GitHub API response to be able to parse it.
-	data := []struct {
-		Assets []struct {
-			BrowserDownloadURL string `json:"browser_download_url"`
-			ContentType        string `json:"content_type"`
-			Name               string `json:"name"`
-		} `json:"assets"`
-		TagName    string `json:"tag_name"`
-		Prerelease bool   `json:"prerelease"`
-	}{}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return "", "", err
-	}
-	_ = resp.Body.Close()
-	for _, l := range data {
-		if l.Prerelease {
-			continue
-		}
-		for _, asset := range l.Assets {
-			if asset.ContentType == contentType {
-				return asset.BrowserDownloadURL, asset.Name, nil
-			}
-		}
-	}
-	return "", "", nil
-}

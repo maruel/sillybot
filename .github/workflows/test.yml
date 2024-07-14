@@ -52,7 +52,7 @@ jobs:
       run: |
         # Nothing should have changed in the tree up to that point and no
         # unsuspected file was created.
-        TOUCHED=$(git status --porcelain --ignored)
+        TOUCHED=$(git status --porcelain)
         if ! test -z "$TOUCHED"; then
           echo "Oops, something touched these files, please cleanup:"
           echo "$TOUCHED"
