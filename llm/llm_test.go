@@ -60,35 +60,18 @@ func TestLLM(t *testing.T) {
 }
 
 func testModel(t *testing.T, model string) {
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	opts := Options{
-		Model:        model,
-		SystemPrompt: "You are an AI assistant. You strictly follow orders. Do not add extraneous words. Only reply with what is asked of you.",
-	}
-	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, loadKnownLLMs(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err2 := l.Close(); err2 != nil {
-			t.Error(err2)
-		}
-	})
-
+	l := loadModel(t, model)
 	for _, useOpenAI := range []bool{false, true} {
 		name := "llamacpp"
 		if l.useOpenAI = useOpenAI; l.useOpenAI {
 			name = "OpenAI"
 		}
 		const prompt = "reply with \"ok chief\""
+		ctx := context.Background()
 		t.Run(name, func(t *testing.T) {
 			t.Run("Blocking", func(t *testing.T) {
 				t.Parallel()
-				msgs := []Message{{Role: System, Content: opts.SystemPrompt}, {Role: User, Content: prompt}}
+				msgs := []Message{{Role: System, Content: systemPrompt}, {Role: User, Content: prompt}}
 				got, err2 := l.Prompt(ctx, msgs, 1, 0.0)
 				if err2 != nil {
 					t.Fatal(err2)
@@ -97,7 +80,7 @@ func testModel(t *testing.T, model string) {
 			})
 			t.Run("Streaming", func(t *testing.T) {
 				t.Parallel()
-				msgs := []Message{{Role: System, Content: opts.SystemPrompt}, {Role: User, Content: prompt}}
+				msgs := []Message{{Role: System, Content: systemPrompt}, {Role: User, Content: prompt}}
 				words := make(chan string, 10)
 				got := ""
 				wg := sync.WaitGroup{}
@@ -118,6 +101,30 @@ func testModel(t *testing.T, model string) {
 			})
 		})
 	}
+}
+
+const systemPrompt = "You are an AI assistant. You strictly follow orders. Do not add extraneous words. Only reply with what is asked of you."
+
+func loadModel(t *testing.T, model string) *Session {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	opts := Options{
+		Model:        model,
+		SystemPrompt: systemPrompt,
+	}
+	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts, loadKnownLLMs(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err2 := l.Close(); err2 != nil {
+			t.Error(err2)
+		}
+	})
+	return l
 }
 
 func checkAnswer(t *testing.T, got string) {
