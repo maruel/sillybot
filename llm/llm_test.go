@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,54 +78,58 @@ func testModel(t *testing.T, model string) {
 		}
 	})
 
-	t.Run("Blocking", func(t *testing.T) {
-		msgs := []Message{
-			{Role: System, Content: opts.SystemPrompt},
-			{Role: User, Content: "reply with \"ok chief\""},
+	for _, useOpenAI := range []bool{false, true} {
+		name := "llamacpp"
+		if l.useOpenAI = useOpenAI; l.useOpenAI {
+			name = "OpenAI"
 		}
-		got, err := l.Prompt(ctx, msgs, 1, 0.1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Work around various non-determinism.
-		if want := "ok chief"; !strings.Contains(strings.ToLower(got), want) {
-			if runtime.GOOS == "darwin" && os.Getenv("CI") == "true" && os.Getenv("GITHUB_ACTION") != "" {
-				t.Log("TODO: Figure out why macOS GitHub hosted runner return an empty string")
-			} else {
-				t.Fatalf("expected %q, got %q", want, got)
-			}
-		}
-	})
-	t.Run("Streaming", func(t *testing.T) {
-		msgs := []Message{
-			{Role: System, Content: opts.SystemPrompt},
-			{Role: User, Content: "reply with \"ok chief\""},
-		}
-		words := make(chan string, 10)
-		got := ""
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			for c := range words {
-				got += c
-			}
-			wg.Done()
-		}()
-		err = l.PromptStreaming(ctx, msgs, 1, 0.1, words)
-		close(words)
-		wg.Wait()
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Work around various non-determinism.
-		if want := "ok chief"; !strings.Contains(strings.ToLower(got), want) {
-			if runtime.GOOS == "darwin" && os.Getenv("CI") == "true" && os.Getenv("GITHUB_ACTION") != "" {
-				t.Log("TODO: Figure out why macOS GitHub hosted runner return an empty string")
-			} else {
-				t.Fatalf("expected %q, got %q", want, got)
-			}
-		}
-	})
+		const prompt = "reply with \"ok chief\""
+		t.Run(name, func(t *testing.T) {
+			t.Run("Blocking", func(t *testing.T) {
+				t.Parallel()
+				msgs := []Message{{Role: System, Content: opts.SystemPrompt}, {Role: User, Content: prompt}}
+				got, err2 := l.Prompt(ctx, msgs, 1, 0.0)
+				if err2 != nil {
+					t.Fatal(err2)
+				}
+				checkAnswer(t, got)
+			})
+			t.Run("Streaming", func(t *testing.T) {
+				t.Parallel()
+				msgs := []Message{{Role: System, Content: opts.SystemPrompt}, {Role: User, Content: prompt}}
+				words := make(chan string, 10)
+				got := ""
+				wg := sync.WaitGroup{}
+				wg.Add(1)
+				go func() {
+					for c := range words {
+						got += c
+					}
+					wg.Done()
+				}()
+				err2 := l.PromptStreaming(ctx, msgs, 1, 0.0, words)
+				close(words)
+				wg.Wait()
+				if err2 != nil {
+					t.Fatal(err2)
+				}
+				checkAnswer(t, got)
+			})
+		})
+	}
+}
+
+func checkAnswer(t *testing.T, got string) {
+	// Work around various non-determinism.
+	if want := "ok chief"; !strings.Contains(strings.ToLower(got), want) {
+		t.Fatalf("expected %q, got %q", want, got)
+		// Will remove later if it starts working.
+		// if runtime.GOOS == "darwin" && os.Getenv("CI") == "true" && os.Getenv("GITHUB_ACTION") != "" {
+		// 	t.Log("TODO: Figure out why macOS GitHub hosted runner return an empty string")
+		// } else {
+		// 	t.Fatalf("expected %q, got %q", want, got)
+		// }
+	}
 }
 
 func loadKnownLLMs(t *testing.T) []KnownLLM {
