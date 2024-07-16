@@ -50,10 +50,15 @@ func (c *Config) Validate() error {
 func (c *Config) LoadOrDefault(config string) error {
 	b, err := os.ReadFile(config)
 	if os.IsNotExist(err) {
-		if err = os.WriteFile(config, DefaultConfig, 0o644); err != nil {
+		// Write the default config but hack it to skip the knownllms, I'm changing
+		// this section too often for now and it's merged in when missing anyway.
+		b = DefaultConfig
+		if i := bytes.Index(b, []byte("\n# You can remove this section.")); i != -1 {
+			b = b[:i]
+		}
+		if err = os.WriteFile(config, b, 0o644); err != nil {
 			return fmt.Errorf("failed to write default config: %w", err)
 		}
-		b = DefaultConfig
 	}
 	d := yaml.NewDecoder(bytes.NewReader(b))
 	d.KnownFields(true)
