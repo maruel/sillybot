@@ -60,7 +60,8 @@ func TestLLM(t *testing.T) {
 }
 
 func testModel(t *testing.T, model string) {
-	l := loadModel(t, model)
+	const systemPrompt = "You are an AI assistant. You strictly follow orders. Do not add extraneous words. Only reply with what is asked of you."
+	l := loadModel(t, model, systemPrompt)
 	for _, useOpenAI := range []bool{false, true} {
 		name := "llamacpp"
 		if l.useOpenAI = useOpenAI; l.useOpenAI {
@@ -103,9 +104,30 @@ func testModel(t *testing.T, model string) {
 	}
 }
 
-const systemPrompt = "You are an AI assistant. You strictly follow orders. Do not add extraneous words. Only reply with what is asked of you."
+func TestLLM_Tool(t *testing.T) {
+	t.Skip("not working, while it works in python. Need to investigate")
+	l := loadModel(t, "Mistral-7B-Instruct-v0.3.Q3_K_M", "")
+	// Call llama-server directly, ignoring the utility code in struct LLM.
+	ctx := context.Background()
+	data := llamaCPPCompletionRequest{Seed: 1, Temperature: 0}
+	// See //py/mistra_test.py.
+	const base = `<s>[AVAILABLE_TOOLS]▁[{"type":▁"function",▁"function":▁{"name":▁"get_current_weather",▁"description":▁"Get▁the▁current▁weather",▁"parameters":▁{"type":▁"object",▁"properties":▁{"location":▁{"type":▁"string",▁"description":▁"The▁city▁and▁state,▁e.g.▁San▁Francisco,▁US▁or▁Montréal,▁CA▁or▁Berlin,▁DE"},▁"format":▁{"type":▁"string",▁"enum":▁["celsius",▁"fahrenheit"],▁"description":▁"The▁temperature▁unit▁to▁use.▁Infer▁this▁from▁the▁users▁location."}},▁"required":▁["location",▁"format"]}}}][/AVAILABLE_TOOLS]`
+	const user1 = `[INST]▁What's▁the▁weather▁like▁today▁in▁Paris[/INST]`
+	msg := llamaCPPCompletionResponse{}
+	data.Prompt = base + user1
+	// It's unclear to me how the python code generates the special whitespace character.
+	//data.Prompt = strings.ReplaceAll(data.Prompt, "▁", " ")
+	if err := jsonPostRequest(ctx, l.baseURL+"/completion", data, &msg); err != nil {
+		t.Fatal(err)
+	}
+	got := msg.Content
+	if want := "ok chief"; want != got {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+	const followup = `[TOOL_CALLS]▁[{"name":▁"get_current_weather",▁"arguments":▁{"location":▁"Paris,▁FR",▁"format":▁"celsius"},▁"id":▁"c00000000"}]</s>[TOOL_RESULTS]▁{"content":▁43,▁"call_id":▁"c00000000"}[/TOOL_RESULTS]`
+}
 
-func loadModel(t *testing.T, model string) *Session {
+func loadModel(t *testing.T, model, systemPrompt string) *Session {
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)

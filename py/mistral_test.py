@@ -31,7 +31,7 @@ except:
   sys.exit(1)
 
 
-def create_completion(host, prompt, gbnf_grammar):
+def create_completion(host, prompt, gbnf_grammar, seed):
   """Calls the /completion API on llama-server.
 
   See
@@ -39,6 +39,8 @@ def create_completion(host, prompt, gbnf_grammar):
   """
   data = {"prompt": prompt}
   print(f"  Request:")
+  if seed:
+    print(f"    Seed: {seed}")
   if gbnf_grammar:
     data["grammar"] = gbnf_grammar
     print(f"    Grammar:\n{textwrap.indent(gbnf_grammar, '      ')}")
@@ -61,7 +63,7 @@ def get_current_weather(location: str, format: str) -> str:
   return "43"
 
 
-def exec_msgs(host, msgs):
+def exec_msgs(host, seed, msgs):
   """Tokenize then send the request to the llama-server."""
   tools = [
       tool_calls.Tool(
@@ -90,15 +92,15 @@ def exec_msgs(host, msgs):
   tokenized = tokenizer_v3.encode_chat_completion(request.ChatCompletionRequest(tools=tools, messages=msgs))
   logging.info("Tokens: %s", tokenized.tokens)
   logging.info("Text: %s", tokenized.text)
-  return create_completion(host, tokenized.text, "")
+  return create_completion(host, tokenized.text, "", seed)
 
 
-def run(host):
+def run(host, seed):
   exitcode = 0
   msgs = [
       messages.UserMessage(content="What's the weather like today in Paris"),
   ]
-  ret = exec_msgs(host, msgs)
+  ret = exec_msgs(host, seed, msgs)
   print(f"Got: {repr(ret)}")
   retdata = json.loads(ret)
   want = [
@@ -125,7 +127,7 @@ def run(host):
     msgs.append(messages.ToolMessage(tool_call_id=callid, name=name, content=callret))
 
   # Follow up with the model.
-  ret = exec_msgs(host, msgs)
+  ret = exec_msgs(host, seed, msgs)
   print(f"Got: {repr(ret)}")
   if " 43 " not in ret:
     exitcode = 1
@@ -135,11 +137,12 @@ def run(host):
 def main():
   parser = argparse.ArgumentParser(description=sys.modules[__name__].__doc__)
   parser.add_argument("--host", default="localhost:8080", help="llama.cpp server")
+  parser.add_argument("--seed", default=1, help="seed value", type=int)
   parser.add_argument("-v", "--verbose", action="store_true", help="enables logging")
   args = parser.parse_args()
   logging.basicConfig(level=logging.INFO if args.verbose else logging.ERROR)
   try:
-    return run(args.host)
+    return run(args.host, args.seed)
   except requests.exceptions.ConnectionError as e:
     print("\nDid you forget to pass --host?", file=sys.stderr)
     print(f"Error: {e}", file=sys.stderr)

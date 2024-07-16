@@ -123,14 +123,17 @@ knownllms:
     basename: Mixtral-8x7B-Instruct-v0.1.
     upstream: mistralai/Mixtral-8x7B-Instruct-v0.1
     # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py#L10
+    # and
+    # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py#L348
+    # See py/mistral_test.py
     prompt_encoding:
       begin_of_text: "<s>"
-      start_token_system: "[INST] "
+      start_token_system: "[INST]▁"
       end_token_system: " [/INST]\n"
-      start_token_user: "[INST] "
+      start_token_user: "[INST]▁"
       end_token_user: " [/INST]\n"
       start_token_model: ""
-      end_token_model: "</s>\n"
+      end_token_model: ""
 
   # Phi-3 family
   # https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3

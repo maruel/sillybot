@@ -126,9 +126,6 @@ type Session struct {
 // New instantiates a llama.cpp or llamafile server, or optionally uses
 // python instead.
 func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM) (*Session, error) {
-	if opts.SystemPrompt == "" {
-		return nil, errors.New("did you forget to specify a system prompt?")
-	}
 	cacheModels := filepath.Join(cache, "models")
 	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create the directory to cache models: %w", err)
@@ -393,26 +390,9 @@ func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, seed
 		Seed:        seed,
 		Temperature: temperature,
 	}
-	b, err := json.Marshal(data)
-	if err != nil {
-		return "", fmt.Errorf("internal error: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", l.baseURL+"/v1/chat/completions", bytes.NewReader(b))
-	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to get llama server response: %w", err)
-	}
-	d := json.NewDecoder(resp.Body)
-	d.DisallowUnknownFields()
 	msg := openAIChatCompletionsResponse{}
-	err = d.Decode(&msg)
-	_ = resp.Body.Close()
-	if err != nil {
-		return "", fmt.Errorf("failed to decode llama server response: %w", err)
+	if err := jsonPostRequest(ctx, l.baseURL+"/v1/chat/completions", data, &msg); err != nil {
+		return "", fmt.Errorf("failed to get llama server chat response: %w", err)
 	}
 	if len(msg.Choices) != 1 {
 		return "", fmt.Errorf("llama server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
@@ -428,18 +408,9 @@ func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, see
 		Seed:        seed,
 		Temperature: temperature,
 	}
-	b, err := json.Marshal(data)
-	if err != nil {
-		return "", fmt.Errorf("internal error: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", l.baseURL+"/v1/chat/completions", bytes.NewReader(b))
+	resp, err := jsonPostRequestPartial(ctx, l.baseURL+"/v1/chat/completions", data)
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
 	}
 	defer resp.Body.Close()
 	r := bufio.NewReader(resp.Body)
@@ -494,26 +465,9 @@ func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, se
 	if err := l.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
-	b, err := json.Marshal(data)
-	if err != nil {
-		return "", fmt.Errorf("internal error: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", l.baseURL+"/completion", bytes.NewReader(b))
-	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to get llama server response: %w", err)
-	}
-	d := json.NewDecoder(resp.Body)
-	d.DisallowUnknownFields()
 	msg := llamaCPPCompletionResponse{}
-	err = d.Decode(&msg)
-	_ = resp.Body.Close()
-	if err != nil {
-		return "", fmt.Errorf("failed to decode llama server response: %w", err)
+	if err := jsonPostRequest(ctx, l.baseURL+"/completion", data, &msg); err != nil {
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
 	return msg.Content, nil
 }
@@ -531,18 +485,9 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, s
 	if err := l.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
-	b, err := json.Marshal(data)
-	if err != nil {
-		return "", fmt.Errorf("internal error: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", l.baseURL+"/completion", bytes.NewReader(b))
+	resp, err := jsonPostRequestPartial(ctx, l.baseURL+"/completion", data)
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
 	}
 	defer resp.Body.Close()
 	r := bufio.NewReader(resp.Body)
@@ -695,6 +640,7 @@ func (l *Session) processMsgs(msgs []Message) []Message {
 		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Content, "error", err)
 		return msgs
 	}
+
 	keys := map[string]string{
 		"Now":   time.Now().Format("Monday 2006-01-02T15:04:05 MST"),
 		"Model": l.model,
@@ -729,11 +675,11 @@ type llamaCPPHealthResponse struct {
 // llamaCPPCompletionRequest is documented at
 // https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#api-endpoints
 type llamaCPPCompletionRequest struct {
-	SystemPrompt     string      `json:"system_prompt"`
+	SystemPrompt     string      `json:"system_prompt,omitempty"`
 	Prompt           string      `json:"prompt"`
 	Grammar          string      `json:"grammar,omitempty"`
 	JSONSchema       interface{} `json:"json_schema,omitempty"`
-	Seed             int64       `json:"seed"`
+	Seed             int64       `json:"seed,omitempty"`
 	Temperature      float64     `json:"temperature,omitempty"`
 	DynaTempRange    float64     `json:"dynatemp_range,omitempty"`
 	DynaTempExponent float64     `json:"dynatemp_exponent,omitempty"`
@@ -985,4 +931,32 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		}
 	}
 	return "", false, fmt.Errorf("failed to find %q in %q", files, zipname)
+}
+
+func jsonPostRequest(ctx context.Context, url string, in, out interface{}) error {
+	resp, err := jsonPostRequestPartial(ctx, url, in)
+	if err != nil {
+		return err
+	}
+	d := json.NewDecoder(resp.Body)
+	d.DisallowUnknownFields()
+	err = d.Decode(out)
+	_ = resp.Body.Close()
+	if err != nil {
+		return fmt.Errorf("failed to decode server response: %w", err)
+	}
+	return nil
+}
+
+func jsonPostRequestPartial(ctx context.Context, url string, in interface{}) (*http.Response, error) {
+	b, err := json.Marshal(in)
+	if err != nil {
+		return nil, fmt.Errorf("internal error: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return http.DefaultClient.Do(req)
 }
