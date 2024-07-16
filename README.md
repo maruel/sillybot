@@ -80,8 +80,7 @@ server (Discord or Slack) is different:
 ## Dev
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/maruel/sillybot/.svg)](https://pkg.go.dev/github.com/maruel/sillybot/)
-
-[![codecov](https://codecov.io/gh/maruel/sillybot/graph/sunburst.svg?token=33RREVZMMP)](https://codecov.io/gh/maruel/sillybot)
+[![codecov](https://codecov.io/gh/maruel/sillybot/graph/badge.svg?token=33RREVZMMP)](https://codecov.io/gh/maruel/sillybot)
 
 
 ## Acknowledgements
