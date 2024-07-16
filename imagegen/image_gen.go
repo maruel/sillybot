@@ -36,20 +36,18 @@ type Options struct {
 
 // Session manages an image generation server.
 type Session struct {
-	url    string
-	done   <-chan error
-	cancel func() error
+	baseURL string
+	done    <-chan error
+	cancel  func() error
 
-	steps   int
-	loading bool
+	steps int
 }
 
 // New initializes a new image generation server.
 func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
-	ig := &Session{
-		steps:   1,
-		loading: true,
-	}
+	// Using few steps assumes using a LoRA from Latent Consistency. See
+	// https://huggingface.co/blog/lcm_lora for more information.
+	ig := &Session{steps: 8}
 	if opts.Remote == "" {
 		if opts.Model != "python" {
 			return nil, fmt.Errorf("unknown model %q", opts.Model)
@@ -68,17 +66,20 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 		if err != nil {
 			return nil, err
 		}
-		ig.url = fmt.Sprintf("http://localhost:%d/", port)
+		ig.baseURL = fmt.Sprintf("http://localhost:%d", port)
 	} else {
 		if !py.IsHostPort(opts.Remote) {
 			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
 		}
-		ig.url = "http://" + opts.Remote + "/"
+		ig.baseURL = "http://" + opts.Remote
 	}
 
-	slog.Info("ig", "state", "started", "url", ig.url, "message", "Please be patient, it can take several minutes to download everything")
+	slog.Info("ig", "state", "started", "url", ig.baseURL, "message", "Please be patient, it can take several minutes to download everything")
 	for ctx.Err() == nil {
-		if _, err := ig.GenImage(ctx, "cat", 1); err == nil {
+		r := struct {
+			Ready bool
+		}{}
+		if err := jsonPostRequest(ctx, ig.baseURL+"/api/health", struct{}{}, &r); err == nil && r.Ready == true {
 			break
 		}
 		select {
@@ -88,11 +89,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	// Using few steps assumes using a LoRA from Latent Consistency. See
-	// https://huggingface.co/blog/lcm_lora for more information.
-	ig.steps = 8
 	slog.Info("ig", "state", "ready")
-	ig.loading = false
 	return ig, nil
 }
 
@@ -110,10 +107,7 @@ func (ig *Session) Close() error {
 // Use a non-zero seed to get deterministic output (without strong guarantees).
 func (ig *Session) GenImage(ctx context.Context, prompt string, seed int) (*image.NRGBA, error) {
 	start := time.Now()
-	if !ig.loading || slog.Default().Enabled(ctx, slog.LevelDebug) {
-		// Otherwise it storms on startup.
-		slog.Info("ig", "prompt", prompt)
-	}
+	slog.Info("ig", "prompt", prompt)
 	// If you feel this API is subpar, I hear you. If you got this far to read
 	// this comment, please send a PR to make this a proper API and update
 	// image_gen.py. ❤
@@ -122,33 +116,12 @@ func (ig *Session) GenImage(ctx context.Context, prompt string, seed int) (*imag
 		Steps   int    `json:"steps"`
 		Seed    int    `json:"seed"`
 	}{Message: prompt, Steps: ig.steps, Seed: seed}
-	b, err := json.Marshal(data)
-	if err != nil {
-		return nil, fmt.Errorf("internal error: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", ig.url, bytes.NewReader(b))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		if !ig.loading || slog.Default().Enabled(ctx, slog.LevelDebug) {
-			// Otherwise it storms on startup.
-			slog.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
-		}
-		return nil, err
-	}
-	d := json.NewDecoder(resp.Body)
-	d.DisallowUnknownFields()
 	r := struct {
 		Image []byte `json:"image"`
 	}{}
-	err = d.Decode(&r)
-	_ = resp.Body.Close()
-	if err != nil {
+	if err := jsonPostRequest(ctx, ig.baseURL+"/api/generate", data, &r); err != nil {
 		slog.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
-		return nil, err
+		return nil, fmt.Errorf("failed to create image request: %w", err)
 	}
 	slog.Info("ig", "prompt", prompt, "duration", time.Since(start).Round(time.Millisecond))
 
@@ -158,4 +131,32 @@ func (ig *Session) GenImage(ctx context.Context, prompt string, seed int) (*imag
 	}
 	addWatermark(img)
 	return img, nil
+}
+
+func jsonPostRequest(ctx context.Context, url string, in, out interface{}) error {
+	resp, err := jsonPostRequestPartial(ctx, url, in)
+	if err != nil {
+		return err
+	}
+	d := json.NewDecoder(resp.Body)
+	d.DisallowUnknownFields()
+	err = d.Decode(out)
+	_ = resp.Body.Close()
+	if err != nil {
+		return fmt.Errorf("failed to decode server response: %w", err)
+	}
+	return nil
+}
+
+func jsonPostRequestPartial(ctx context.Context, url string, in interface{}) (*http.Response, error) {
+	b, err := json.Marshal(in)
+	if err != nil {
+		return nil, fmt.Errorf("internal error: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return http.DefaultClient.Do(req)
 }

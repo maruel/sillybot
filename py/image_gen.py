@@ -82,6 +82,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
   def do_POST(self):
     logging.info("Got request %s", self.path)
+    if self.path == "/api/generate":
+      self.on_generate()
+    elif self.path == "/api/health":
+      self.on_health()
+    elif self.path == "/api/quit":
+      self.on_quit()
+
+  def reply_json(self, data):
+    self.send_response(200)
+    self.send_header("Content-Type", "application/json")
+    self.end_headers()
+    self.wfile.write(json.dumps(data).encode("ascii"))
+
+  def on_quit(self):
+    self.reply_json({"quitting": True})
+    self.server.server_close()
+
+  def on_health(self):
+    self.reply_json({"ready": True})
+
+  def on_generate(self):
     start = time.time()
     content_length = int(self.headers['Content-Length'])
     post_data = self.rfile.read(content_length)
@@ -97,10 +118,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     resp = {
         "image": base64.b64encode(d.getvalue()).decode(),
     }
-    self.send_response(200)
-    self.send_header("Content-Type", "application/json")
-    self.end_headers()
-    self.wfile.write(json.dumps(resp).encode("ascii"))
+    self.reply_json(resp)
     name = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ".png"
     logging.info(f"Generated image for {prompt} in {time.time()-start:.1f}s; saving as {name}")
     img.save(name)
