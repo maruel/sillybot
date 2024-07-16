@@ -716,14 +716,17 @@ func (d *discordBot) handleImage(req intReq) {
 		if seed != 0 {
 			content += "*Seed*: " + strconv.Itoa(seed) + "\n"
 		}
-		if newreq.description != req.description {
-			content += "*Description*: " + escapeMarkdown(newreq.description) + "\n"
-		}
-		if newreq.imagePrompt != req.imagePrompt {
-			content += "*Image prompt*: " + escapeMarkdown(newreq.imagePrompt) + "\n"
-		}
-		if newreq.labelsContent != req.labelsContent {
-			content += "*Labels*: " + escapeMarkdown(newreq.labelsContent) + "\n"
+		if i == 0 {
+			// We have to skip on these otherwise we hit the 2000 characters limit super fast.
+			if newreq.description != req.description {
+				content += "*Description*: " + escapeMarkdown(newreq.description) + "\n"
+			}
+			if newreq.imagePrompt != req.imagePrompt {
+				content += "*Image prompt*: " + escapeMarkdown(newreq.imagePrompt) + "\n"
+			}
+			if newreq.labelsContent != req.labelsContent {
+				content += "*Labels*: " + escapeMarkdown(newreq.labelsContent) + "\n"
+			}
 		}
 		if err != nil {
 			slog.Error("discord", "imagereq", req, "error", err)
