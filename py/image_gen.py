@@ -62,9 +62,23 @@ def load_segmind_moe():
 
 class Handler(http.server.BaseHTTPRequestHandler):
   _pipe = None
-  _neg = "out of frame, lowers, text, error, cropped, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face"
+  #_neg = "out of frame, lowers, text, error, cropped, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face"
   # , disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature"
   #_neg = "bad quality, worse quality"
+
+  # See https://huggingface.co/segmind/SSD-1B
+  # 1:1 Square:
+  #_width = 1024
+  #_height = 1024
+  # 9:7:
+  #_width = 1152
+  #_height = 896
+  # 19:13:
+  _width = 1216
+  _height = 832
+  # 7:4 (which is close to 16:9):
+  #_width = 1344
+  #_height = 768
 
   def do_POST(self):
     logging.info("Got request %s", self.path)
@@ -95,11 +109,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
   def gen_image(cls, prompt, steps, seed):
     img = cls._pipe(
         prompt=prompt,
-        negative_prompt=cls._neg,
+        # Ned is not used when guidance_scale is 1.0.
+        #negative_prompt=cls._neg,
         num_inference_steps=steps,
         generator=get_generator(seed),
         # Use 1.0 when using Segmind + LCM LoRA, 9.0 for Segmind raw, 7.0 for SD3.
         guidance_scale=1.0,
+        width=cls._width,
+        height=cls._height,
     ).images[0]
     return img
 
