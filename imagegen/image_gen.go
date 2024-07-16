@@ -79,7 +79,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 		r := struct {
 			Ready bool
 		}{}
-		if err := jsonPostRequest(ctx, ig.baseURL+"/api/health", struct{}{}, &r); err == nil && r.Ready == true {
+		if err := jsonPostRequest(ctx, ig.baseURL+"/api/health", struct{}{}, &r); err == nil && r.Ready {
 			break
 		}
 		select {

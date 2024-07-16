@@ -124,7 +124,7 @@ func TestLLM_Tool(t *testing.T) {
 	if want := "ok chief"; want != got {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
-	const followup = `[TOOL_CALLS]▁[{"name":▁"get_current_weather",▁"arguments":▁{"location":▁"Paris,▁FR",▁"format":▁"celsius"},▁"id":▁"c00000000"}]</s>[TOOL_RESULTS]▁{"content":▁43,▁"call_id":▁"c00000000"}[/TOOL_RESULTS]`
+	//const followup = `[TOOL_CALLS]▁[{"name":▁"get_current_weather",▁"arguments":▁{"location":▁"Paris,▁FR",▁"format":▁"celsius"},▁"id":▁"c00000000"}]</s>[TOOL_RESULTS]▁{"content":▁43,▁"call_id":▁"c00000000"}[/TOOL_RESULTS]`
 }
 
 func loadModel(t *testing.T, model, systemPrompt string) *Session {
