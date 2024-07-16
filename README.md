@@ -39,7 +39,7 @@ Receive:
       with 8K context window.
     - [Meta-Llama3-70B-instruct](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct)
       in [quantized
-      form](https://huggingface.co/Mozilla/bartowski/Meta-Llama-3-70B-Instruct-GGUF)
+      form](https://huggingface.co/bartowski/Meta-Llama-3-70B-Instruct-GGUF)
       with 8K context window.
     - [Mistral-7B-Instruct-v0.3](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3)
       in [quantized
