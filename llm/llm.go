@@ -66,8 +66,9 @@ type KnownLLM struct {
 	Basename string
 	// UpstreamID is the upstream repo when the model is based on another one.
 	UpstreamID string `yaml:"upstream"`
-	// PromptEncoding is only necessary when using llama-server in /completion mode.
-	PromptEncoding PromptEncoding `yaml:"prompt_encoding"`
+	// PromptEncoding is only used when using llama-server in /completion mode.
+	// When not present, llama-server is used in OpenAI compatible API mode.
+	PromptEncoding *PromptEncoding `yaml:"prompt_encoding"`
 
 	_ struct{}
 }
@@ -109,12 +110,11 @@ func (k *KnownLLM) Validate() error {
 // While it is expected that the model is an Instruct form, it is not a
 // requirement.
 type Session struct {
-	HF        *huggingface.Client
-	model     string
-	baseURL   string
-	backend   string
-	encoding  PromptEncoding
-	useOpenAI bool
+	HF       *huggingface.Client
+	model    string
+	baseURL  string
+	backend  string
+	encoding *PromptEncoding
 
 	c      *exec.Cmd
 	done   <-chan error
@@ -134,7 +134,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	if err != nil {
 		return nil, err
 	}
-	l := &Session{HF: hf, model: opts.Model, useOpenAI: true}
+	l := &Session{HF: hf, model: opts.Model}
 	known := -1
 	if opts.Model != "python" {
 		for i, k := range knownLLMs {
@@ -332,7 +332,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperat
 	slog.Info("llm", "msgs", msgs)
 	reply := ""
 	var err error
-	if l.useOpenAI {
+	if l.encoding == nil {
 		reply, err = l.openAIPromptBlocking(ctx, msgs, seed, temperature)
 	} else {
 		reply, err = l.llamaCPPPromptBlocking(ctx, msgs, seed, temperature)
@@ -372,7 +372,7 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, seed int,
 	slog.Info("llm", "msgs", msgs)
 	reply := ""
 	var err error
-	if l.useOpenAI {
+	if l.encoding == nil {
 		reply, err = l.openAIPromptStreaming(ctx, msgs, seed, temperature, words)
 	} else {
 		reply, err = l.llamaCPPPromptStreaming(ctx, msgs, seed, temperature, words)

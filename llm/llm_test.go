@@ -69,15 +69,15 @@ func TestLLM(t *testing.T) {
 
 func testModel(t *testing.T, model, systemPrompt string) {
 	l := loadModel(t, model, systemPrompt)
-	for _, useOpenAI := range []bool{false, true} {
-		name := "llamacpp"
-		if l.useOpenAI = useOpenAI; l.useOpenAI {
-			name = "OpenAI"
-		}
-		t.Run(name, func(t *testing.T) {
+	if l.encoding != nil {
+		t.Run("CustomEncoding", func(t *testing.T) {
 			testModelInner(t, l, systemPrompt)
 		})
 	}
+	l.encoding = nil
+	t.Run("OpenAI", func(t *testing.T) {
+		testModelInner(t, l, systemPrompt)
+	})
 }
 
 func testModelInner(t *testing.T, l *Session, systemPrompt string) {
