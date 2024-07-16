@@ -47,7 +47,8 @@ func TestImageGen(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := img.Bounds()
-	want := image.Rect(0, 0, 1024, 1024)
+	// TODO: Make this configurable. want := image.Rect(0, 0, 1024, 1024)
+	want := image.Rect(0, 0, 1216, 832)
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Fatal(diff)
 	}

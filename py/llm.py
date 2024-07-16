@@ -66,60 +66,88 @@ def load_phi_3_medium():
 class Handler(http.server.BaseHTTPRequestHandler):
   _pipe = None
 
+  def do_GET(self):
+    try:
+      if self.path == "/health":
+        self.on_health()
+      else:
+        self.send_error(404)
+    except Exception as e:
+      self.send_error(500)
+      print(str(e), file=sys.stderr)
+      sys.exit(1)
+
   def do_POST(self):
     try:
       logging.info("Got request %s", self.path)
-      if self.path != "/v1/chat/completions":
-        self.send_error(404, "unknown path")
-        return
-      start = time.time()
-      content_length = int(self.headers['Content-Length'])
-      post_data = self.rfile.read(content_length)
-      data = json.loads(post_data)
-      # TODO: Structured format and verifications.
-      stream = data.get("stream", False)
-      prompt = data["messages"]
-      output = self._pipe(
-          prompt,
-          max_new_tokens=500,
-          return_full_text=False,
-          temperature=0.0, # ??
-          do_sample=False,
-          )[0]['generated_text']
-      if stream:
-        resp = {
-          "choices": [
-            {
-              "delta": {
-                "content": output,
-              },
-              "finish_reason": "stop",
-            },
-          ],
-        }
-        raw = b'data: ' + json.dumps(resp).encode("ascii")
+      if self.path == "/v1/chat/completions":
+        self.on_completions()
+      elif self.path == "/api/quit":
+        self.on_quit()
       else:
-        resp = {
-          "choices": [
-            {
-              "finish_reason": "stop",
-              "message": {
-                "role": "assistant",
-                "content": output,
-              },
-            },
-          ],
-        }
-        raw = json.dumps(resp).encode("ascii")
-
-      self.send_response(200)
-      self.send_header("Content-Type", "application/json")
-      self.end_headers()
-      self.wfile.write(raw)
-      logging.info(f"Generated text for {prompt} -> {output} in {time.time()-start:.1f}s")
-    except:
+        self.send_error(404)
+    except Exception as e:
       self.send_error(500)
-      raise
+      print(str(e), file=sys.stderr)
+      sys.exit(1)
+
+  def reply_json(self, data):
+    self.send_response(200)
+    self.send_header("Content-Type", "application/json")
+    self.end_headers()
+    self.wfile.write(json.dumps(data).encode("ascii"))
+
+  def on_health(self):
+    self.reply_json({"status": "ok"})
+
+  def on_quit(self):
+    self.reply_json({"quitting": True})
+    self.server.server_close()
+
+  def on_completions(self):
+    start = time.time()
+    content_length = int(self.headers['Content-Length'])
+    post_data = self.rfile.read(content_length)
+    data = json.loads(post_data)
+    # TODO: Structured format and verifications.
+    stream = data.get("stream", False)
+    prompt = data["messages"]
+    output = self._pipe(
+        prompt,
+        max_new_tokens=500,
+        return_full_text=False,
+        temperature=0.0, # ??
+        do_sample=False,
+        )[0]['generated_text']
+    if stream:
+      resp = {
+        "choices": [
+          {
+            "delta": {
+              "content": output,
+            },
+            "finish_reason": "stop",
+          },
+        ],
+      }
+      self.send_response(200)
+      self.end_headers()
+      self.wfile.write(b'data: ' + json.dumps(resp).encode("ascii"))
+    else:
+      resp = {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": output,
+            },
+          },
+        ],
+      }
+      self.reply_json(resp)
+    logging.info(f"Generated text for {prompt} -> {output} in {time.time()-start:.1f}s")
+
 
 def main():
   parser = argparse.ArgumentParser(description=sys.modules[__name__].__doc__)

@@ -136,15 +136,17 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	}
 	l := &Session{HF: hf, model: opts.Model, useOpenAI: true}
 	known := -1
-	for i, k := range knownLLMs {
-		if strings.HasPrefix(opts.Model, k.Basename) {
-			known = i
-			l.encoding = k.PromptEncoding
-			break
+	if opts.Model != "python" {
+		for i, k := range knownLLMs {
+			if strings.HasPrefix(opts.Model, k.Basename) {
+				known = i
+				l.encoding = k.PromptEncoding
+				break
+			}
 		}
-	}
-	if known == -1 {
-		return nil, fmt.Errorf("unknown LLM model %q, add to knownllms section first", l.model)
+		if known == -1 {
+			return nil, fmt.Errorf("unknown LLM model %q, add to knownllms section first", l.model)
+		}
 	}
 
 	cachePy := filepath.Join(cache, "py")

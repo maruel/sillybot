@@ -77,9 +77,9 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 	slog.Info("ig", "state", "started", "url", ig.baseURL, "message", "Please be patient, it can take several minutes to download everything")
 	for ctx.Err() == nil {
 		r := struct {
-			Ready bool
+			Status string
 		}{}
-		if err := jsonPostRequest(ctx, ig.baseURL+"/api/health", struct{}{}, &r); err == nil && r.Ready {
+		if err := jsonGetRequest(ctx, ig.baseURL+"/health", &r); err == nil && r.Status == "ok" {
 			break
 		}
 		select {
@@ -159,4 +159,24 @@ func jsonPostRequestPartial(ctx context.Context, url string, in interface{}) (*h
 	}
 	req.Header.Set("Content-Type", "application/json")
 	return http.DefaultClient.Do(req)
+}
+
+func jsonGetRequest(ctx context.Context, url string, out interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	d := json.NewDecoder(resp.Body)
+	d.DisallowUnknownFields()
+	err = d.Decode(out)
+	_ = resp.Body.Close()
+	if err != nil {
+		return fmt.Errorf("failed to decode server response: %w", err)
+	}
+	return nil
 }

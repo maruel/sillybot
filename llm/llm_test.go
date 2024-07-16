@@ -26,6 +26,7 @@ import (
 )
 
 func TestLLM(t *testing.T) {
+	const systemPrompt = "You are an AI assistant. You strictly follow orders. Do not add extraneous words. Only reply with what is asked of you."
 	re := regexp.MustCompile(`-(\d+)[bBk]-`)
 	for _, k := range loadKnownLLMs(t) {
 		t.Run(k.Basename, func(t *testing.T) {
@@ -54,54 +55,64 @@ func TestLLM(t *testing.T) {
 			if strings.Contains(strings.ToLower(k.Basename), "qwen") {
 				quant = strings.ToLower(quant)
 			}
-			testModel(t, k.Basename+quant)
+			testModel(t, k.Basename+quant, systemPrompt)
 		})
 	}
+	t.Run("python", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("skipping this model when -short is used")
+		}
+		l := loadModel(t, "python", systemPrompt)
+		testModelInner(t, l, systemPrompt)
+	})
 }
 
-func testModel(t *testing.T, model string) {
-	const systemPrompt = "You are an AI assistant. You strictly follow orders. Do not add extraneous words. Only reply with what is asked of you."
+func testModel(t *testing.T, model, systemPrompt string) {
 	l := loadModel(t, model, systemPrompt)
 	for _, useOpenAI := range []bool{false, true} {
 		name := "llamacpp"
 		if l.useOpenAI = useOpenAI; l.useOpenAI {
 			name = "OpenAI"
 		}
-		const prompt = "reply with \"ok chief\""
-		ctx := context.Background()
 		t.Run(name, func(t *testing.T) {
-			t.Run("Blocking", func(t *testing.T) {
-				t.Parallel()
-				msgs := []Message{{Role: System, Content: systemPrompt}, {Role: User, Content: prompt}}
-				got, err2 := l.Prompt(ctx, msgs, 1, 0.0)
-				if err2 != nil {
-					t.Fatal(err2)
-				}
-				checkAnswer(t, got)
-			})
-			t.Run("Streaming", func(t *testing.T) {
-				t.Parallel()
-				msgs := []Message{{Role: System, Content: systemPrompt}, {Role: User, Content: prompt}}
-				words := make(chan string, 10)
-				got := ""
-				wg := sync.WaitGroup{}
-				wg.Add(1)
-				go func() {
-					for c := range words {
-						got += c
-					}
-					wg.Done()
-				}()
-				err2 := l.PromptStreaming(ctx, msgs, 1, 0.0, words)
-				close(words)
-				wg.Wait()
-				if err2 != nil {
-					t.Fatal(err2)
-				}
-				checkAnswer(t, got)
-			})
+			testModelInner(t, l, systemPrompt)
 		})
 	}
+}
+
+func testModelInner(t *testing.T, l *Session, systemPrompt string) {
+	ctx := context.Background()
+	const prompt = "reply with \"ok chief\""
+	t.Run("Blocking", func(t *testing.T) {
+		t.Parallel()
+		msgs := []Message{{Role: System, Content: systemPrompt}, {Role: User, Content: prompt}}
+		got, err2 := l.Prompt(ctx, msgs, 1, 0.0)
+		if err2 != nil {
+			t.Fatal(err2)
+		}
+		checkAnswer(t, got)
+	})
+	t.Run("Streaming", func(t *testing.T) {
+		t.Parallel()
+		msgs := []Message{{Role: System, Content: systemPrompt}, {Role: User, Content: prompt}}
+		words := make(chan string, 10)
+		got := ""
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			for c := range words {
+				got += c
+			}
+			wg.Done()
+		}()
+		err2 := l.PromptStreaming(ctx, msgs, 1, 0.0, words)
+		close(words)
+		wg.Wait()
+		if err2 != nil {
+			t.Fatal(err2)
+		}
+		checkAnswer(t, got)
+	})
 }
 
 func TestLLM_Tool(t *testing.T) {

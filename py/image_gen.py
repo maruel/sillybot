@@ -80,14 +80,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
   #_width = 1344
   #_height = 768
 
+  def do_GET(self):
+    try:
+      if self.path == "/health":
+        self.on_health()
+      else:
+        self.send_error(404)
+    except Exception as e:
+      self.send_error(500)
+      print(str(e), file=sys.stderr)
+      sys.exit(1)
+
   def do_POST(self):
-    logging.info("Got request %s", self.path)
-    if self.path == "/api/generate":
-      self.on_generate()
-    elif self.path == "/api/health":
-      self.on_health()
-    elif self.path == "/api/quit":
-      self.on_quit()
+    try:
+      logging.info("Got request %s", self.path)
+      if self.path == "/api/generate":
+        self.on_generate()
+      elif self.path == "/api/quit":
+        self.on_quit()
+      else:
+        self.send_error(404)
+    except Exception as e:
+      self.send_error(500)
+      print(str(e), file=sys.stderr)
+      sys.exit(1)
 
   def reply_json(self, data):
     self.send_response(200)
@@ -95,12 +111,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
     self.end_headers()
     self.wfile.write(json.dumps(data).encode("ascii"))
 
+  def on_health(self):
+    self.reply_json({"status": "ok"})
+
   def on_quit(self):
     self.reply_json({"quitting": True})
     self.server.server_close()
-
-  def on_health(self):
-    self.reply_json({"ready": True})
 
   def on_generate(self):
     start = time.time()
