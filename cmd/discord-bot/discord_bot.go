@@ -176,7 +176,7 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "description",
-					Description: "Description to use to generate the meme labels. The LLM will enhance both.",
+					Description: "Description to use to generate the meme labels. The LLM will enhance it.",
 					Required:    true,
 				},
 				{
@@ -229,7 +229,7 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 		{
 			Name:        "list_models",
 			Type:        discordgo.ChatApplicationCommand,
-			Description: "List models available and the one currently used.",
+			Description: "List available LLM models and the one currently used.",
 		},
 
 		// forget
@@ -241,7 +241,7 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "system_prompt",
-					Description: "new system prompt to use",
+					Description: "New system prompt to use.",
 				},
 			},
 		},

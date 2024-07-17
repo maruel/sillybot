@@ -4,6 +4,20 @@ slack-bot integrates seamlessly into Slack to run either a LLM instruct or an
 image generation, or both!
 
 
+## Usage
+
+Chat with it!
+
+List of commands:
+
+- `/forget <system_prompt>`: Zap all the bot's memory of your conversation with
+  it.
+- `/image <description>`: Generate an image based on the description given.
+
+Find the implementation in [`slack_bot.go`](slack_bot.go) by searching for
+`onSlashCommand`.
+
+
 ## App Configuration
 
 Do this first. Configure the Slack App at https://api.slack.com/apps:
@@ -43,12 +57,12 @@ Do this first. Configure the Slack App at https://api.slack.com/apps:
 4. Slash Commands
     - Create New Command
         - Command: `/forget`
-        - Short Description: `Forget all the bot's memory of your conversation
-          here with it.gets`
+        - Short Description: `Zap all the bot's memory of your conversation with
+          it.`
         - Save
     - Create New Command
         - Command: `/image`
-        - Short Description: `Generate an image.`
+        - Short Description: `Generate an image based on the description given.`
         - Save
 5. Event Subscriptions
     - Enable Events

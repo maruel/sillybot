@@ -68,13 +68,23 @@ Receive:
       which is too slow on a M3 Max IMO.
 
 
+## Usage
+
+Talk with it and uses its commands as described at:
+
+- For Discord, see [cmd/discord-bot/README.md](cmd/discord-bot/README.md#usage).
+- For Slack, see [cmd/slack-bot/README.md](cmd/slack-bot/README.md#usage).
+
+
 ## Installation
 
 Both function essentially the same but the Application configuration on the
 server (Discord or Slack) is different:
 
-- For Discord, see [cmd/discord-bot/README.md](cmd/discord-bot/README.md).
-- For Slack, see [cmd/slack-bot/README.md](cmd/slack-bot/README.md).
+- For Discord, see
+  [cmd/discord-bot/README.md](cmd/discord-bot/README.md##app-configuration).
+- For Slack, see
+  [cmd/slack-bot/README.md](cmd/slack-bot/README.md##app-configuration).
 
 
 ## Dev
