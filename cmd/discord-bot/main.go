@@ -138,7 +138,7 @@ func mainImpl() error {
 		slog.Info("main", "memory", "no memory to load", "error", err)
 	}
 
-	d, err := newDiscordBot(ctx, *bottoken, *verbose, l, mem, cfg.KnownLLMs, ig, cfg.Bot.LLM.SystemPrompt)
+	d, err := newDiscordBot(ctx, *bottoken, *verbose, l, mem, cfg.KnownLLMs, ig, cfg.Bot.Settings)
 	if err != nil {
 		return err
 	}

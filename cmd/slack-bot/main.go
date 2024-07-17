@@ -147,7 +147,7 @@ func mainImpl() error {
 		slog.Info("main", "memory", "no memory to load", "error", err)
 	}
 
-	s, err := newSlackBot(*apptoken, *bottoken, *verbose, l, mem, ig, cfg.Bot.LLM.SystemPrompt)
+	s, err := newSlackBot(*apptoken, *bottoken, *verbose, l, mem, ig, cfg.Bot.Settings)
 	if err != nil {
 		return err
 	}

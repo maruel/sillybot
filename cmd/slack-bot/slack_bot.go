@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
 	"github.com/slack-go/slack"
@@ -24,14 +25,14 @@ import (
 )
 
 type slackBot struct {
-	api          *slack.Client
-	sc           *socketmode.Client
-	l            *llm.Session
-	mem          *llm.Memory
-	ig           *imagegen.Session
-	systemPrompt string
-	chat         chan msgReq
-	image        chan *imgReq
+	api      *slack.Client
+	sc       *socketmode.Client
+	l        *llm.Session
+	mem      *llm.Memory
+	ig       *imagegen.Session
+	settings sillybot.Settings
+	chat     chan msgReq
+	image    chan *imgReq
 
 	// Filled upon connection in onHello.
 	botID  string
@@ -52,7 +53,7 @@ type ilog interface {
 	Output(int, string) error
 }
 
-func newSlackBot(apptoken, bottoken string, verbose bool, l *llm.Session, mem *llm.Memory, ig *imagegen.Session, systPrmpt string) (*slackBot, error) {
+func newSlackBot(apptoken, bottoken string, verbose bool, l *llm.Session, mem *llm.Memory, ig *imagegen.Session, settings sillybot.Settings) (*slackBot, error) {
 	if !strings.HasPrefix(apptoken, "xapp-") {
 		return nil, errors.New("slack apptoken must have the prefix \"xapp-\"")
 	}
@@ -75,14 +76,14 @@ func newSlackBot(apptoken, bottoken string, verbose bool, l *llm.Session, mem *l
 	}
 	sc := socketmode.New(api, socketmode.OptionDebug(verbose), socketmode.OptionLog(out))
 	s := &slackBot{
-		api:          api,
-		sc:           sc,
-		l:            l,
-		mem:          mem,
-		ig:           ig,
-		systemPrompt: systPrmpt,
-		chat:         make(chan msgReq, 5),
-		image:        make(chan *imgReq, 3),
+		api:      api,
+		sc:       sc,
+		l:        l,
+		mem:      mem,
+		ig:       ig,
+		settings: settings,
+		chat:     make(chan msgReq, 5),
+		image:    make(chan *imgReq, 3),
 	}
 	return s, nil
 }
@@ -298,7 +299,7 @@ func (s *slackBot) onAppMention(ctx context.Context, req msgReq) {
 func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	c := s.mem.Get(req.userid, req.channel)
 	if len(c.Messages) == 0 {
-		c.Messages = []llm.Message{{Role: llm.System, Content: s.systemPrompt}}
+		c.Messages = []llm.Message{{Role: llm.System, Content: s.settings.PromptSystem}}
 	}
 	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false), slack.MsgOptionTS(req.ts))
 	if err != nil {
@@ -362,9 +363,8 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	req.mu.Unlock()
 	// Use the LLM to improve the prompt!
 	if s.l != nil {
-		const systemPrompt = "You are autoregressive language model that specializes in creating perfect, outstanding prompts for generative art models like Stable Diffusion. Your job is to take user ideas, capture ALL main parts, and turn into amazing prompts. You have to capture everything from the user's prompt and then use your talent to make it amazing. You are a master of art styles, terminology, pop culture, and photography across the globe. Respond only with the new prompt. Exclude article words."
 		msgs := []llm.Message{
-			{Role: llm.System, Content: systemPrompt},
+			{Role: llm.System, Content: s.settings.PromptImage},
 			{Role: llm.User, Content: req.msg},
 		}
 

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/huggingface"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
@@ -31,20 +32,20 @@ import (
 // Throughout the code, a Discord Server is called a "Guild". See
 // https://discord.com/developers/docs/quick-start/overview-of-apps#where-are-apps-installed
 type discordBot struct {
-	ctx          context.Context
-	dg           *discordgo.Session
-	l            *llm.Session
-	mem          *llm.Memory
-	knownLLMs    []llm.KnownLLM
-	ig           *imagegen.Session
-	systemPrompt string
-	chat         chan msgReq
-	image        chan intReq
-	wg           sync.WaitGroup
+	ctx       context.Context
+	dg        *discordgo.Session
+	l         *llm.Session
+	mem       *llm.Memory
+	knownLLMs []llm.KnownLLM
+	ig        *imagegen.Session
+	settings  sillybot.Settings
+	chat      chan msgReq
+	image     chan intReq
+	wg        sync.WaitGroup
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, systPrmpt string) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings) (*discordBot, error) {
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
@@ -70,15 +71,15 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Sessi
 	// We want to receive as few messages as possible.
 	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentDirectMessages
 	d := &discordBot{
-		ctx:          ctx,
-		dg:           dg,
-		l:            l,
-		mem:          mem,
-		knownLLMs:    knownLLMs,
-		ig:           ig,
-		systemPrompt: systPrmpt,
-		chat:         make(chan msgReq, 5),
-		image:        make(chan intReq, 3),
+		ctx:       ctx,
+		dg:        dg,
+		l:         l,
+		mem:       mem,
+		knownLLMs: knownLLMs,
+		ig:        ig,
+		settings:  settings,
+		chat:      make(chan msgReq, 5),
+		image:     make(chan intReq, 3),
 	}
 	// The events are listed at
 	// https://discord.com/developers/docs/topics/gateway-events#receive-events
@@ -377,7 +378,7 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	c := d.mem.Get(u.ID, event.ChannelID)
 	opts := struct {
 		SystemPrompt string `json:"system_prompt"`
-	}{SystemPrompt: d.systemPrompt}
+	}{SystemPrompt: d.settings.PromptSystem}
 	if err := optionsToStruct(data.Options, &opts); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed decoding command options", "error", err)
 		return
@@ -561,7 +562,7 @@ func (d *discordBot) imageRoutine() {
 func (d *discordBot) handlePrompt(req msgReq) {
 	c := d.mem.Get(req.authorID, req.channelID)
 	if len(c.Messages) == 0 {
-		c.Messages = []llm.Message{{Role: llm.System, Content: d.systemPrompt}}
+		c.Messages = []llm.Message{{Role: llm.System, Content: d.settings.PromptSystem}}
 	}
 	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
 	words := make(chan string, 10)
@@ -688,12 +689,6 @@ func splitResponse(t string) int {
 	return start + i + 1
 }
 
-// TODO: fine-tune.
-const imagePrompt = "You are autoregressive language model that specializes in creating perfect, outstanding prompts for generative art models like Stable Diffusion. Your job is to take user ideas, capture ALL main parts, and turn into amazing prompts. You have to capture everything from the user's prompt and then use your talent to make it amazing. You are a master of art styles, terminology, pop culture, and photography across the globe. Respond only with the new prompt. Exclude article words."
-
-// TODO: fine-tune.
-const memeLabelsPrompt = "You are autoregressive language model that specializes in creating perfect, outstanding meme text. Your job is to take user ideas, capture ALL main parts, and turn into amazing meme labels. You have to capture everything from the user's prompt and then use your talent to make it amazing filled with sarcasm. Respond only with the new meme text. Make it as succinct as possible. Use few words. Use exactly one comma. Exclude article words."
-
 // handleImage generates an image based on the user prompt.
 func (d *discordBot) handleImage(req intReq) {
 	// Generate multiple images when the queue is empty.
@@ -755,7 +750,7 @@ func (d *discordBot) handleImage(req intReq) {
 func (d *discordBot) genImage(req *intReq) ([]byte, error) {
 	if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
 		// Image: use the LLM to generate the image prompt based on the description.
-		msgs := []llm.Message{{Role: llm.System, Content: imagePrompt}, {Role: llm.User, Content: req.description}}
+		msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptImage}, {Role: llm.User, Content: req.description}}
 		reply, err := d.l.Prompt(d.ctx, msgs, req.seed, 1.0)
 		if err != nil {
 			return nil, fmt.Errorf("failed to enhance image generation prompt: %w", err)
@@ -767,7 +762,7 @@ func (d *discordBot) genImage(req *intReq) ([]byte, error) {
 	eg.Go(func() error {
 		// Labels: use the LLM to generate the labels based on the description.
 		if req.cmdName == "meme_auto" || req.cmdName == "meme_labels_auto" {
-			msgs := []llm.Message{{Role: llm.System, Content: memeLabelsPrompt}, {Role: llm.User, Content: req.description}}
+			msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptLabels}, {Role: llm.User, Content: req.description}}
 			meme, err2 := d.l.Prompt(ctx, msgs, req.seed, 1.0)
 			if err2 != nil {
 				return fmt.Errorf("failed to enhance labels: %w", err2)

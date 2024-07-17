@@ -45,11 +45,6 @@ type Options struct {
 	//
 	// Use "python" to use the integrated python backend.
 	Model string
-	// Default system prompt to use. Is a Go template as documented at
-	// https://pkg.go.dev/text/template. Values provided are:
-	// - Now: current time in ISO-8601, including the server's time zone.
-	// - Model: the model name.
-	SystemPrompt string `yaml:"system_prompt"`
 
 	_ struct{}
 }
@@ -325,8 +320,7 @@ func (l *Session) GetHealth(ctx context.Context) (string, error) {
 //
 // It is recommended to use 1.0 by default.
 //
-// The first message is assumed to be the system prompt. It will be processed
-// as described in Options.SystemPrompt.
+// The first message is assumed to be the system prompt.
 func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
 	start := time.Now()
 	msgs = l.processMsgs(msgs)
@@ -365,8 +359,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperat
 //
 // It is recommended to use 1.0 by default.
 //
-// The first message is assumed to be the system prompt. It will be processed
-// as described in Options.SystemPrompt.
+// The first message is assumed to be the system prompt.
 func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) error {
 	start := time.Now()
 	msgs = l.processMsgs(msgs)

@@ -32,6 +32,7 @@ type Config struct {
 	Bot struct {
 		LLM      llm.Options
 		ImageGen imagegen.Options `yaml:"image_gen"`
+		Settings Settings
 	}
 	KnownLLMs []llm.KnownLLM
 }
@@ -77,6 +78,21 @@ func (c *Config) LoadOrDefault(config string) error {
 		}
 	}
 	return c.Validate()
+}
+
+// Settings is the bot settings.
+type Settings struct {
+	// PromptSystem is the default system prompt to use. Is a Go template as
+	// documented at https://pkg.go.dev/text/template. Values provided by LLM are:
+	// - Now: current time in ISO-8601, including the server's time zone.
+	// - Model: the model name.
+	PromptSystem string `yaml:"prompt_system"`
+	// PromptLabels is the prompt used to generate meme labels via a short
+	// description.
+	PromptLabels string `yaml:"prompt_labels"`
+	// PromptImage is the prompt used to generate an image via a short
+	// description.
+	PromptImage string `yaml:"prompt_image"`
 }
 
 // LoadModels loads the LLM and ImageGen models.
