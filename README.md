@@ -73,6 +73,17 @@ Talk with it and use its commands as described at:
       which is too slow on a M3 Max IMO.
 
 
+## Hardware requirement
+
+- LLM: a recent AMD or Intel with 16GiB of RAM or a MacBook Pro. A GPU is not
+  required.
+- Image Generation: a GPU with 4.7GiB of video memory (VRAM) available or a
+  MacBook Pro. While it works on CPU, expect a minute or two to generate each
+  image.
+
+You can use 2 computers: one running the LLM and one the image generation.
+
+
 ## Installation
 
 Both function essentially the same but the Application configuration on the
