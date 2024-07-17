@@ -8,7 +8,8 @@ image generation, or both!
 
 Chat with it!
 
-List of commands:
+
+### List of commands
 
 - `/forget <system_prompt>`: Zap all the bot's memory of your conversation with
   it.

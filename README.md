@@ -14,7 +14,7 @@ Receive:
 
 ![Meme Lord in Training](https://raw.githubusercontent.com/wiki/maruel/sillybot/meme_lord.png)
 
-Talk with it and uses its commands as described at:
+Talk with it and use its commands as described at:
 
 - For Discord, see [cmd/discord-bot/README.md](cmd/discord-bot#usage).
 - For Slack, see [cmd/slack-bot/README.md](cmd/slack-bot#usage).

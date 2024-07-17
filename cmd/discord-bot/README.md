@@ -6,10 +6,10 @@ image generation, or both!
 
 ## Usage
 
-
 Chat with it!
 
-List of commands:
+
+### List of commands
 
 - `/meme_auto <description> <seed>`: Generate a meme in full automatic mode.
   Create both the image and labels by leveraging the LLM.
