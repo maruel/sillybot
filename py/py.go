@@ -13,11 +13,9 @@ import (
 	"context"
 	_ "embed"
 	"log/slog"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"time"
 )
@@ -92,32 +90,6 @@ func Run(ctx context.Context, venv string, cmd []string, cwd, log string) (<-cha
 		slog.Info("exec", "state", "terminated", "pid", c.Process.Pid, "duration", time.Since(start).Round(time.Millisecond))
 	}()
 	return doneErr, c.Cancel, nil
-}
-
-// General functions I didn't know where to put.
-
-// FindFreePort returns an available TCP port to listen to.
-func FindFreePort() int {
-	l, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		panic(err)
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
-}
-
-// IsHostPort returns true if the string seems like a valid "host:port" string.
-func IsHostPort(s string) bool {
-	// Simplified regexp that supports IPv4, IPv6 and hostname and requires a port.
-	ipv4 := `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`
-	ipv6 := `\[[a-fA-F0-9:]+\]`
-	hostname := `[a-zA-Z0-9\-\.]{2,}`
-	r := `^(?:` + ipv4 + `|` + ipv6 + `|` + hostname + `):\d{1,5}$`
-	ok, err := regexp.MatchString(r, s)
-	if err != nil {
-		panic(err)
-	}
-	return ok
 }
 
 //

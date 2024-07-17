@@ -16,7 +16,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lmittmann/tint"
-	"github.com/maruel/sillybot/py"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 )
@@ -62,15 +61,6 @@ func TestImageGen_Remote_Fail(t *testing.T) {
 	opts := Options{Remote: "host"}
 	if _, err = New(context.Background(), filepath.Join(filepath.Dir(wd), "cache"), &opts); err == nil {
 		t.Fatal("expected error")
-	}
-}
-
-func TestIsHostPort(t *testing.T) {
-	if py.IsHostPort("a:1") {
-		t.Fatal()
-	}
-	if !py.IsHostPort("aa.bb.ts.net:1") {
-		t.Fatal()
 	}
 }
 

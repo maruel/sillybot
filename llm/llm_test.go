@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
+	"github.com/maruel/sillybot/internal"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"gopkg.in/yaml.v3"
@@ -128,7 +129,7 @@ func TestLLM_Tool(t *testing.T) {
 	data.Prompt = base + user1
 	// It's unclear to me how the python code generates the special whitespace character.
 	//data.Prompt = strings.ReplaceAll(data.Prompt, "▁", " ")
-	if err := jsonPostRequest(ctx, l.baseURL+"/completion", data, &msg); err != nil {
+	if err := internal.JSONPost(ctx, l.baseURL+"/completion", data, &msg); err != nil {
 		t.Fatal(err)
 	}
 	got := msg.Content

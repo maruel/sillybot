@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/maruel/sillybot/huggingface"
+	"github.com/maruel/sillybot/internal"
 	"github.com/maruel/sillybot/py"
 	"golang.org/x/sys/cpu"
 )
@@ -187,7 +188,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		}
 
 		// Create the log file to redirect llamafile's output which is quite verbose.
-		port := py.FindFreePort()
+		port := internal.FindFreePort()
 		l.baseURL = fmt.Sprintf("http://localhost:%d", port)
 		if opts.Model == "python" {
 			cmd := []string{filepath.Join(cachePy, "llm.py"), "--port", strconv.Itoa(port)}
@@ -236,7 +237,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", port)
 		}
 	} else {
-		if !py.IsHostPort(opts.Remote) {
+		if !internal.IsHostPort(opts.Remote) {
 			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
 		}
 		// TODO: Support online paid backends:
@@ -393,7 +394,7 @@ func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, seed
 		Temperature: temperature,
 	}
 	msg := openAIChatCompletionsResponse{}
-	if err := jsonPostRequest(ctx, l.baseURL+"/v1/chat/completions", data, &msg); err != nil {
+	if err := internal.JSONPost(ctx, l.baseURL+"/v1/chat/completions", data, &msg); err != nil {
 		return "", fmt.Errorf("failed to get llama server chat response: %w", err)
 	}
 	if len(msg.Choices) != 1 {
@@ -410,7 +411,7 @@ func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, see
 		Seed:        seed,
 		Temperature: temperature,
 	}
-	resp, err := jsonPostRequestPartial(ctx, l.baseURL+"/v1/chat/completions", data)
+	resp, err := internal.JSONPostRequest(ctx, l.baseURL+"/v1/chat/completions", data)
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
@@ -468,7 +469,7 @@ func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, se
 		return "", err
 	}
 	msg := llamaCPPCompletionResponse{}
-	if err := jsonPostRequest(ctx, l.baseURL+"/completion", data, &msg); err != nil {
+	if err := internal.JSONPost(ctx, l.baseURL+"/completion", data, &msg); err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
 	return msg.Content, nil
@@ -487,7 +488,7 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, s
 	if err := l.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
-	resp, err := jsonPostRequestPartial(ctx, l.baseURL+"/completion", data)
+	resp, err := internal.JSONPostRequest(ctx, l.baseURL+"/completion", data)
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
@@ -933,32 +934,4 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		}
 	}
 	return "", false, fmt.Errorf("failed to find %q in %q", files, zipname)
-}
-
-func jsonPostRequest(ctx context.Context, url string, in, out interface{}) error {
-	resp, err := jsonPostRequestPartial(ctx, url, in)
-	if err != nil {
-		return err
-	}
-	d := json.NewDecoder(resp.Body)
-	d.DisallowUnknownFields()
-	err = d.Decode(out)
-	_ = resp.Body.Close()
-	if err != nil {
-		return fmt.Errorf("failed to decode server response: %w", err)
-	}
-	return nil
-}
-
-func jsonPostRequestPartial(ctx context.Context, url string, in interface{}) (*http.Response, error) {
-	b, err := json.Marshal(in)
-	if err != nil {
-		return nil, fmt.Errorf("internal error: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return http.DefaultClient.Do(req)
 }

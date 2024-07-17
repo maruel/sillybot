@@ -6,19 +6,17 @@
 package imagegen
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"image"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 
+	"github.com/maruel/sillybot/internal"
 	"github.com/maruel/sillybot/py"
 )
 
@@ -59,7 +57,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 		if err := py.RecreateVirtualEnvIfNeeded(ctx, cachePy); err != nil {
 			return nil, fmt.Errorf("failed to load image_gen: %w", err)
 		}
-		port := py.FindFreePort()
+		port := internal.FindFreePort()
 		cmd := []string{filepath.Join(cachePy, "image_gen.py"), "--port", strconv.Itoa(port)}
 		var err error
 		ig.done, ig.cancel, err = py.Run(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "image_gen.log"))
@@ -68,7 +66,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 		}
 		ig.baseURL = fmt.Sprintf("http://localhost:%d", port)
 	} else {
-		if !py.IsHostPort(opts.Remote) {
+		if !internal.IsHostPort(opts.Remote) {
 			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
 		}
 		ig.baseURL = "http://" + opts.Remote
@@ -79,7 +77,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 		r := struct {
 			Status string
 		}{}
-		if err := jsonGetRequest(ctx, ig.baseURL+"/health", &r); err == nil && r.Status == "ok" {
+		if err := internal.JSONGet(ctx, ig.baseURL+"/health", &r); err == nil && r.Status == "ok" {
 			break
 		}
 		select {
@@ -119,7 +117,7 @@ func (ig *Session) GenImage(ctx context.Context, prompt string, seed int) (*imag
 	r := struct {
 		Image []byte `json:"image"`
 	}{}
-	if err := jsonPostRequest(ctx, ig.baseURL+"/api/generate", data, &r); err != nil {
+	if err := internal.JSONPost(ctx, ig.baseURL+"/api/generate", data, &r); err != nil {
 		slog.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return nil, fmt.Errorf("failed to create image request: %w", err)
 	}
@@ -131,52 +129,4 @@ func (ig *Session) GenImage(ctx context.Context, prompt string, seed int) (*imag
 	}
 	addWatermark(img)
 	return img, nil
-}
-
-func jsonPostRequest(ctx context.Context, url string, in, out interface{}) error {
-	resp, err := jsonPostRequestPartial(ctx, url, in)
-	if err != nil {
-		return err
-	}
-	d := json.NewDecoder(resp.Body)
-	d.DisallowUnknownFields()
-	err = d.Decode(out)
-	_ = resp.Body.Close()
-	if err != nil {
-		return fmt.Errorf("failed to decode server response: %w", err)
-	}
-	return nil
-}
-
-func jsonPostRequestPartial(ctx context.Context, url string, in interface{}) (*http.Response, error) {
-	b, err := json.Marshal(in)
-	if err != nil {
-		return nil, fmt.Errorf("internal error: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return http.DefaultClient.Do(req)
-}
-
-func jsonGetRequest(ctx context.Context, url string, out interface{}) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	d := json.NewDecoder(resp.Body)
-	d.DisallowUnknownFields()
-	err = d.Decode(out)
-	_ = resp.Body.Close()
-	if err != nil {
-		return fmt.Errorf("failed to decode server response: %w", err)
-	}
-	return nil
 }
