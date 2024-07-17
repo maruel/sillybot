@@ -44,13 +44,17 @@ def create_completion(host, prompt, gbnf_grammar, seed):
   if gbnf_grammar:
     data["grammar"] = gbnf_grammar
     print(f"    Grammar:\n{textwrap.indent(gbnf_grammar, '      ')}")
-  print(f"    Prompt:\n{textwrap.indent(prompt.rstrip(), '      ')}")
+  print(f"    Prompt:\n      {repr(prompt.rstrip())}")
   headers = {"Content-Type": "application/json"}
+  # I realized there seem to be sensitivity to the exact JSON encoding used.
+  print("Raw Request:")
+  print(json.dumps(data))
   result = requests.post(f"http://{host}/completion", headers=headers, json=data).json()
   assert data.get("error") is None, data
   logging.info("Result: %s", result)
   content = result["content"]
   print(f"  Model: {result['model']}")
+  # TODO: Handle mixed content.
   try:
     dump = json.dumps(json.loads(content), indent=2)
   except json.decoder.JSONDecodeError:

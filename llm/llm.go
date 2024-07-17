@@ -77,13 +77,13 @@ type KnownLLM struct {
 // PromptEncoding describes how to encode the prompt.
 type PromptEncoding struct {
 	// Prompt encoding.
-	BeginOfText      string `yaml:"begin_of_text"`
-	StartTokenSystem string `yaml:"start_token_system"`
-	EndTokenSystem   string `yaml:"end_token_system"`
-	StartTokenUser   string `yaml:"start_token_user"`
-	EndTokenUser     string `yaml:"end_token_user"`
-	StartTokenModel  string `yaml:"start_token_model"`
-	EndTokenModel    string `yaml:"end_token_model"`
+	BeginOfText         string `yaml:"begin_of_text"`
+	SystemTokenStart    string `yaml:"system_token_start"`
+	SystemTokenEnd      string `yaml:"system_token_end"`
+	UserTokenStart      string `yaml:"user_token_start"`
+	UserTokenEnd        string `yaml:"user_token_end"`
+	AssistantTokenStart string `yaml:"assistant_token_start"`
+	AssistantTokenEnd   string `yaml:"assistant_token_end"`
 }
 
 // URL returns the canonical URL for this repository.
@@ -536,12 +536,12 @@ func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []Message) er
 			if i != 0 {
 				return fmt.Errorf("unexpected system message at index %d", i)
 			}
-			data.Prompt += l.encoding.StartTokenSystem + m.Content + l.encoding.EndTokenSystem
+			data.Prompt += l.encoding.SystemTokenStart + m.Content + l.encoding.SystemTokenEnd
 			continue
 		case User:
-			data.Prompt += l.encoding.StartTokenUser + m.Content + l.encoding.EndTokenUser
+			data.Prompt += l.encoding.UserTokenStart + m.Content + l.encoding.UserTokenEnd
 		case Assistant:
-			data.Prompt += l.encoding.StartTokenModel + m.Content + l.encoding.EndTokenModel
+			data.Prompt += l.encoding.AssistantTokenStart + m.Content + l.encoding.AssistantTokenEnd
 		default:
 			return fmt.Errorf("unexpected role %q", m.Role)
 		}

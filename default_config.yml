@@ -49,12 +49,12 @@ knownllms:
     # https://ai.google.dev/gemma/docs/formatting
     #prompt_encoding:
     #  begin_of_text: ""
-    #  start_token_system: "<start_of_turn>user\n"
-    #  end_token_system: "<end_of_turn>\n"
-    #  start_token_user: "<start_of_turn>user\n"
-    #  end_token_user: "<end_of_turn>\n"
-    #  start_token_model: "<start_of_turn>model\n"
-    #  end_token_model: "<end_of_turn>\n"
+    #  system_token_start: "<start_of_turn>user\n"
+    #  system_token_end: "<end_of_turn>\n"
+    #  user_token_start: "<start_of_turn>user\n"
+    #  user_token_end: "<end_of_turn>\n"
+    #  assistant_token_start: "<start_of_turn>model\n"
+    #  assistant_token_end: "<end_of_turn>\n"
   - repo: bartowski/gemma-2-27b-it-GGUF
     packagingtype: gguf
     basename: gemma-2-27b-it-
@@ -62,12 +62,12 @@ knownllms:
     # https://ai.google.dev/gemma/docs/formatting
     #prompt_encoding:
     #  begin_of_text: ""
-    #  start_token_system: "<start_of_turn>user\n"
-    #  end_token_system: "<end_of_turn>\n"
-    #  start_token_user: "<start_of_turn>user\n"
-    #  end_token_user: "<end_of_turn>\n"
-    #  start_token_model: "<start_of_turn>model\n"
-    #  end_token_model: "<end_of_turn>\n"
+    #  system_token_start: "<start_of_turn>user\n"
+    #  system_token_end: "<end_of_turn>\n"
+    #  user_token_start: "<start_of_turn>user\n"
+    #  user_token_end: "<end_of_turn>\n"
+    #  assistant_token_start: "<start_of_turn>model\n"
+    #  assistant_token_end: "<end_of_turn>\n"
 
   # Llama 3 family:
   # https://huggingface.co/collections/meta-llama/meta-llama-3-66214712577ca38149ebb2b6
@@ -78,12 +78,12 @@ knownllms:
     # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
     #prompt_encoding:
     #  begin_of_text: "<|begin_of_text|>"
-    #  start_token_system: "<|start_header_id|>system<|end_header_id|>\n"
-    #  end_token_system: "<end_of_turn>\n"
-    #  start_token_user: "<|start_header_id|>user<|end_header_id|>\n"
-    #  end_token_user: "<|eot_id|>\n"
-    #  start_token_model: "<|start_header_id|>assistant<|end_header_id|>\n"
-    #  end_token_model: "<|eot_id|>\n"
+    #  system_token_start: "<|start_header_id|>system<|end_header_id|>\n"
+    #  system_token_end: "<end_of_turn>\n"
+    #  user_token_start: "<|start_header_id|>user<|end_header_id|>\n"
+    #  user_token_end: "<|eot_id|>\n"
+    #  assistant_token_start: "<|start_header_id|>assistant<|end_header_id|>\n"
+    #  assistant_token_end: "<|eot_id|>\n"
     # TODO: This repo put Q5_K_L and higher into subdirectories, which is
     # unsupported.
   - repo: bartowski/Meta-Llama-3-70B-Instruct-GGUF
@@ -93,12 +93,12 @@ knownllms:
     # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
     #prompt_encoding:
     #  begin_of_text: "<|begin_of_text|>"
-    #  start_token_system: "<|start_header_id|>system<|end_header_id|>\n"
-    #  end_token_system: "<end_of_turn>\n"
-    #  start_token_user: "<|start_header_id|>user<|end_header_id|>\n"
-    #  end_token_user: "<|eot_id|>\n"
-    #  start_token_model: "<|start_header_id|>assistant<|end_header_id|>\n"
-    #  end_token_model: "<|eot_id|>\n"
+    #  system_token_start: "<|start_header_id|>system<|end_header_id|>\n"
+    #  system_token_end: "<end_of_turn>\n"
+    #  user_token_start: "<|start_header_id|>user<|end_header_id|>\n"
+    #  user_token_end: "<|eot_id|>\n"
+    #  assistant_token_start: "<|start_header_id|>assistant<|end_header_id|>\n"
+    #  assistant_token_end: "<|eot_id|>\n"
 
   # Mistral family
   # https://huggingface.co/mistralai
@@ -111,12 +111,12 @@ knownllms:
     # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py#L10
     #prompt_encoding:
     #  begin_of_text: "<s>"
-    #  start_token_system: "[INST] "
-    #  end_token_system: " [/INST]\n"
-    #  start_token_user: "[INST] "
-    #  end_token_user: " [/INST]\n"
-    #  start_token_model: ""
-    #  end_token_model: "</s>\n"
+    #  system_token_start: "[INST] "
+    #  system_token_end: " [/INST]\n"
+    #  user_token_start: "[INST] "
+    #  user_token_end: " [/INST]\n"
+    #  assistant_token_start: ""
+    #  assistant_token_end: "</s>\n"
     # bartowski didn't upload this one.
   - repo: MaziyarPanahi/Mixtral-8x7B-Instruct-v0.1-GGUF
     packagingtype: gguf
@@ -128,12 +128,12 @@ knownllms:
     # See py/mistral_test.py
     #prompt_encoding:
     #  begin_of_text: "<s>"
-    #  start_token_system: "[INST]▁"
-    #  end_token_system: " [/INST]\n"
-    #  start_token_user: "[INST]▁"
-    #  end_token_user: " [/INST]\n"
-    #  start_token_model: ""
-    #  end_token_model: ""
+    #  system_token_start: "[INST]▁"
+    #  system_token_end: " [/INST]\n"
+    #  user_token_start: "[INST]▁"
+    #  user_token_end: " [/INST]\n"
+    #  assistant_token_start: ""
+    #  assistant_token_end: ""
 
   # Phi-3 family
   # https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3
@@ -146,12 +146,12 @@ knownllms:
     # https://huggingface.co/microsoft/Phi-3-mini-4k-instruct#chat-format
     #prompt_encoding:
     #  begin_of_text: ""
-    #  start_token_system: "<|system|>\n"
-    #  end_token_system: "<|end|>\n"
-    #  start_token_user: "<|user|>\n"
-    #  end_token_user: "<|end|>\n"
-    #  start_token_model: "<|assistant|>\n"
-    #  end_token_model: "<|end|>\n"
+    #  system_token_start: "<|system|>\n"
+    #  system_token_end: "<|end|>\n"
+    #  user_token_start: "<|user|>\n"
+    #  user_token_end: "<|end|>\n"
+    #  assistant_token_start: "<|assistant|>\n"
+    #  assistant_token_end: "<|end|>\n"
   - repo: bartowski/Phi-3-medium-128k-instruct-GGUF
     packagingtype: gguf
     basename: Phi-3-medium-128k-instruct-
@@ -159,12 +159,12 @@ knownllms:
     # https://huggingface.co/microsoft/Phi-3-medium-128k-instruct#chat-format
     #prompt_encoding:
     #  begin_of_text: ""
-    #  start_token_system: "<|system|>\n"
-    #  end_token_system: "<|end|>\n"
-    #  start_token_user: "<|user|>\n"
-    #  end_token_user: "<|end|>\n"
-    #  start_token_model: "<|assistant|>\n"
-    #  end_token_model: "<|end|>\n"
+    #  system_token_start: "<|system|>\n"
+    #  system_token_end: "<|end|>\n"
+    #  user_token_start: "<|user|>\n"
+    #  user_token_end: "<|end|>\n"
+    #  assistant_token_start: "<|assistant|>\n"
+    #  assistant_token_end: "<|end|>\n"
 
   # Qwen 2 family
   # https://huggingface.co/collections/Qwen/qwen2-6659360b33528ced941e557f
@@ -175,9 +175,9 @@ knownllms:
       # https://github.com/QwenLM/Qwen/blob/main/tokenization_note.md#special-tokens
     #prompt_encoding:
     #  begin_of_text: ""
-    #  start_token_system: "<|im_start|>\n"
-    #  end_token_system: "<|im_end|>\n"
-    #  start_token_user: "<|im_start|>\n"
-    #  end_token_user: "<|im_end|>\n"
-    #  start_token_model: ""
-    #  end_token_model: "<|end_of_text|>\n"
+    #  system_token_start: "<|im_start|>\n"
+    #  system_token_end: "<|im_end|>\n"
+    #  user_token_start: "<|im_start|>\n"
+    #  user_token_end: "<|im_end|>\n"
+    #  assistant_token_start: ""
+    #  assistant_token_end: "<|end_of_text|>\n"

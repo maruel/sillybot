@@ -7,8 +7,11 @@ package llm
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/lmittmann/tint"
 	"github.com/maruel/sillybot/internal"
 	"github.com/mattn/go-colorable"
@@ -116,9 +120,125 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	})
 }
 
+func rawPost(t *testing.T, url string, in string, out interface{}) {
+	ctx := context.Background()
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("HTTP status %s", resp.Status)
+	}
+	d := json.NewDecoder(resp.Body)
+	d.DisallowUnknownFields()
+	if err = d.Decode(out); err != nil {
+		t.Fatal(err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLLM_Tool_Raw(t *testing.T) {
+	// Take the raw output from //py/mistral_test.py.
+	// Call llama-server directly, ignoring the utility code in struct LLM.
+	l := loadModel(t, "Mistral-7B-Instruct-v0.3.Q3_K_M", "")
+	raw := `{"prompt": "<s>[AVAILABLE_TOOLS]\u2581[{\"type\":\u2581\"function\",\u2581\"function\":\u2581{\"name\":\u2581\"get_current_weather\",\u2581\"description\":\u2581\"Get\u2581the\u2581current\u2581weather\",\u2581\"parameters\":\u2581{\"type\":\u2581\"object\",\u2581\"properties\":\u2581{\"location\":\u2581{\"type\":\u2581\"string\",\u2581\"description\":\u2581\"The\u2581city\u2581and\u2581state,\u2581e.g.\u2581San\u2581Francisco,\u2581US\u2581or\u2581Montr\u00e9al,\u2581CA\u2581or\u2581Berlin,\u2581DE\"},\u2581\"format\":\u2581{\"type\":\u2581\"string\",\u2581\"enum\":\u2581[\"celsius\",\u2581\"fahrenheit\"],\u2581\"description\":\u2581\"The\u2581temperature\u2581unit\u2581to\u2581use.\u2581Infer\u2581this\u2581from\u2581the\u2581users\u2581location.\"}},\u2581\"required\":\u2581[\"location\",\u2581\"format\"]}}}][/AVAILABLE_TOOLS][INST]\u2581What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris[/INST]"}`
+	msg := llamaCPPCompletionResponse{}
+	rawPost(t, l.baseURL+"/completion", raw, &msg)
+	got := strings.TrimSpace(msg.Content)
+	// TODO: Move that to a proper struct.
+	type toolCall struct {
+		Name      string
+		Arguments map[string]string
+	}
+	var toolCalls []toolCall
+	//  Search for a tool call.
+	for _, line := range strings.Split(got, "\n") {
+		if err := json.Unmarshal([]byte(line), &toolCalls); err == nil {
+			got = ""
+			break
+		}
+	}
+	// Don't fail here since it's highly non-deterministic. Examples of past output:
+	// "To get the current weather in Paris, you can use the following command:\n\n[{\"name\": \"get_current_weather\", \"arguments\": {\"location\": \"Paris, FR\"}}]\n\nYou can also specify the temperature unit by adding the format parameter:\n\n[{\"name\": \"get_current_weather\", \"arguments\": {\"location\": \"Paris, FR\", \"format\": \"celsius\"}}]\n\nIf you prefer Fahrenheit, use:\n\n[{\"name\": \"get_current_weather\", \"arguments\": {\"location\": \"Paris, FR\", \"format\": \"fahrenheit\"}}]"
+	// "[{\"name\": \"get_current_weather\", \"arguments\": {\"location\": \"Paris\", \"format\": \"celsius\"}}]"
+	// "To find out the current weather in Paris, you can call the `get_current_weather` function with the location as `Paris, FR`. Here's an example:\n\n```\nget_current_weather(location='Paris, FR')\n```\n\nIf you want to specify the temperature unit, you can add the `format` parameter too. For example, to get the temperature in Celsius:\n\n```\nget_current_weather(location='Paris, FR', format='celsius')\n```"
+	if "" != got {
+		t.Logf("expected %q, got %q", "", got)
+	}
+	if len(toolCalls) != 1 {
+		t.Skip(fmt.Sprintf("expected one tool call, got %# v", toolCalls))
+	}
+	possible := []toolCall{
+		{
+			Name: "get_current_weather",
+			Arguments: map[string]string{
+				"location": "Paris",
+				"format":   "celsius",
+			},
+		},
+		{
+			Name: "get_current_weather",
+			Arguments: map[string]string{
+				"location": "Paris",
+			},
+		},
+		{
+			Name: "get_current_weather",
+			Arguments: map[string]string{
+				"location": "Paris, FR",
+			},
+		},
+		{
+			Name: "get_current_weather",
+			Arguments: map[string]string{
+				"location": "Paris, FR",
+				"format":   "celsius",
+			},
+		},
+	}
+	found := false
+	for _, w := range possible {
+		if diff := cmp.Diff(w, toolCalls[0]); diff == "" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Skip(fmt.Sprintf("Didn't get the expected function call:  %q", toolCalls))
+	}
+
+	// Do a second call. Also copied from //py/mistral_test.py.
+	raw = `{"prompt": "<s>[AVAILABLE_TOOLS]\u2581[{\"type\":\u2581\"function\",\u2581\"function\":\u2581{\"name\":\u2581\"get_current_weather\",\u2581\"description\":\u2581\"Get\u2581the\u2581current\u2581weather\",\u2581\"parameters\":\u2581{\"type\":\u2581\"object\",\u2581\"properties\":\u2581{\"location\":\u2581{\"type\":\u2581\"string\",\u2581\"description\":\u2581\"The\u2581city\u2581and\u2581state,\u2581e.g.\u2581San\u2581Francisco,\u2581US\u2581or\u2581Montr\u00e9al,\u2581CA\u2581or\u2581Berlin,\u2581DE\"},\u2581\"format\":\u2581{\"type\":\u2581\"string\",\u2581\"enum\":\u2581[\"celsius\",\u2581\"fahrenheit\"],\u2581\"description\":\u2581\"The\u2581temperature\u2581unit\u2581to\u2581use.\u2581Infer\u2581this\u2581from\u2581the\u2581users\u2581location.\"}},\u2581\"required\":\u2581[\"location\",\u2581\"format\"]}}}][/AVAILABLE_TOOLS][INST]\u2581What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris[/INST][TOOL_CALLS]\u2581[{\"name\":\u2581\"get_current_weather\",\u2581\"arguments\":\u2581{\"location\":\u2581\"Paris,\u2581FR\",\u2581\"format\":\u2581\"celsius\"},\u2581\"id\":\u2581\"c00000000\"}]</s>[TOOL_RESULTS]\u2581{\"content\":\u258143,\u2581\"call_id\":\u2581\"c00000000\"}[/TOOL_RESULTS]"}`
+	msg = llamaCPPCompletionResponse{}
+	rawPost(t, l.baseURL+"/completion", raw, &msg)
+	if !strings.Contains(msg.Content, " 43 ") {
+		t.Fatalf("expected 43°C, got %q", msg.Content)
+	}
+}
+
 func TestLLM_Tool(t *testing.T) {
 	t.Skip("not working, while it works in python. Need to investigate")
 	l := loadModel(t, "Mistral-7B-Instruct-v0.3.Q3_K_M", "")
+	// Refs:
+	// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py#L10
+	// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py#L348
+	// //py/mistral_test.py
+	l.encoding = &PromptEncoding{
+		BeginOfText:         "<s>",
+		SystemTokenStart:    "[INST]\u2581",
+		SystemTokenEnd:      " [/INST]",
+		UserTokenStart:      "[INST]\u2581",
+		UserTokenEnd:        " [/INST]",
+		AssistantTokenStart: "",
+		AssistantTokenEnd:   "",
+	}
 	// Call llama-server directly, ignoring the utility code in struct LLM.
 	ctx := context.Background()
 	data := llamaCPPCompletionRequest{Seed: 1, Temperature: 0}

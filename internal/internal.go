@@ -60,11 +60,14 @@ func JSONPost(ctx context.Context, url string, in, out interface{}) error {
 // JSONPostRequest simplifies doing an HTTP POST in JSON. It initiates
 // the requests and returns the response back.
 func JSONPostRequest(ctx context.Context, url string, in interface{}) (*http.Response, error) {
-	b, err := json.Marshal(in)
-	if err != nil {
+	b := bytes.Buffer{}
+	e := json.NewEncoder(&b)
+	// OMG this took me a while to figure this out. This affects token encoding.
+	e.SetEscapeHTML(false)
+	if err := e.Encode(in); err != nil {
 		return nil, fmt.Errorf("internal error: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, &b)
 	if err != nil {
 		return nil, err
 	}
