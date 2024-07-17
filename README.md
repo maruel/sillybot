@@ -14,6 +14,11 @@ Receive:
 
 ![Meme Lord in Training](https://raw.githubusercontent.com/wiki/maruel/sillybot/meme_lord.png)
 
+Talk with it and uses its commands as described at:
+
+- For Discord, see [cmd/discord-bot/README.md](cmd/discord-bot#usage).
+- For Slack, see [cmd/slack-bot/README.md](cmd/slack-bot#usage).
+
 
 ## Features
 
@@ -68,23 +73,15 @@ Receive:
       which is too slow on a M3 Max IMO.
 
 
-## Usage
-
-Talk with it and uses its commands as described at:
-
-- For Discord, see [cmd/discord-bot/README.md](cmd/discord-bot/README.md#usage).
-- For Slack, see [cmd/slack-bot/README.md](cmd/slack-bot/README.md#usage).
-
-
 ## Installation
 
 Both function essentially the same but the Application configuration on the
 server (Discord or Slack) is different:
 
 - For Discord, see
-  [cmd/discord-bot/README.md](cmd/discord-bot/README.md##app-configuration).
+  [cmd/discord-bot/README.md](cmd/discord-bot#app-configuration).
 - For Slack, see
-  [cmd/slack-bot/README.md](cmd/slack-bot/README.md##app-configuration).
+  [cmd/slack-bot/README.md](cmd/slack-bot#app-configuration).
 
 
 ## Dev
