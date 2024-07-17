@@ -72,13 +72,19 @@ type KnownLLM struct {
 // PromptEncoding describes how to encode the prompt.
 type PromptEncoding struct {
 	// Prompt encoding.
-	BeginOfText         string `yaml:"begin_of_text"`
-	SystemTokenStart    string `yaml:"system_token_start"`
-	SystemTokenEnd      string `yaml:"system_token_end"`
-	UserTokenStart      string `yaml:"user_token_start"`
-	UserTokenEnd        string `yaml:"user_token_end"`
-	AssistantTokenStart string `yaml:"assistant_token_start"`
-	AssistantTokenEnd   string `yaml:"assistant_token_end"`
+	BeginOfText              string `yaml:"begin_of_text"`
+	SystemTokenStart         string `yaml:"system_token_start"`
+	SystemTokenEnd           string `yaml:"system_token_end"`
+	UserTokenStart           string `yaml:"user_token_start"`
+	UserTokenEnd             string `yaml:"user_token_end"`
+	AssistantTokenStart      string `yaml:"assistant_token_start"`
+	AssistantTokenEnd        string `yaml:"assistant_token_end"`
+	ToolsAvailableTokenStart string `yaml:"tools_available_token_start"`
+	ToolsAvailableTokenEnd   string `yaml:"tools_available_token_end"`
+	ToolCallTokenStart       string `yaml:"tool_call_token_start"`
+	ToolCallTokenEnd         string `yaml:"tool_call_token_end"`
+	ToolCallResultTokenStart string `yaml:"tool_call_result_token_start"`
+	ToolCallResultTokenEnd   string `yaml:"tool_call_result_token_end"`
 }
 
 // URL returns the canonical URL for this repository.
@@ -530,11 +536,16 @@ func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []Message) er
 				return fmt.Errorf("unexpected system message at index %d", i)
 			}
 			data.Prompt += l.encoding.SystemTokenStart + m.Content + l.encoding.SystemTokenEnd
-			continue
 		case User:
 			data.Prompt += l.encoding.UserTokenStart + m.Content + l.encoding.UserTokenEnd
 		case Assistant:
 			data.Prompt += l.encoding.AssistantTokenStart + m.Content + l.encoding.AssistantTokenEnd
+		case "available_tools":
+			data.Prompt += l.encoding.ToolsAvailableTokenStart + m.Content + l.encoding.ToolsAvailableTokenEnd
+		case "tool_call":
+			data.Prompt += l.encoding.ToolCallTokenStart + m.Content + l.encoding.ToolCallTokenEnd
+		case "tool_call_result":
+			data.Prompt += l.encoding.ToolCallResultTokenStart + m.Content + l.encoding.ToolCallResultTokenEnd
 		default:
 			return fmt.Errorf("unexpected role %q", m.Role)
 		}
