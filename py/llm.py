@@ -17,10 +17,12 @@ import signal
 import sys
 import time
 
-import transformers
 import huggingface_hub
 import torch
+import transformers
 
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 DTYPE = torch.float16 if DEVICE in ("cuda", "mps") else torch.float32
 
@@ -61,6 +63,20 @@ def load_phi_3_medium():
         attn_implementation="eager",
         trust_remote_code=True),
       tokenizer=transformers.AutoTokenizer.from_pretrained(model_id))
+
+
+def load_mistral_nemo():
+  """Loads Mistral Nemo.
+
+  It's a 12B model with 128k context window. It requires a ton of RAM. It cannot
+  run in float16 with a macOS system wit 36GiB of RAM. This model is designed to
+  work well in fp8 but I don't think (?) pytorch metal mps implementation
+  supports fp8. As of 2024-07-19, adding the tekken tokenizer to llama.cpp is
+  being worked on.
+
+  See https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407
+  """
+  return transformers.pipeline("text-generation", model="mistralai/Mistral-Nemo-Instruct-2407")
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
