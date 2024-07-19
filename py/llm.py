@@ -74,9 +74,17 @@ def load_mistral_nemo():
   supports fp8. As of 2024-07-19, adding the tekken tokenizer to llama.cpp is
   being worked on.
 
+  https://mistral.ai/news/mistral-nemo/ specifically mentions that using FP8
+  inference is fine but they don't tell which form of FP8 (!!)
+
   See https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407
   """
-  return transformers.pipeline("text-generation", model="mistralai/Mistral-Nemo-Instruct-2407")
+  # As of 2024-07-19, this doesn't work. Filed
+  # https://github.com/pytorch/pytorch/issues/131196
+  return transformers.pipeline(
+      "text-generation",
+      model="mistralai/Mistral-Nemo-Instruct-2407",
+      torch_dtype=torch.float8_e4m3fn)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -180,6 +188,7 @@ def main():
   if DEVICE == "cuda":
     torch.backends.cuda.matmul.allow_tf32 = True
   Handler._pipe = load_phi_3_mini()
+  #Handler._pipe = load_mistral_nemo()
   logging.info("Model loaded using %s", DEVICE)
   httpd = http.server.HTTPServer((args.host, args.port), Handler)
   logging.info(f"Started server on port {args.host}:{args.port}")
