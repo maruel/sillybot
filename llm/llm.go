@@ -113,10 +113,10 @@ func (k *KnownLLM) Validate() error {
 // requirement.
 type Session struct {
 	HF       *huggingface.Client
-	model    string
+	Model    string
+	Encoding *PromptEncoding
 	baseURL  string
 	backend  string
-	encoding *PromptEncoding
 
 	c      *exec.Cmd
 	done   <-chan error
@@ -136,18 +136,18 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	if err != nil {
 		return nil, err
 	}
-	l := &Session{HF: hf, model: opts.Model}
+	l := &Session{HF: hf, Model: opts.Model}
 	known := -1
 	if opts.Model != "python" {
 		for i, k := range knownLLMs {
 			if strings.HasPrefix(opts.Model, k.Basename) {
 				known = i
-				l.encoding = k.PromptEncoding
+				l.Encoding = k.PromptEncoding
 				break
 			}
 		}
 		if known == -1 {
-			return nil, fmt.Errorf("unknown LLM model %q, add to knownllms section first", l.model)
+			return nil, fmt.Errorf("unknown LLM model %q, add to knownllms section first", l.Model)
 		}
 	}
 
@@ -317,15 +317,7 @@ func (l *Session) GetHealth(ctx context.Context) (string, error) {
 
 // Prompt prompts the LLM and returns the reply.
 //
-// Use a non-zero seed to get deterministic output (without strong guarantees).
-//
-// Use low temperature (<1.0) to get more deterministic and repetitive output.
-//
-// Use high temperature (>1.0) to get more creative and random text. High
-// values can result in nonsensical responses.
-//
-// It is recommended to use 1.0 by default, except some models (like
-// Mistral-Nemo) requires much lower value <=0.3.
+// See PromptStreaming for the arguments values.
 //
 // The first message is assumed to be the system prompt.
 func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
@@ -334,7 +326,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperat
 	slog.Info("llm", "msgs", msgs)
 	reply := ""
 	var err error
-	if l.encoding == nil {
+	if l.Encoding == nil {
 		reply, err = l.openAIPromptBlocking(ctx, msgs, seed, temperature)
 	} else {
 		reply, err = l.llamaCPPPromptBlocking(ctx, msgs, seed, temperature)
@@ -374,7 +366,7 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, seed int,
 	slog.Info("llm", "msgs", msgs)
 	reply := ""
 	var err error
-	if l.encoding == nil {
+	if l.Encoding == nil {
 		reply, err = l.openAIPromptStreaming(ctx, msgs, seed, temperature, words)
 	} else {
 		reply, err = l.llamaCPPPromptStreaming(ctx, msgs, seed, temperature, words)
@@ -530,24 +522,24 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, s
 }
 
 func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []Message) error {
-	data.Prompt = l.encoding.BeginOfText
+	data.Prompt = l.Encoding.BeginOfText
 	for i, m := range msgs {
 		switch m.Role {
 		case System:
 			if i != 0 {
 				return fmt.Errorf("unexpected system message at index %d", i)
 			}
-			data.Prompt += l.encoding.SystemTokenStart + m.Content + l.encoding.SystemTokenEnd
+			data.Prompt += l.Encoding.SystemTokenStart + m.Content + l.Encoding.SystemTokenEnd
 		case User:
-			data.Prompt += l.encoding.UserTokenStart + m.Content + l.encoding.UserTokenEnd
+			data.Prompt += l.Encoding.UserTokenStart + m.Content + l.Encoding.UserTokenEnd
 		case Assistant:
-			data.Prompt += l.encoding.AssistantTokenStart + m.Content + l.encoding.AssistantTokenEnd
+			data.Prompt += l.Encoding.AssistantTokenStart + m.Content + l.Encoding.AssistantTokenEnd
 		case "available_tools":
-			data.Prompt += l.encoding.ToolsAvailableTokenStart + m.Content + l.encoding.ToolsAvailableTokenEnd
+			data.Prompt += l.Encoding.ToolsAvailableTokenStart + m.Content + l.Encoding.ToolsAvailableTokenEnd
 		case "tool_call":
-			data.Prompt += l.encoding.ToolCallTokenStart + m.Content + l.encoding.ToolCallTokenEnd
+			data.Prompt += l.Encoding.ToolCallTokenStart + m.Content + l.Encoding.ToolCallTokenEnd
 		case "tool_call_result":
-			data.Prompt += l.encoding.ToolCallResultTokenStart + m.Content + l.encoding.ToolCallResultTokenEnd
+			data.Prompt += l.Encoding.ToolCallResultTokenStart + m.Content + l.Encoding.ToolCallResultTokenEnd
 		default:
 			return fmt.Errorf("unexpected role %q", m.Role)
 		}
@@ -652,7 +644,7 @@ func (l *Session) processMsgs(msgs []Message) []Message {
 
 	keys := map[string]string{
 		"Now":   time.Now().Format("Monday 2006-01-02T15:04:05 MST"),
-		"Model": l.model,
+		"Model": l.Model,
 	}
 	b := bytes.Buffer{}
 	if err = t.Execute(&b, keys); err != nil {

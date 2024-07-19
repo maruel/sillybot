@@ -64,8 +64,8 @@ func mainImpl() error {
 	}
 
 	cfg := sillybot.Config{}
-	bottoken := flag.String("bot-token", "", "Bot Token; get one at https://discord.com/developers/applications or https://api.slack.com/apps")
-	apptoken := flag.String("app-token", "", "App Token; get one at https://api.slack.com/apps; do not use with discord")
+	bottoken := flag.String("bot-token", "", "Bot Token; get one at https://api.slack.com/apps")
+	apptoken := flag.String("app-token", "", "App Token; get one at https://api.slack.com/apps")
 	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
 	config := flag.String("config", "config.yml", "Configuration file. If not present, it is automatically created.")

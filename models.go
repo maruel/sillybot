@@ -72,10 +72,10 @@ func (c *Config) LoadOrDefault(config string) error {
 		d := yaml.NewDecoder(bytes.NewReader(DefaultConfig))
 		d.KnownFields(true)
 		defaultCfg := Config{}
-		if err = d.Decode(&defaultCfg); err == nil {
-			slog.Info("models", "message", "using default_config.yml's knownllms")
-			c.KnownLLMs = defaultCfg.KnownLLMs
+		if err = d.Decode(&defaultCfg); err != nil {
+			return err
 		}
+		c.KnownLLMs = defaultCfg.KnownLLMs
 	}
 	return c.Validate()
 }

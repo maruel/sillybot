@@ -115,13 +115,19 @@ knownllms:
     upstream: mistralai/Mistral-7B-Instruct-v0.3
     # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py#L10
     #prompt_encoding:
-    #  begin_of_text: "<s>"
-    #  system_token_start: "[INST] "
-    #  system_token_end: " [/INST]\n"
-    #  user_token_start: "[INST] "
-    #  user_token_end: " [/INST]\n"
-    #  assistant_token_start: ""
-    #  assistant_token_end: "</s>\n"
+    #  begin_of_text:                "<s>"
+    #  system_token_start:           "[INST]\u2581"
+    #  system_token_end:             " [/INST]"
+    #  user_token_start:             "[INST]\u2581"
+    #  user_token_end:               "[/INST]"
+    #  assistant_token_start:        ""
+    #  assistant_token_end:          "</s>"
+    #  tools_available_token_start:  "[AVAILABLE_TOOLS]\u2581"
+    #  tools_available_token_end:    "[/AVAILABLE_TOOLS]"
+    #  tool_call_token_start:        "[TOOL_CALLS]\u2581"
+    #  tool_call_token_end:          "</s>"
+    #  tool_call_result_token_start: "[TOOL_RESULTS]\u2581"
+    #  tool_call_result_token_end:   "[/TOOL_RESULTS]"
     # bartowski didn't upload this one.
   - repo: MaziyarPanahi/Mixtral-8x7B-Instruct-v0.1-GGUF
     packagingtype: gguf

@@ -25,6 +25,8 @@ import (
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/api/customsearch/v1"
+	"google.golang.org/api/option"
 )
 
 // discordBot is the live instance of the bot talking to the Discord API.
@@ -41,11 +43,13 @@ type discordBot struct {
 	settings  sillybot.Settings
 	chat      chan msgReq
 	image     chan intReq
+	gcptoken  string
+	cxtoken   string
 	wg        sync.WaitGroup
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings) (*discordBot, error) {
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
@@ -59,7 +63,7 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Sessi
 			slog.Error(msg)
 		}
 	}
-	dg, err := discordgo.New("Bot " + token)
+	dg, err := discordgo.New("Bot " + bottoken)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +84,8 @@ func newDiscordBot(ctx context.Context, token string, verbose bool, l *llm.Sessi
 		settings:  settings,
 		chat:      make(chan msgReq, 5),
 		image:     make(chan intReq, 3),
+		gcptoken:  gcptoken,
+		cxtoken:   cxtoken,
 	}
 	// The events are listed at
 	// https://discord.com/developers/docs/topics/gateway-events#receive-events
@@ -375,7 +381,6 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	if event.Member != nil {
 		u = event.Member.User
 	}
-	c := d.mem.Get(u.ID, event.ChannelID)
 	opts := struct {
 		SystemPrompt string `json:"system_prompt"`
 	}{SystemPrompt: d.settings.PromptSystem}
@@ -384,11 +389,14 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 		return
 	}
 	reply := "I don't know you. I can't wait to start our discussion so I can get to know you better!"
-	if len(c.Messages) > 1 {
+	c := d.getMemory(u.ID, event.ChannelID)
+	if len(c.Messages) >= 1 && c.Messages[len(c.Messages)-1].Role != llm.System {
 		reply = "The memory of our past conversations just got zapped."
 	}
+	c.Messages = nil
+	c = d.getMemory(u.ID, event.ChannelID)
+	c.Messages[len(c.Messages)-1].Content = opts.SystemPrompt
 	reply += "\n*System prompt*: " + escapeMarkdown(opts.SystemPrompt)
-	c.Messages = []llm.Message{{Role: llm.System, Content: opts.SystemPrompt}}
 	if err := d.interactionRespond(event.Interaction, reply); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
 	}
@@ -558,12 +566,42 @@ func (d *discordBot) imageRoutine() {
 	}
 }
 
+func (d *discordBot) toolWebSearch(ctx context.Context, query string) (*customsearch.Search, error) {
+	// https://developers.google.com/custom-search/v1/using_rest
+	s, err := customsearch.NewService(ctx, option.WithAPIKey(d.gcptoken))
+	if err != nil {
+		return nil, err
+	}
+	return s.Cse.List().Cx(d.cxtoken).Context(ctx).Q(query).Num(5).Do()
+	/*
+		//fmt.Printf("%+ v\n", search)
+		for i, l := range search.Items {
+			fmt.Printf("%d. %s\n", i, l.Title)
+			fmt.Printf("    %s\n", l.Snippet)
+		}
+	*/
+}
+
+func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
+	c := d.mem.Get(authorID, channelID)
+	if len(c.Messages) == 0 {
+		// HACK.
+		if d.l.Encoding != nil && strings.Contains(strings.ToLower(d.l.Model), "mistral") {
+			c.Messages = []llm.Message{
+				{
+					Role:    "available_tools",
+					Content: `[{"type":▁"function",▁"function":▁{"name":▁"web_search",▁"description":▁"Search the web for information",▁"parameters":▁{"type":▁"object",▁"properties":▁{"query":▁{"type":▁"string",▁"description":▁"Query to use to search on the internet"}}},▁"required":▁["query"]}}}]`,
+				},
+			}
+		}
+		c.Messages = append(c.Messages, llm.Message{Role: llm.System, Content: d.settings.PromptSystem})
+	}
+	return c
+}
+
 // handlePrompt uses the LLM to generate a response.
 func (d *discordBot) handlePrompt(req msgReq) {
-	c := d.mem.Get(req.authorID, req.channelID)
-	if len(c.Messages) == 0 {
-		c.Messages = []llm.Message{{Role: llm.System, Content: d.settings.PromptSystem}}
-	}
+	c := d.getMemory(req.authorID, req.channelID)
 	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
 	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
@@ -595,6 +633,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 				}
 				pending += w
 			case <-t.C:
+				// TODO: function call is when a line starts with "["
 				i := splitResponse(pending)
 				if i == 0 {
 					continue

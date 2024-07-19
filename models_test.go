@@ -16,7 +16,7 @@ func TestConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cfg.KnownLLMs) < 5 {
-		t.Fatal("missing known_llms")
+		t.Fatalf("missing known_llms: %v", cfg.KnownLLMs)
 	}
 	if cfg.Bot.ImageGen.Model != "" {
 		t.Fatalf("Oh no, I forgot to disable the image generation in config.yml: %s", cfg.Bot.ImageGen.Model)

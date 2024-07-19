@@ -78,6 +78,17 @@ Do this first.
             - Copy the link and share it to friend.
 
 
+## Enable web search tool
+
+Tool (function) calling is only supported on select LLM models.
+
+You need a Google Cloud project API key and a search key.
+
+- Get a GCP API key at https://cloud.google.com/docs/authentication/api-keys
+- Get a Programmable Search Engine at
+  https://programmablesearchengine.google.com/controlpanel/create
+
+
 ## Local installation and running
 
 Install the [Go toolchain](https://go.dev/dl/)

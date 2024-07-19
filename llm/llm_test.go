@@ -72,12 +72,12 @@ func TestLLM(t *testing.T) {
 
 func testModel(t *testing.T, model, systemPrompt string) {
 	l := loadModel(t, model)
-	if l.encoding != nil {
+	if l.Encoding != nil {
 		t.Run("CustomEncoding", func(t *testing.T) {
 			testModelInner(t, l, systemPrompt)
 		})
 	}
-	l.encoding = nil
+	l.Encoding = nil
 	t.Run("OpenAI", func(t *testing.T) {
 		testModelInner(t, l, systemPrompt)
 	})
@@ -157,7 +157,7 @@ func TestTool(t *testing.T) {
 		raw = `{"prompt": "<s>[AVAILABLE_TOOLS]\u2581[{\"type\":\u2581\"function\",\u2581\"function\":\u2581{\"name\":\u2581\"get_current_weather\",\u2581\"description\":\u2581\"Get\u2581the\u2581current\u2581weather\",\u2581\"parameters\":\u2581{\"type\":\u2581\"object\",\u2581\"properties\":\u2581{\"location\":\u2581{\"type\":\u2581\"string\",\u2581\"description\":\u2581\"The\u2581city\u2581and\u2581state,\u2581e.g.\u2581San\u2581Francisco,\u2581US\u2581or\u2581Montr\u00e9al,\u2581CA\u2581or\u2581Berlin,\u2581DE\"},\u2581\"format\":\u2581{\"type\":\u2581\"string\",\u2581\"enum\":\u2581[\"celsius\",\u2581\"fahrenheit\"],\u2581\"description\":\u2581\"The\u2581temperature\u2581unit\u2581to\u2581use.\u2581Infer\u2581this\u2581from\u2581the\u2581users\u2581location.\"}},\u2581\"required\":\u2581[\"location\",\u2581\"format\"]}}}][/AVAILABLE_TOOLS][INST]\u2581What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris[/INST][TOOL_CALLS]\u2581[{\"name\":\u2581\"get_current_weather\",\u2581\"arguments\":\u2581{\"location\":\u2581\"Paris,\u2581FR\",\u2581\"format\":\u2581\"celsius\"},\u2581\"id\":\u2581\"c00000000\"}]</s>[TOOL_RESULTS]\u2581{\"content\":\u258143,\u2581\"call_id\":\u2581\"c00000000\"}[/TOOL_RESULTS]"}`
 		msg = llamaCPPCompletionResponse{}
 		rawPost(t, l.baseURL+"/completion", raw, &msg)
-		if !strings.Contains(msg.Content, " 43 ") {
+		if !strings.Contains(msg.Content, " 43 ") && !strings.Contains(msg.Content, " 43°") {
 			t.Fatalf("expected 43°C, got %q", msg.Content)
 		}
 	})
@@ -167,7 +167,7 @@ func TestTool(t *testing.T) {
 		// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py#L10
 		// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py#L348
 		// //py/mistral_test.py
-		l.encoding = &PromptEncoding{
+		l.Encoding = &PromptEncoding{
 			BeginOfText:              "<s>",
 			SystemTokenStart:         "[INST]\u2581",
 			SystemTokenEnd:           " [/INST]",

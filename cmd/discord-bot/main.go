@@ -64,7 +64,9 @@ func mainImpl() error {
 	}
 
 	cfg := sillybot.Config{}
-	bottoken := flag.String("bot-token", "", "Bot Token; get one at https://discord.com/developers/applications or https://api.slack.com/apps")
+	bottoken := flag.String("bot-token", "", "Bot Token; get one at https://discord.com/developers/applications")
+	gcptoken := flag.String("gcp-token", "", "Google Cloud Token to enable web search; get one at https://cloud.google.com/docs/authentication/api-keys")
+	cxtoken := flag.String("cx-token", "", "Cx Token to enable web search")
 	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
 	verbose := flag.Bool("v", false, "Enable verbose logging")
 	config := flag.String("config", "config.yml", "Configuration file. If not present, it is automatically created.")
@@ -110,6 +112,16 @@ func mainImpl() error {
 		}
 		*bottoken = strings.TrimSpace(string(b))
 	}
+	if *gcptoken == "" {
+		if b, err2 := os.ReadFile("token_gcp.txt"); err2 == nil {
+			*gcptoken = strings.TrimSpace(string(b))
+		}
+	}
+	if *cxtoken == "" {
+		if b, err2 := os.ReadFile("token_cx.txt"); err2 == nil {
+			*cxtoken = strings.TrimSpace(string(b))
+		}
+	}
 	if err = os.MkdirAll(*cache, 0o755); err != nil {
 		log.Fatal(err)
 	}
@@ -138,7 +150,7 @@ func mainImpl() error {
 		slog.Info("main", "memory", "no memory to load", "error", err)
 	}
 
-	d, err := newDiscordBot(ctx, *bottoken, *verbose, l, mem, cfg.KnownLLMs, ig, cfg.Bot.Settings)
+	d, err := newDiscordBot(ctx, *bottoken, *gcptoken, *cxtoken, *verbose, l, mem, cfg.KnownLLMs, ig, cfg.Bot.Settings)
 	if err != nil {
 		return err
 	}
