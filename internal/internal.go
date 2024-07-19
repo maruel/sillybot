@@ -54,6 +54,9 @@ func JSONPost(ctx context.Context, url string, in, out interface{}) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode server response: %w", err)
 	}
+	if resp.StatusCode >= 400 {
+		return &HTTPError{URL: url, StatusCode: resp.StatusCode, Status: resp.Status}
+	}
 	return nil
 }
 
@@ -93,5 +96,19 @@ func JSONGet(ctx context.Context, url string, out interface{}) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode server response: %w", err)
 	}
+	if resp.StatusCode >= 400 {
+		return &HTTPError{URL: url, StatusCode: resp.StatusCode, Status: resp.Status}
+	}
 	return nil
+}
+
+// HTTPError represents an HTTP request that returned an HTTP error.
+type HTTPError struct {
+	URL        string
+	StatusCode int
+	Status     string
+}
+
+func (h *HTTPError) Error() string {
+	return h.Status
 }
