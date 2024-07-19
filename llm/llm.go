@@ -324,7 +324,8 @@ func (l *Session) GetHealth(ctx context.Context) (string, error) {
 // Use high temperature (>1.0) to get more creative and random text. High
 // values can result in nonsensical responses.
 //
-// It is recommended to use 1.0 by default.
+// It is recommended to use 1.0 by default, except some models (like
+// Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
 func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
@@ -363,7 +364,8 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperat
 // Use high temperature (>1.0) to get more creative and random text. High
 // values can result in nonsensical responses.
 //
-// It is recommended to use 1.0 by default.
+// It is recommended to use 1.0 by default, except some models (like
+// Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
 func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) error {
