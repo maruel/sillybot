@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -51,13 +52,14 @@ func JSONPost(ctx context.Context, url string, in, out interface{}) error {
 	d.DisallowUnknownFields()
 	err = d.Decode(out)
 	_ = resp.Body.Close()
+	var errs []error
 	if err != nil {
-		return fmt.Errorf("failed to decode server response: %w", err)
+		errs = append(errs, fmt.Errorf("failed to decode server response: %w", err))
 	}
 	if resp.StatusCode >= 400 {
-		return &HTTPError{URL: url, StatusCode: resp.StatusCode, Status: resp.Status}
+		errs = append(errs, &HTTPError{URL: url, StatusCode: resp.StatusCode, Status: resp.Status})
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // JSONPostRequest simplifies doing an HTTP POST in JSON. It initiates
@@ -93,13 +95,14 @@ func JSONGet(ctx context.Context, url string, out interface{}) error {
 	d.DisallowUnknownFields()
 	err = d.Decode(out)
 	_ = resp.Body.Close()
+	var errs []error
 	if err != nil {
-		return fmt.Errorf("failed to decode server response: %w", err)
+		errs = append(errs, fmt.Errorf("failed to decode server response: %w", err))
 	}
 	if resp.StatusCode >= 400 {
-		return &HTTPError{URL: url, StatusCode: resp.StatusCode, Status: resp.Status}
+		errs = append(errs, &HTTPError{URL: url, StatusCode: resp.StatusCode, Status: resp.Status})
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // HTTPError represents an HTTP request that returned an HTTP error.

@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/lmittmann/tint"
+	"github.com/maruel/sillybot/llm/tools"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"gopkg.in/yaml.v3"
@@ -119,187 +118,122 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	})
 }
 
-func rawPost(t *testing.T, url string, in string, out interface{}) {
-	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(in))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != 200 {
-		t.Fatalf("HTTP status %s", resp.Status)
-	}
-	d := json.NewDecoder(resp.Body)
-	d.DisallowUnknownFields()
-	if err = d.Decode(out); err != nil {
-		t.Fatal(err)
-	}
-	if err = resp.Body.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestMistralTool(t *testing.T) {
 	l := loadModel(t, "Mistral-7B-Instruct-v0.3.Q3_K_M")
-
-	// Take the raw output from //py/mistral_test.py. This will be removed once I
-	// have enough confidence with the structured version.
-	// Call llama-server directly, ignoring the utility code in struct LLM.
-	t.Run("Raw", func(t *testing.T) {
-		t.Parallel()
-		raw := `{"prompt": "<s>[AVAILABLE_TOOLS]\u2581[{\"type\":\u2581\"function\",\u2581\"function\":\u2581{\"name\":\u2581\"get_current_weather\",\u2581\"description\":\u2581\"Get\u2581the\u2581current\u2581weather\",\u2581\"parameters\":\u2581{\"type\":\u2581\"object\",\u2581\"properties\":\u2581{\"location\":\u2581{\"type\":\u2581\"string\",\u2581\"description\":\u2581\"The\u2581city\u2581and\u2581state,\u2581e.g.\u2581San\u2581Francisco,\u2581US\u2581or\u2581Montr\u00e9al,\u2581CA\u2581or\u2581Berlin,\u2581DE\"},\u2581\"format\":\u2581{\"type\":\u2581\"string\",\u2581\"enum\":\u2581[\"celsius\",\u2581\"fahrenheit\"],\u2581\"description\":\u2581\"The\u2581temperature\u2581unit\u2581to\u2581use.\u2581Infer\u2581this\u2581from\u2581the\u2581users\u2581location.\"}},\u2581\"required\":\u2581[\"location\",\u2581\"format\"]}}}][/AVAILABLE_TOOLS][INST]\u2581What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris[/INST]"}`
-		msg := llamaCPPCompletionResponse{}
-		rawPost(t, l.baseURL+"/completion", raw, &msg)
-		_ = parseToolResponse(t, msg.Content)
-		// Do a second call. Also copied from //py/mistral_test.py.
-		raw = `{"prompt": "<s>[AVAILABLE_TOOLS]\u2581[{\"type\":\u2581\"function\",\u2581\"function\":\u2581{\"name\":\u2581\"get_current_weather\",\u2581\"description\":\u2581\"Get\u2581the\u2581current\u2581weather\",\u2581\"parameters\":\u2581{\"type\":\u2581\"object\",\u2581\"properties\":\u2581{\"location\":\u2581{\"type\":\u2581\"string\",\u2581\"description\":\u2581\"The\u2581city\u2581and\u2581state,\u2581e.g.\u2581San\u2581Francisco,\u2581US\u2581or\u2581Montr\u00e9al,\u2581CA\u2581or\u2581Berlin,\u2581DE\"},\u2581\"format\":\u2581{\"type\":\u2581\"string\",\u2581\"enum\":\u2581[\"celsius\",\u2581\"fahrenheit\"],\u2581\"description\":\u2581\"The\u2581temperature\u2581unit\u2581to\u2581use.\u2581Infer\u2581this\u2581from\u2581the\u2581users\u2581location.\"}},\u2581\"required\":\u2581[\"location\",\u2581\"format\"]}}}][/AVAILABLE_TOOLS][INST]\u2581What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris[/INST][TOOL_CALLS]\u2581[{\"name\":\u2581\"get_current_weather\",\u2581\"arguments\":\u2581{\"location\":\u2581\"Paris,\u2581FR\",\u2581\"format\":\u2581\"celsius\"},\u2581\"id\":\u2581\"c00000000\"}]</s>[TOOL_RESULTS]\u2581{\"content\":\u258143,\u2581\"call_id\":\u2581\"c00000000\"}[/TOOL_RESULTS]"}`
-		msg = llamaCPPCompletionResponse{}
-		rawPost(t, l.baseURL+"/completion", raw, &msg)
-		if !strings.Contains(msg.Content, " 43 ") && !strings.Contains(msg.Content, " 43°") {
-			t.Fatalf("expected 43°C, got %q", msg.Content)
-		}
-	})
-
-	// This test suite uses the structured API.
-	t.Run("API", func(t *testing.T) {
-		t.Parallel()
-		// Refs:
-		// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py#L10
-		// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py#L348
-		// //py/mistral_test.py
-		l.Encoding = &PromptEncoding{
-			BeginOfText:              "<s>",
-			SystemTokenStart:         "[INST]\u2581",
-			SystemTokenEnd:           " [/INST]",
-			UserTokenStart:           "[INST]\u2581",
-			UserTokenEnd:             " [/INST]",
-			AssistantTokenStart:      "",
-			AssistantTokenEnd:        "",
-			ToolsAvailableTokenStart: "[AVAILABLE_TOOLS]\u2581",
-			ToolsAvailableTokenEnd:   "[/AVAILABLE_TOOLS]",
-			ToolCallTokenStart:       "[TOOL_CALLS]\u2581",
-			ToolCallTokenEnd:         "</s>",
-			ToolCallResultTokenStart: "[TOOL_RESULTS]\u2581",
-			ToolCallResultTokenEnd:   "[/TOOL_RESULTS]",
-		}
-		ctx := context.Background()
-		tools := []MistralAvailableTool{
-			{
-				Type: "function",
-				Function: MistralFunction{
-					Name:        "get_current_weather",
-					Description: "Get the current weather",
-					Parameters: MistralAvailableToolParameters{
-						Type: "object",
-						Properties: map[string]MistralProperty{
-							"location": MistralProperty{
-								Type:        "string",
-								Description: "The city and sate, e.g. San Francisco, US or Montréal, CA or Berlin, DE",
-							},
-							"format": MistralProperty{
-								Type:        "string",
-								Enum:        []string{"celsius", "fahrenheiht"},
-								Description: "The temperature unit to use. Infer this from the user's location.",
-							},
+	// Refs:
+	// - SpecialTokens in
+	//   https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py
+	// - InstructTokenizerV3 in
+	//   https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py
+	// //py/mistral_test.py
+	l.Encoding = &PromptEncoding{
+		BeginOfText:              "<s>",
+		SystemTokenStart:         "[INST]\u2581",
+		SystemTokenEnd:           " [/INST]",
+		UserTokenStart:           "[INST]\u2581",
+		UserTokenEnd:             " [/INST]",
+		AssistantTokenStart:      "",
+		AssistantTokenEnd:        "",
+		ToolsAvailableTokenStart: "[AVAILABLE_TOOLS]\u2581",
+		ToolsAvailableTokenEnd:   "[/AVAILABLE_TOOLS]",
+		ToolCallTokenStart:       "[TOOL_CALLS]\u2581",
+		ToolCallTokenEnd:         "</s>",
+		ToolCallResultTokenStart: "[TOOL_RESULTS]\u2581",
+		ToolCallResultTokenEnd:   "[/TOOL_RESULTS]",
+	}
+	ctx := context.Background()
+	availtools := []tools.MistralTool{
+		// The example given in mistral source code.
+		{
+			Type: "function",
+			Function: tools.MistralFunction{
+				Name:        "get_current_weather",
+				Description: "Get the current weather",
+				Parameters: tools.MistralFunctionParams{
+					Type: "object",
+					Properties: map[string]tools.MistralProperty{
+						"location": tools.MistralProperty{
+							Type:        "string",
+							Description: "The city and country, e.g. San Francisco, US or Montréal, CA or Berlin, DE",
 						},
-						Required: []string{"location", "format"},
+						"format": tools.MistralProperty{
+							Type:        "string",
+							Enum:        []string{"celsius", "fahrenheiht"},
+							Description: "The temperature unit to use. Infer this from the user's location.",
+						},
 					},
+					Required: []string{"location", "format"},
 				},
 			},
-			{
-				Type: "function",
-				Function: MistralFunction{
-					Name:        "calculate",
-					Description: "Calculate an arithmetic operation. Use this tool if you need a calculator to do mathematics calculation.",
-					Parameters: MistralAvailableToolParameters{
-						Type: "object",
-						Properties: map[string]MistralProperty{
-							"first_number": MistralProperty{
-								Type:        "string",
-								Description: "First number in the operation.",
-							},
-							"second_number": MistralProperty{
-								Type:        "string",
-								Description: "Second number in the operation.",
-							},
-							"operation": MistralProperty{
-								Type:        "string",
-								Description: "Arithmetic operation to do.",
-								Enum:        []string{"addition", "subtraction", "multiplication", "division"},
-							},
-						},
-						Required: []string{"first_number", "second_number", "operation"},
-					},
-				},
-			},
-		}
-		toolsB, err := json.Marshal(tools)
-		if err != nil {
-			t.Fatal(err)
-		}
-		msgs := []Message{
-			{Role: AvailableTools, Content: string(toolsB)},
-			{
-				Role:    User,
-				Content: `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`,
-			},
-		}
-		s, err := l.llamaCPPPromptBlocking(ctx, msgs, 1, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		toolCallsB, err := json.Marshal(parseToolResponse(t, s))
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Generate a fake response with a unreasonably very high temperature: 43°C.
-		result, err := json.Marshal(MistralToolCallResult{Content: 43, CallID: "c00000000"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		msgs = append(msgs,
-			Message{Role: ToolCall, Content: string(toolCallsB)},
-			Message{Role: ToolCallResult, Content: string(result)},
-		)
-		s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(s, " 43 ") && !strings.Contains(s, " 43°") {
-			t.Fatalf("expected 43°C, got %q", s)
-		}
+		},
+		tools.CalculateMistralTool,
+	}
+	toolsB, err := json.Marshal(availtools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs := []Message{
+		{Role: AvailableTools, Content: string(toolsB)},
+		{
+			Role:    User,
+			Content: `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`,
+		},
+	}
+	for _, m := range msgs {
+		t.Log(m)
+	}
+	msgsl := len(msgs)
+	s, err := l.llamaCPPPromptBlocking(ctx, msgs, 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs = append(msgs, parseToolResponse(t, s, 0)...)
+	for _, m := range msgs[msgsl:] {
+		t.Log(m)
+	}
+	msgsl = len(msgs)
+	s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs = append(msgs, Message{Role: Assistant, Content: s})
+	for _, m := range msgs[msgsl:] {
+		t.Log(m)
+	}
+	msgsl = len(msgs)
+	if !strings.Contains(s, " 43 ") && !strings.Contains(s, " 43°") {
+		t.Fatalf("expected 43°C, got %q", s)
+	}
 
-		// Now do a calculation!
-		msgs = append(msgs, Message{Role: User, Content: "What is 43215/215?"})
-		if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0); err != nil {
-			t.Fatal(err)
-		}
-		if toolCallsB, err = json.Marshal(parseToolResponse(t, s)); err != nil {
-			t.Fatal(err)
-		}
-		if result, err = json.Marshal(MistralToolCallResult{Content: 43, CallID: "c00000001"}); err != nil {
-			t.Fatal(err)
-		}
-		msgs = append(msgs,
-			Message{Role: ToolCall, Content: string(toolCallsB)},
-			Message{Role: ToolCallResult, Content: string(result)},
-		)
-		if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0); err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(s, "201") {
-			t.Fatalf("expected 201, got %q", s)
-		}
-	})
+	// Now do a calculation!
+	msgs = append(msgs, Message{Role: User, Content: "Give me the result of 43215 divided by 215."})
+	for _, m := range msgs[msgsl:] {
+		t.Log(m)
+	}
+	msgsl = len(msgs)
+	if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	msgs = append(msgs, parseToolResponse(t, s, 1)...)
+	for _, m := range msgs[msgsl:] {
+		t.Log(m)
+	}
+	msgsl = len(msgs)
+	if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	msgs = append(msgs, Message{Role: Assistant, Content: s})
+	for _, m := range msgs[msgsl:] {
+		t.Log(m)
+	}
+	if !strings.Contains(s, "201") {
+		t.Fatalf("expected 201, got %q", s)
+	}
 }
 
-func parseToolResponse(t *testing.T, got string) []MistralToolCall {
+func parseToolResponse(t *testing.T, got string, id int) []Message {
 	got = strings.TrimSpace(got)
-	var toolCalls []MistralToolCall
+	var toolCalls []tools.MistralToolCall
 	//  Search for a tool call.
 	for _, line := range strings.Split(got, "\n") {
 		if err := json.Unmarshal([]byte(line), &toolCalls); err == nil {
@@ -316,37 +250,45 @@ func parseToolResponse(t *testing.T, got string) []MistralToolCall {
 		t.Logf("expected %q, got %q", "", got)
 	}
 	if len(toolCalls) != 1 {
-		t.Skipf("expected one tool call, got %# v", toolCalls)
+		t.Fatalf("expected one tool call, got %# v", toolCalls)
 	}
-	possible := []MistralToolCall{
-		{
-			Name:      "get_current_weather",
-			Arguments: map[string]string{"location": "Paris", "format": "celsius"},
-		},
-		{
-			Name:      "get_current_weather",
-			Arguments: map[string]string{"location": "Paris"},
-		},
-		{
-			Name:      "get_current_weather",
-			Arguments: map[string]string{"location": "Paris, FR"},
-		},
-		{
-			Name:      "get_current_weather",
-			Arguments: map[string]string{"location": "Paris, FR", "format": "celsius"},
-		},
+	res := ""
+	switch toolCalls[0].Name {
+	case "get_current_weather":
+		res = get_current_weather(t, toolCalls[0].Arguments["location"], toolCalls[0].Arguments["format"])
+	case "calculate":
+		op := toolCalls[0].Arguments["operation"]
+		f := toolCalls[0].Arguments["first_number"]
+		s := toolCalls[0].Arguments["second_number"]
+		res = tools.Calculate(op, f, s)
+	default:
+		t.Fatalf("unexpected tool call %q", toolCalls[0].Name)
 	}
-	found := false
-	for _, w := range possible {
-		if diff := cmp.Diff(w, toolCalls[0]); diff == "" {
-			found = true
-			break
-		}
+	callid := fmt.Sprintf("c%08d", id)
+	r, err := json.Marshal(tools.MistralToolCallResult{Content: res, CallID: callid})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !found {
-		t.Skipf("Didn't get the expected function call:  %q", toolCalls)
+	toolCalls[0].ID = callid
+	c, err := json.Marshal(toolCalls)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return toolCalls
+	return []Message{
+		Message{Role: ToolCall, Content: string(c)},
+		Message{Role: ToolCallResult, Content: string(r)},
+	}
+}
+
+func get_current_weather(t *testing.T, location, format string) string {
+	if location != "Paris" && location != "Paris, FR" {
+		t.Fatalf("expected location=\"Paris, FR\", got %q", location)
+	}
+	if format != "celsius" && format != "" {
+		t.Fatalf("expected format=\"celsius\", got %q", format)
+	}
+	// Generate a fake response with a unreasonably very high temperature: 43°C.
+	return "43"
 }
 
 //
@@ -397,31 +339,6 @@ func loadKnownLLMs(t *testing.T) []KnownLLM {
 		t.Fatalf("Expected more known LLMs\n%# v", c.KnownLLMs)
 	}
 	return c.KnownLLMs
-}
-
-func calculate(op, first_number, second_number string) string {
-	n1, err := strconv.ParseFloat(first_number, 64)
-	if err != nil {
-		return fmt.Sprintf("couldn't understand the first number %q", first_number)
-	}
-	n2, err := strconv.ParseFloat(second_number, 64)
-	if err != nil {
-		return fmt.Sprintf("couldn't understand the second number %q", second_number)
-	}
-	r := 0.
-	switch op {
-	case "addition":
-		r = n1 + n2
-	case "subtraction":
-		r = n1 - n2
-	case "multiplication":
-		r = n1 * n2
-	case "division":
-		r = n1 / n2
-	default:
-		return "unknown operation " + op
-	}
-	return fmt.Sprintf("%g", r)
 }
 
 // TestMain sets up the verbose logging.

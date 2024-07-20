@@ -25,6 +25,7 @@ import (
 	"github.com/maruel/sillybot/huggingface"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
+	"github.com/maruel/sillybot/llm/tools"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/customsearch/v1"
 	"google.golang.org/api/option"
@@ -590,31 +591,6 @@ func (d *discordBot) toolWebSearch(ctx context.Context, query string) (*customse
 	// - https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/CognitiveSearch
 }
 
-func calculate(op, first_number, second_number string) string {
-	n1, err := strconv.ParseFloat(first_number, 64)
-	if err != nil {
-		return fmt.Sprintf("couldn't understand the first number %q", first_number)
-	}
-	n2, err := strconv.ParseFloat(second_number, 64)
-	if err != nil {
-		return fmt.Sprintf("couldn't understand the second number %q", second_number)
-	}
-	r := 0.
-	switch op {
-	case "addition":
-		r = n1 + n2
-	case "subtraction":
-		r = n1 - n2
-	case "multiplication":
-		r = n1 * n2
-	case "division":
-		r = n1 / n2
-	default:
-		return "unknown operation " + op
-	}
-	return fmt.Sprintf("%g", r)
-}
-
 func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 	c := d.mem.Get(authorID, channelID)
 	if len(c.Messages) == 0 {
@@ -639,32 +615,7 @@ func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 						},
 					},
 				},
-				{
-					Type: "function",
-					Function: llm.MistralFunction{
-						Name:        "calculate",
-						Description: "Calculate an arithmetic operation. Use this tool if you need a calculator to do mathematics calculation.",
-						Parameters: llm.MistralAvailableToolParameters{
-							Type: "object",
-							Properties: map[string]llm.MistralProperty{
-								"first_number": llm.MistralProperty{
-									Type:        "string",
-									Description: "First number in the operation.",
-								},
-								"second_number": llm.MistralProperty{
-									Type:        "string",
-									Description: "Second number in the operation.",
-								},
-								"operation": llm.MistralProperty{
-									Type:        "string",
-									Description: "Arithmetic operation to do.",
-									Enum:        []string{"addition", "subtraction", "multiplication", "division"},
-								},
-							},
-							Required: []string{"first_number", "second_number", "operation"},
-						},
-					},
-				},
+				tools.CalculateMistralTool,
 			}
 			b, err := json.Marshal(tools)
 			if err != nil {
@@ -814,7 +765,7 @@ func (d *discordBot) handleToolCall(pending string, c *llm.Conversation) bool {
 			op := calls[0].Arguments["operation"]
 			f := calls[0].Arguments["first_number"]
 			s := calls[0].Arguments["second_number"]
-			result = calculate(op, f, s)
+			result = tools.Calculate(op, f, s)
 			slog.Info("discord", "tool_call", calls[0].Name, "operation", op, "first", f, "second", s, "result", result)
 		default:
 			slog.Warn("discord", "message", "unknown tool", "line", line, "calls", calls)
