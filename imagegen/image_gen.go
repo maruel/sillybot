@@ -57,7 +57,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 		if err := py.RecreateVirtualEnvIfNeeded(ctx, cachePy); err != nil {
 			return nil, fmt.Errorf("failed to load image_gen: %w", err)
 		}
-		port := internal.FindFreePort()
+		port := internal.FindFreePort(8032)
 		cmd := []string{filepath.Join(cachePy, "image_gen.py"), "--port", strconv.Itoa(port)}
 		var err error
 		ig.done, ig.cancel, err = py.Run(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "image_gen.log"))

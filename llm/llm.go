@@ -191,7 +191,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		}
 
 		// Create the log file to redirect llamafile's output which is quite verbose.
-		port := internal.FindFreePort()
+		port := internal.FindFreePort(8031)
 		l.baseURL = fmt.Sprintf("http://localhost:%d", port)
 		if opts.Model == "python" {
 			cmd := []string{filepath.Join(cachePy, "llm.py"), "--port", strconv.Itoa(port)}

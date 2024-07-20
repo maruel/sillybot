@@ -14,12 +14,22 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strconv"
 )
 
 // General functions I didn't know where to put.
 
-// FindFreePort returns an available TCP port to listen to.
-func FindFreePort() int {
+// FindFreePort returns an available TCP port to listen to, first trying
+// preferred.
+func FindFreePort(preferred ...int) int {
+	for _, p := range preferred {
+		l, err := net.Listen("tcp", "localhost:"+strconv.Itoa(p))
+		if err != nil {
+			continue
+		}
+		defer l.Close()
+		return l.Addr().(*net.TCPAddr).Port
+	}
 	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		panic(err)
