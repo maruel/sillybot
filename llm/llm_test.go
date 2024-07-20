@@ -185,7 +185,7 @@ func TestTool(t *testing.T) {
 		ctx := context.Background()
 		msgs := []Message{
 			{
-				Role:    "available_tools",
+				Role:    AvailableTools,
 				Content: `[{"type":▁"function",▁"function":▁{"name":▁"get_current_weather",▁"description":▁"Get▁the▁current▁weather",▁"parameters":▁{"type":▁"object",▁"properties":▁{"location":▁{"type":▁"string",▁"description":▁"The▁city▁and▁state,▁e.g.▁San▁Francisco,▁US▁or▁Montréal,▁CA▁or▁Berlin,▁DE"},▁"format":▁{"type":▁"string",▁"enum":▁["celsius",▁"fahrenheit"],▁"description":▁"The▁temperature▁unit▁to▁use.▁Infer▁this▁from▁the▁users▁location."}},▁"required":▁["location",▁"format"]}}}]`,
 			},
 			{
@@ -200,11 +200,11 @@ func TestTool(t *testing.T) {
 		parseToolResponse(t, s)
 		msgs = append(msgs,
 			Message{
-				Role:    "tool_call",
+				Role:    ToolCall,
 				Content: `[{"name":▁"get_current_weather",▁"arguments":▁{"location":▁"Paris",▁"format":▁"celsius"}}]`,
 			},
 			Message{
-				Role:    "tool_call_result",
+				Role:    ToolCallResult,
 				Content: `{\"content\":\u258143,\u2581\"call_id\":\u2581\"c00000000\"}`,
 			},
 		)
@@ -220,12 +220,7 @@ func TestTool(t *testing.T) {
 
 func parseToolResponse(t *testing.T, got string) {
 	got = strings.TrimSpace(got)
-	// TODO: Move that to a proper struct.
-	type toolCall struct {
-		Name      string
-		Arguments map[string]string
-	}
-	var toolCalls []toolCall
+	var toolCalls []MistralToolCall
 	//  Search for a tool call.
 	for _, line := range strings.Split(got, "\n") {
 		if err := json.Unmarshal([]byte(line), &toolCalls); err == nil {
@@ -244,7 +239,7 @@ func parseToolResponse(t *testing.T, got string) {
 	if len(toolCalls) != 1 {
 		t.Skipf("expected one tool call, got %# v", toolCalls)
 	}
-	possible := []toolCall{
+	possible := []MistralToolCall{
 		{
 			Name:      "get_current_weather",
 			Arguments: map[string]string{"location": "Paris", "format": "celsius"},

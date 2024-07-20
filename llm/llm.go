@@ -107,6 +107,20 @@ func (k *KnownLLM) Validate() error {
 	return nil
 }
 
+// MistralToolCall is returned by the Mistral models when they want to make a
+// tool call.
+type MistralToolCall struct {
+	Name      string
+	Arguments map[string]string
+	CallID    string `json:"call_id"`
+}
+
+// MistralToolCallResult is generated when we return the result of a tool call.
+type MistralToolCallResult struct {
+	Content string
+	CallID  string `json:"call_id"`
+}
+
 // Session runs a llama.cpp or llamafile server and runs queries on it.
 //
 // While it is expected that the model is an Instruct form, it is not a
@@ -522,23 +536,34 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, s
 }
 
 func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []Message) error {
+	// Do a quick validation. 1 == available_tools, 2 = system, 3 = rest
+	state := 0
 	data.Prompt = l.Encoding.BeginOfText
 	for i, m := range msgs {
 		switch m.Role {
-		case System:
-			if i != 0 {
-				return fmt.Errorf("unexpected system message at index %d", i)
+		case AvailableTools:
+			if state != 0 || i != 0 {
+				return fmt.Errorf("unexpected available_tools message at index %d; state %d", i, state)
 			}
+			state = 1
+			data.Prompt += l.Encoding.ToolsAvailableTokenStart + m.Content + l.Encoding.ToolsAvailableTokenEnd
+		case System:
+			if state > 1 {
+				return fmt.Errorf("unexpected available_tools message at index %d; state %d", i, state)
+			}
+			state = 2
 			data.Prompt += l.Encoding.SystemTokenStart + m.Content + l.Encoding.SystemTokenEnd
 		case User:
+			state = 3
 			data.Prompt += l.Encoding.UserTokenStart + m.Content + l.Encoding.UserTokenEnd
 		case Assistant:
+			state = 3
 			data.Prompt += l.Encoding.AssistantTokenStart + m.Content + l.Encoding.AssistantTokenEnd
-		case "available_tools":
-			data.Prompt += l.Encoding.ToolsAvailableTokenStart + m.Content + l.Encoding.ToolsAvailableTokenEnd
-		case "tool_call":
+		case ToolCall:
+			state = 3
 			data.Prompt += l.Encoding.ToolCallTokenStart + m.Content + l.Encoding.ToolCallTokenEnd
-		case "tool_call_result":
+		case ToolCallResult:
+			state = 3
 			data.Prompt += l.Encoding.ToolCallResultTokenStart + m.Content + l.Encoding.ToolCallResultTokenEnd
 		default:
 			return fmt.Errorf("unexpected role %q", m.Role)
@@ -770,6 +795,10 @@ const (
 	System    Role = "system"
 	User      Role = "user"
 	Assistant Role = "assistant"
+	// Specific to Mistral models.
+	AvailableTools Role = "available_tools"
+	ToolCall       Role = "tool_call"
+	ToolCallResult Role = "tool_call_result"
 )
 
 // Message is a message to send to the LLM as part of the exchange.

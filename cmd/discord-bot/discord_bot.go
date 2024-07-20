@@ -567,29 +567,37 @@ func (d *discordBot) imageRoutine() {
 }
 
 func (d *discordBot) toolWebSearch(ctx context.Context, query string) (*customsearch.Search, error) {
-	// https://developers.google.com/custom-search/v1/using_rest
+	// - https://developers.google.com/custom-search/v1/using_rest
+	// - https://console.cloud.google.com/apis/credentials
+	// - https://console.cloud.google.com/apis/library/customsearch.googleapis.com
+	// - https://console.cloud.google.com/apis/api/customsearch.googleapis.com/metrics
+	// - http://www.google.com/cse/manage/all
+	// - https://developers.google.com/custom-search/v1/introduction
 	s, err := customsearch.NewService(ctx, option.WithAPIKey(d.gcptoken))
 	if err != nil {
 		return nil, err
 	}
-	return s.Cse.List().Cx(d.cxtoken).Context(ctx).Q(query).Num(5).Do()
-	/*
-		//fmt.Printf("%+ v\n", search)
-		for i, l := range search.Items {
-			fmt.Printf("%d. %s\n", i, l.Title)
-			fmt.Printf("    %s\n", l.Snippet)
-		}
-	*/
+	//return s.Cse.List().Cx(d.cxtoken).Context(ctx).Q(query).Num(5).Do()
+	return s.Cse.List().Cx(d.cxtoken).Q(query).Do()
+	// TODO: Doesn't seem to work at the moment. :(
+	// Note that the free quota is minimal:
+	// - Google: 100 queries per day
+	// - Bing: 1000 queries per month, 2.5¢ after
+	// Investigate:
+	// - https://learn.microsoft.com/en-us/bing/search-apis/bing-web-search/overview
+	// - https://learn.microsoft.com/en-us/bing/search-apis/bing-web-search/quickstarts/rest/go
+	// - https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/CognitiveSearch
 }
 
 func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 	c := d.mem.Get(authorID, channelID)
 	if len(c.Messages) == 0 {
-		// HACK.
+		// HACK: We need to specify the function calling style.
 		if d.l.Encoding != nil && strings.Contains(strings.ToLower(d.l.Model), "mistral") {
+			// HACK: Also an hack.
 			c.Messages = []llm.Message{
 				{
-					Role:    "available_tools",
+					Role:    llm.AvailableTools,
 					Content: `[{"type":▁"function",▁"function":▁{"name":▁"web_search",▁"description":▁"Search the web for information",▁"parameters":▁{"type":▁"object",▁"properties":▁{"query":▁{"type":▁"string",▁"description":▁"Query to use to search on the internet"}}},▁"required":▁["query"]}}}]`,
 				},
 			}
@@ -603,67 +611,143 @@ func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 func (d *discordBot) handlePrompt(req msgReq) {
 	c := d.getMemory(req.authorID, req.channelID)
 	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
-	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		t := time.NewTicker(3 * time.Second)
-		replyToID := req.replyToID
-		text := ""
-		pending := ""
-		for {
-			select {
-			case w, ok := <-words:
-				if !ok {
-					if pending != "" {
-						text += pending
-						_, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-							Content:   pending,
+	for {
+		gotToolCall := false
+		words := make(chan string, 10)
+		wg.Add(1)
+		go func() {
+			t := time.NewTicker(3 * time.Second)
+			replyToID := req.replyToID
+			text := ""
+			pending := ""
+			for {
+				select {
+				case w, ok := <-words:
+					if !ok {
+						if d.l.Encoding != nil && !gotToolCall && d.handleToolCall(pending, c) {
+							gotToolCall = true
+							if err := d.dg.ChannelTyping(req.channelID); err != nil {
+								slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+							}
+						}
+						if !gotToolCall {
+							if pending != "" {
+								text += pending
+								_, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
+									Content:   pending,
+									Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
+								})
+								if err != nil {
+									slog.Error("discord", "message", "failed posting message", "error", err)
+								}
+							}
+							// Remember our own answer.
+							c.Messages = append(c.Messages, llm.Message{Role: llm.Assistant, Content: text})
+						}
+						t.Stop()
+						wg.Done()
+						return
+					}
+					pending += w
+				case <-t.C:
+					// TODO: function call is when a line starts with "["
+					i := splitResponse(pending)
+					if i == 0 {
+						continue
+					}
+					if d.l.Encoding != nil && !gotToolCall && d.handleToolCall(pending[:i], c) {
+						gotToolCall = true
+						if err := d.dg.ChannelTyping(req.channelID); err != nil {
+							slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+						}
+					}
+					if !gotToolCall {
+						msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
+							Content:   pending[:i],
 							Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
 						})
 						if err != nil {
 							slog.Error("discord", "message", "failed posting message", "error", err)
+						} else {
+							replyToID = msg.ID
 						}
 					}
-					// Remember our own answer.
-					c.Messages = append(c.Messages, llm.Message{Role: llm.Assistant, Content: text})
-					t.Stop()
-					wg.Done()
-					return
-				}
-				pending += w
-			case <-t.C:
-				// TODO: function call is when a line starts with "["
-				i := splitResponse(pending)
-				if i == 0 {
-					continue
-				}
-				msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-					Content:   pending[:i],
-					Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-				})
-				text += pending[:i]
-				pending = pending[i:]
-				if err != nil {
-					slog.Error("discord", "message", "failed posting message", "error", err)
-				} else {
-					replyToID = msg.ID
-				}
-				if err := d.dg.ChannelTyping(req.channelID); err != nil {
-					slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+					text += pending[:i]
+					pending = pending[i:]
+					if err := d.dg.ChannelTyping(req.channelID); err != nil {
+						slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+					}
 				}
 			}
+		}()
+		err := d.l.PromptStreaming(d.ctx, c.Messages, 0, 1.0, words)
+		close(words)
+		wg.Wait()
+		if err != nil {
+			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()); err != nil {
+				slog.Error("discord", "message", "failed posting message", "error", err)
+			}
 		}
-	}()
-	err := d.l.PromptStreaming(d.ctx, c.Messages, 0, 1.0, words)
-	close(words)
-	wg.Wait()
-
-	if err != nil {
-		if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()); err != nil {
-			slog.Error("discord", "message", "failed posting message", "error", err)
+		if !gotToolCall {
+			break
 		}
 	}
+}
+
+// Is it a tool call?
+func (d *discordBot) handleToolCall(pending string, c *llm.Conversation) bool {
+	var calls []llm.MistralToolCall
+	for _, line := range strings.Split(pending, "\n") {
+		if line = strings.TrimSpace(line); line == "" {
+			continue
+		}
+		if err := json.Unmarshal([]byte(line), &calls); err != nil {
+			//slog.Debug("discord", "message", "line is not tool call", "line", line)
+			continue
+		}
+		if len(calls) != 1 {
+			slog.Warn("discord", "message", "unexpected number of calls", "line", line, "calls", calls)
+			continue
+		}
+		query := calls[0].Arguments["query"]
+		if calls[0].Name != "web_search" || len(calls[0].Arguments) != 1 || query == "" {
+			slog.Warn("discord", "message", "not the call we wanted", "line", line, "calls", calls)
+			continue
+		}
+
+		slog.Info("discord", "tool_call", calls[0].Name, "query", query)
+		search, err := d.toolWebSearch(d.ctx, query)
+		if err != nil {
+			slog.Error("discord", "tool", "web_search", "error", err)
+			// Continue as if it wasn't a tool call.
+			continue
+		}
+		result := ""
+		for _, l := range search.Items {
+			result += "- " + l.Title + ": " + l.Snippet + "\n"
+		}
+		slog.Info("discord", "tool_call", calls[0].Name, "result", result)
+		if result == "" {
+			slog.Info("discord", "tool_call", calls[0].Name, "result", result, "error", "no result!")
+		}
+		// TODO: Increment CallID.
+		res := llm.MistralToolCallResult{Content: result, CallID: "c000000001"}
+		b, err := json.Marshal(res)
+		if err != nil {
+			slog.Error("discord", "tool", "json", "error", err)
+			// Continue as if it wasn't a tool call.
+			continue
+		}
+		// We want to ignore the rest and send a new query.
+		// TODO: Inject CallID instead of pending[:i].
+		c.Messages = append(c.Messages, llm.Message{Role: llm.ToolCall, Content: line})
+		c.Messages = append(c.Messages, llm.Message{Role: llm.ToolCallResult, Content: string(b)})
+		// TODO: We should probably cancel the context and start
+		// over, there's no point in receiving more data.
+		return true
+	}
+	return false
 }
 
 // splitResponse take pending reply from the LLM and returns the amount of

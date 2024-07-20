@@ -206,6 +206,12 @@ func (s *serializedMessage) from(m *Message) error {
 		s.Role = 0
 	case Assistant:
 		s.Role = 1
+	case AvailableTools:
+		s.Role = 3
+	case ToolCall:
+		s.Role = 4
+	case ToolCallResult:
+		s.Role = 5
 	default:
 		return fmt.Errorf("unknown role %q", m.Role)
 	}
@@ -221,6 +227,12 @@ func (s *serializedMessage) to(m *Message) error {
 		m.Role = User
 	case 2:
 		m.Role = Assistant
+	case 3:
+		m.Role = AvailableTools
+	case 4:
+		m.Role = ToolCall
+	case 5:
+		m.Role = ToolCallResult
 	default:
 		return fmt.Errorf("unknown role %q", s.Role)
 	}
