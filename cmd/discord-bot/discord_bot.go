@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -842,6 +843,8 @@ func (d *discordBot) handleImage(req intReq) {
 			if newreq.imagePrompt != req.imagePrompt {
 				content += "*Image prompt*: " + escapeMarkdown(newreq.imagePrompt) + "\n"
 			}
+		}
+		if i == 0 || req.cmdName == "meme_labels_auto" {
 			if newreq.labelsContent != req.labelsContent {
 				content += "*Labels*: " + escapeMarkdown(newreq.labelsContent) + "\n"
 			}
@@ -884,13 +887,26 @@ func (d *discordBot) genImage(req *intReq) ([]byte, error) {
 	eg, ctx := errgroup.WithContext(d.ctx)
 	eg.Go(func() error {
 		// Labels: use the LLM to generate the labels based on the description.
+		// TODO: Save the seed used.
 		if req.cmdName == "meme_auto" || req.cmdName == "meme_labels_auto" {
-			msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptLabels}, {Role: llm.User, Content: req.description}}
-			meme, err2 := d.l.Prompt(ctx, msgs, req.seed, 1.0)
-			if err2 != nil {
-				return fmt.Errorf("failed to enhance labels: %w", err2)
+			options := [3]string{}
+			for i := 0; i < len(options); i++ {
+				msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptLabels}, {Role: llm.User, Content: req.description}}
+				meme, err2 := d.l.Prompt(ctx, msgs, req.seed+4*i, 1.0)
+				if err2 != nil {
+					return fmt.Errorf("failed to enhance labels: %w", err2)
+				}
+				meme = strings.Trim(meme, "\",.")
+				options[i] = meme
+				if i == 0 || memeLabelHeuristics(meme, req.labelsContent) < 0 {
+					req.labelsContent = meme
+				}
+				if m, n := maxCommaLen(req.labelsContent); n <= 3 && m < 30 {
+					return nil
+				}
 			}
-			req.labelsContent = strings.Trim(meme, "\",.")
+			// No great option found, take a guess which is the less bad one.
+			slices.SortFunc(options[:], memeLabelHeuristics)
 		}
 		return nil
 	})
@@ -912,6 +928,51 @@ func (d *discordBot) genImage(req *intReq) ([]byte, error) {
 		}
 	}
 	return w.Bytes(), err
+}
+
+func maxCommaLen(x string) (int, int) {
+	m := 0
+	parts := strings.Split(x, ",")
+	for _, p := range parts {
+		if l := len(p); l > m {
+			m = l
+		}
+	}
+	return m, len(parts)
+}
+
+// memeLabelHeuristics uses simple heuristics to decide which label is "best".
+//
+// TODO: Improve heuristics.
+func memeLabelHeuristics(a, b string) int {
+	ma, na := maxCommaLen(a)
+	mb, nb := maxCommaLen(b)
+	// We want 2 or 3 items, and then lower max length.
+	pa := 0
+	if na == 1 {
+		pa = 1
+	} else if na > 3 {
+		pa = na
+	}
+	pb := 0
+	if nb == 1 {
+		pb = 1
+	} else if nb > 3 {
+		pb = nb
+	}
+	if pa != pb {
+		if pa < pb {
+			return -1
+		}
+		return 1
+	}
+	if ma < mb {
+		return -1
+	}
+	if ma > mb {
+		return 1
+	}
+	return 0
 }
 
 // msgReq is an incoming message pending to be processed.
