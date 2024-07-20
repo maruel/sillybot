@@ -456,10 +456,9 @@ func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, see
 
 func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
 	data := llamaCPPCompletionRequest{Seed: int64(seed), Temperature: temperature}
-	if seed == 0 {
-		// Doc mentions it causes non-determinism otherwise.
-		data.CachePrompt = true
-	}
+	// Doc mentions it causes non-determinism even if a non-zero seed is
+	// specified. Disable if it becomes a problem.
+	data.CachePrompt = true
 	if err := l.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
@@ -476,10 +475,9 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, s
 		Seed:        int64(seed),
 		Temperature: temperature,
 	}
-	if seed == 0 {
-		// Doc mentions it causes non-determinism otherwise.
-		data.CachePrompt = true
-	}
+	// Doc mentions it causes non-determinism even if a non-zero seed is
+	// specified. Disable if it becomes a problem.
+	data.CachePrompt = true
 	if err := l.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
