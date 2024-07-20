@@ -107,18 +107,76 @@ func (k *KnownLLM) Validate() error {
 	return nil
 }
 
+// TODO: Move all of these into a separate package?
+
+// MistralAvailableTool is a tool that the mistral model can use.
+//
+// See
+// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/protocol/instruct/tool_calls.py
+// and InstructTokenizerV3 in
+// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py
+//
+// Sadly the python class and the JSON encoding do not match (!).
+//
+// The only "real" doc is the example at
+// https://github.com/mistralai/mistral-common/blob/main/examples/client.ipynb
+type MistralAvailableTool struct {
+	// Type must be "function". As of 2024-09-20, Mistral doesn't support
+	// anything else.
+	Type     string
+	Function MistralFunction `json:"function,omitempty"`
+
+	_ struct{}
+}
+
+// MistralFunction is an available function to call.
+type MistralFunction struct {
+	Name        string
+	Description string
+	Parameters  MistralAvailableToolParameters
+
+	_ struct{}
+}
+
+// MistralAvailableToolParameters is the list of arguments for an available
+// tool.
+type MistralAvailableToolParameters struct {
+	// Type must be "object".
+	Type       string
+	Properties map[string]MistralProperty
+	// Required is more a "hint".
+	Required []string
+
+	_ struct{}
+}
+
+// MistralProperty is an available tool parameter.
+type MistralProperty struct {
+	// Type should be "string" until we find other examples.
+	Type string
+	// Description should contain a few examples.
+	Description string
+	// Enum is the list of acceptable values.
+	Enum []string `json:"enum,omitempty"`
+}
+
 // MistralToolCall is returned by the Mistral models when they want to make a
 // tool call.
 type MistralToolCall struct {
 	Name      string
 	Arguments map[string]string
-	CallID    string `json:"call_id"`
+	ID        string `json:"id"`
+
+	_ struct{}
 }
 
 // MistralToolCallResult is generated when we return the result of a tool call.
 type MistralToolCallResult struct {
-	Content string
+	// Mistral accepts any JSON result.
+	Content interface{}
 	CallID  string `json:"call_id"`
+
+	_ struct{}
 }
 
 // Session runs a llama.cpp or llamafile server and runs queries on it.

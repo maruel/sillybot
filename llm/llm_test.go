@@ -142,17 +142,18 @@ func rawPost(t *testing.T, url string, in string, out interface{}) {
 	}
 }
 
-func TestTool(t *testing.T) {
-	// Take the raw output from //py/mistral_test.py.
-	// Call llama-server directly, ignoring the utility code in struct LLM.
+func TestMistralTool(t *testing.T) {
 	l := loadModel(t, "Mistral-7B-Instruct-v0.3.Q3_K_M")
 
+	// Take the raw output from //py/mistral_test.py. This will be removed once I
+	// have enough confidence with the structured version.
+	// Call llama-server directly, ignoring the utility code in struct LLM.
 	t.Run("Raw", func(t *testing.T) {
 		t.Parallel()
 		raw := `{"prompt": "<s>[AVAILABLE_TOOLS]\u2581[{\"type\":\u2581\"function\",\u2581\"function\":\u2581{\"name\":\u2581\"get_current_weather\",\u2581\"description\":\u2581\"Get\u2581the\u2581current\u2581weather\",\u2581\"parameters\":\u2581{\"type\":\u2581\"object\",\u2581\"properties\":\u2581{\"location\":\u2581{\"type\":\u2581\"string\",\u2581\"description\":\u2581\"The\u2581city\u2581and\u2581state,\u2581e.g.\u2581San\u2581Francisco,\u2581US\u2581or\u2581Montr\u00e9al,\u2581CA\u2581or\u2581Berlin,\u2581DE\"},\u2581\"format\":\u2581{\"type\":\u2581\"string\",\u2581\"enum\":\u2581[\"celsius\",\u2581\"fahrenheit\"],\u2581\"description\":\u2581\"The\u2581temperature\u2581unit\u2581to\u2581use.\u2581Infer\u2581this\u2581from\u2581the\u2581users\u2581location.\"}},\u2581\"required\":\u2581[\"location\",\u2581\"format\"]}}}][/AVAILABLE_TOOLS][INST]\u2581What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris[/INST]"}`
 		msg := llamaCPPCompletionResponse{}
 		rawPost(t, l.baseURL+"/completion", raw, &msg)
-		parseToolResponse(t, msg.Content)
+		_ = parseToolResponse(t, msg.Content)
 		// Do a second call. Also copied from //py/mistral_test.py.
 		raw = `{"prompt": "<s>[AVAILABLE_TOOLS]\u2581[{\"type\":\u2581\"function\",\u2581\"function\":\u2581{\"name\":\u2581\"get_current_weather\",\u2581\"description\":\u2581\"Get\u2581the\u2581current\u2581weather\",\u2581\"parameters\":\u2581{\"type\":\u2581\"object\",\u2581\"properties\":\u2581{\"location\":\u2581{\"type\":\u2581\"string\",\u2581\"description\":\u2581\"The\u2581city\u2581and\u2581state,\u2581e.g.\u2581San\u2581Francisco,\u2581US\u2581or\u2581Montr\u00e9al,\u2581CA\u2581or\u2581Berlin,\u2581DE\"},\u2581\"format\":\u2581{\"type\":\u2581\"string\",\u2581\"enum\":\u2581[\"celsius\",\u2581\"fahrenheit\"],\u2581\"description\":\u2581\"The\u2581temperature\u2581unit\u2581to\u2581use.\u2581Infer\u2581this\u2581from\u2581the\u2581users\u2581location.\"}},\u2581\"required\":\u2581[\"location\",\u2581\"format\"]}}}][/AVAILABLE_TOOLS][INST]\u2581What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris[/INST][TOOL_CALLS]\u2581[{\"name\":\u2581\"get_current_weather\",\u2581\"arguments\":\u2581{\"location\":\u2581\"Paris,\u2581FR\",\u2581\"format\":\u2581\"celsius\"},\u2581\"id\":\u2581\"c00000000\"}]</s>[TOOL_RESULTS]\u2581{\"content\":\u258143,\u2581\"call_id\":\u2581\"c00000000\"}[/TOOL_RESULTS]"}`
 		msg = llamaCPPCompletionResponse{}
@@ -161,6 +162,8 @@ func TestTool(t *testing.T) {
 			t.Fatalf("expected 43°C, got %q", msg.Content)
 		}
 	})
+
+	// This test suite uses the structured API.
 	t.Run("API", func(t *testing.T) {
 		t.Parallel()
 		// Refs:
@@ -183,10 +186,38 @@ func TestTool(t *testing.T) {
 			ToolCallResultTokenEnd:   "[/TOOL_RESULTS]",
 		}
 		ctx := context.Background()
+		tools := []MistralAvailableTool{
+			{
+				Type: "function",
+				Function: MistralFunction{
+					Name:        "get_current_weather",
+					Description: "Get the current weather",
+					Parameters: MistralAvailableToolParameters{
+						Type: "object",
+						Properties: map[string]MistralProperty{
+							"location": MistralProperty{
+								Type:        "string",
+								Description: "The city and sate, e.g. San Francisco, US or Montréal, CA or Berlin, DE",
+							},
+							"format": MistralProperty{
+								Type:        "string",
+								Enum:        []string{"celsius", "fahrenheiht"},
+								Description: "The temperature unit to use. Infer this from the user's location.",
+							},
+						},
+						Required: []string{"location", "format"},
+					},
+				},
+			},
+		}
+		toolsB, err := json.Marshal(tools)
+		if err != nil {
+			t.Fatal(err)
+		}
 		msgs := []Message{
 			{
 				Role:    AvailableTools,
-				Content: `[{"type":▁"function",▁"function":▁{"name":▁"get_current_weather",▁"description":▁"Get▁the▁current▁weather",▁"parameters":▁{"type":▁"object",▁"properties":▁{"location":▁{"type":▁"string",▁"description":▁"The▁city▁and▁state,▁e.g.▁San▁Francisco,▁US▁or▁Montréal,▁CA▁or▁Berlin,▁DE"},▁"format":▁{"type":▁"string",▁"enum":▁["celsius",▁"fahrenheit"],▁"description":▁"The▁temperature▁unit▁to▁use.▁Infer▁this▁from▁the▁users▁location."}},▁"required":▁["location",▁"format"]}}}]`,
+				Content: string(toolsB),
 			},
 			{
 				Role:    User,
@@ -197,28 +228,36 @@ func TestTool(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		parseToolResponse(t, s)
+		toolCallsB, err := json.Marshal(parseToolResponse(t, s))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Generate a fake response with a unreasonably very high temperature: 43°C.
+		result, err := json.Marshal(MistralToolCallResult{Content: 43, CallID: "c00000000"})
+		if err != nil {
+			t.Fatal(err)
+		}
 		msgs = append(msgs,
 			Message{
 				Role:    ToolCall,
-				Content: `[{"name":▁"get_current_weather",▁"arguments":▁{"location":▁"Paris",▁"format":▁"celsius"}}]`,
+				Content: string(toolCallsB),
 			},
 			Message{
 				Role:    ToolCallResult,
-				Content: `{\"content\":\u258143,\u2581\"call_id\":\u2581\"c00000000\"}`,
+				Content: string(result),
 			},
 		)
 		s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(s, " 43 ") {
+		if !strings.Contains(s, " 43 ") && !strings.Contains(s, " 43°") {
 			t.Fatalf("expected 43°C, got %q", s)
 		}
 	})
 }
 
-func parseToolResponse(t *testing.T, got string) {
+func parseToolResponse(t *testing.T, got string) []MistralToolCall {
 	got = strings.TrimSpace(got)
 	var toolCalls []MistralToolCall
 	//  Search for a tool call.
@@ -267,6 +306,7 @@ func parseToolResponse(t *testing.T, got string) {
 	if !found {
 		t.Skipf("Didn't get the expected function call:  %q", toolCalls)
 	}
+	return toolCalls
 }
 
 //
