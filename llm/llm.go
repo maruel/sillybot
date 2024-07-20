@@ -85,6 +85,8 @@ type PromptEncoding struct {
 	ToolCallTokenEnd         string `yaml:"tool_call_token_end"`
 	ToolCallResultTokenStart string `yaml:"tool_call_result_token_start"`
 	ToolCallResultTokenEnd   string `yaml:"tool_call_result_token_end"`
+
+	_ struct{}
 }
 
 // URL returns the canonical URL for this repository.
@@ -158,6 +160,8 @@ type MistralProperty struct {
 	Description string
 	// Enum is the list of acceptable values.
 	Enum []string `json:"enum,omitempty"`
+
+	_ struct{}
 }
 
 // MistralToolCall is returned by the Mistral models when they want to make a

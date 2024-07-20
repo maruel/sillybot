@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -209,16 +210,39 @@ func TestMistralTool(t *testing.T) {
 					},
 				},
 			},
+			{
+				Type: "function",
+				Function: MistralFunction{
+					Name:        "calculate",
+					Description: "Calculate an arithmetic operation. Use this tool if you need a calculator to do mathematics calculation.",
+					Parameters: MistralAvailableToolParameters{
+						Type: "object",
+						Properties: map[string]MistralProperty{
+							"first_number": MistralProperty{
+								Type:        "string",
+								Description: "First number in the operation.",
+							},
+							"second_number": MistralProperty{
+								Type:        "string",
+								Description: "Second number in the operation.",
+							},
+							"operation": MistralProperty{
+								Type:        "string",
+								Description: "Arithmetic operation to do.",
+								Enum:        []string{"addition", "subtraction", "multiplication", "division"},
+							},
+						},
+						Required: []string{"first_number", "second_number", "operation"},
+					},
+				},
+			},
 		}
 		toolsB, err := json.Marshal(tools)
 		if err != nil {
 			t.Fatal(err)
 		}
 		msgs := []Message{
-			{
-				Role:    AvailableTools,
-				Content: string(toolsB),
-			},
+			{Role: AvailableTools, Content: string(toolsB)},
 			{
 				Role:    User,
 				Content: `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`,
@@ -238,14 +262,8 @@ func TestMistralTool(t *testing.T) {
 			t.Fatal(err)
 		}
 		msgs = append(msgs,
-			Message{
-				Role:    ToolCall,
-				Content: string(toolCallsB),
-			},
-			Message{
-				Role:    ToolCallResult,
-				Content: string(result),
-			},
+			Message{Role: ToolCall, Content: string(toolCallsB)},
+			Message{Role: ToolCallResult, Content: string(result)},
 		)
 		s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0)
 		if err != nil {
@@ -253,6 +271,28 @@ func TestMistralTool(t *testing.T) {
 		}
 		if !strings.Contains(s, " 43 ") && !strings.Contains(s, " 43°") {
 			t.Fatalf("expected 43°C, got %q", s)
+		}
+
+		// Now do a calculation!
+		msgs = append(msgs, Message{Role: User, Content: "What is 43215/215?"})
+		if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0); err != nil {
+			t.Fatal(err)
+		}
+		if toolCallsB, err = json.Marshal(parseToolResponse(t, s)); err != nil {
+			t.Fatal(err)
+		}
+		if result, err = json.Marshal(MistralToolCallResult{Content: 43, CallID: "c00000001"}); err != nil {
+			t.Fatal(err)
+		}
+		msgs = append(msgs,
+			Message{Role: ToolCall, Content: string(toolCallsB)},
+			Message{Role: ToolCallResult, Content: string(result)},
+		)
+		if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(s, "201") {
+			t.Fatalf("expected 201, got %q", s)
 		}
 	})
 }
@@ -357,6 +397,31 @@ func loadKnownLLMs(t *testing.T) []KnownLLM {
 		t.Fatalf("Expected more known LLMs\n%# v", c.KnownLLMs)
 	}
 	return c.KnownLLMs
+}
+
+func calculate(op, first_number, second_number string) string {
+	n1, err := strconv.ParseFloat(first_number, 64)
+	if err != nil {
+		return fmt.Sprintf("couldn't understand the first number %q", first_number)
+	}
+	n2, err := strconv.ParseFloat(second_number, 64)
+	if err != nil {
+		return fmt.Sprintf("couldn't understand the second number %q", second_number)
+	}
+	r := 0.
+	switch op {
+	case "addition":
+		r = n1 + n2
+	case "subtraction":
+		r = n1 - n2
+	case "multiplication":
+		r = n1 * n2
+	case "division":
+		r = n1 / n2
+	default:
+		return "unknown operation " + op
+	}
+	return fmt.Sprintf("%g", r)
 }
 
 // TestMain sets up the verbose logging.

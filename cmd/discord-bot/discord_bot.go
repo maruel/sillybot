@@ -590,16 +590,91 @@ func (d *discordBot) toolWebSearch(ctx context.Context, query string) (*customse
 	// - https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/CognitiveSearch
 }
 
+func calculate(op, first_number, second_number string) string {
+	n1, err := strconv.ParseFloat(first_number, 64)
+	if err != nil {
+		return fmt.Sprintf("couldn't understand the first number %q", first_number)
+	}
+	n2, err := strconv.ParseFloat(second_number, 64)
+	if err != nil {
+		return fmt.Sprintf("couldn't understand the second number %q", second_number)
+	}
+	r := 0.
+	switch op {
+	case "addition":
+		r = n1 + n2
+	case "subtraction":
+		r = n1 - n2
+	case "multiplication":
+		r = n1 * n2
+	case "division":
+		r = n1 / n2
+	default:
+		return "unknown operation " + op
+	}
+	return fmt.Sprintf("%g", r)
+}
+
 func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 	c := d.mem.Get(authorID, channelID)
 	if len(c.Messages) == 0 {
 		// HACK: We need to specify the function calling style.
 		if d.l.Encoding != nil && strings.Contains(strings.ToLower(d.l.Model), "mistral") {
 			// HACK: Also an hack.
+			tools := []llm.MistralAvailableTool{
+				{
+					Type: "function",
+					Function: llm.MistralFunction{
+						Name:        "web_search",
+						Description: "Search the web for information",
+						Parameters: llm.MistralAvailableToolParameters{
+							Type: "object",
+							Properties: map[string]llm.MistralProperty{
+								"query": llm.MistralProperty{
+									Type:        "string",
+									Description: "Query to use to search on the internet",
+								},
+							},
+							Required: []string{"query"},
+						},
+					},
+				},
+				{
+					Type: "function",
+					Function: llm.MistralFunction{
+						Name:        "calculate",
+						Description: "Calculate an arithmetic operation. Use this tool if you need a calculator to do mathematics calculation.",
+						Parameters: llm.MistralAvailableToolParameters{
+							Type: "object",
+							Properties: map[string]llm.MistralProperty{
+								"first_number": llm.MistralProperty{
+									Type:        "string",
+									Description: "First number in the operation.",
+								},
+								"second_number": llm.MistralProperty{
+									Type:        "string",
+									Description: "Second number in the operation.",
+								},
+								"operation": llm.MistralProperty{
+									Type:        "string",
+									Description: "Arithmetic operation to do.",
+									Enum:        []string{"addition", "subtraction", "multiplication", "division"},
+								},
+							},
+							Required: []string{"first_number", "second_number", "operation"},
+						},
+					},
+				},
+			}
+			b, err := json.Marshal(tools)
+			if err != nil {
+				panic(err)
+			}
 			c.Messages = []llm.Message{
 				{
 					Role:    llm.AvailableTools,
-					Content: `[{"type":▁"function",▁"function":▁{"name":▁"web_search",▁"description":▁"Search the web for information",▁"parameters":▁{"type":▁"object",▁"properties":▁{"query":▁{"type":▁"string",▁"description":▁"Query to use to search on the internet"}}},▁"required":▁["query"]}}}]`,
+					Content: string(b),
+					//Content: `[{"type":▁"function",▁"function":▁{"name":▁"web_search",▁"description":▁"Search the web for information",▁"parameters":▁{"type":▁"object",▁"properties":▁{"query":▁{"type":▁"string",▁"description":▁"Query to use to search on the internet"}}},▁"required":▁["query"]}}}]`,
 				},
 			}
 		}
@@ -711,41 +786,61 @@ func (d *discordBot) handleToolCall(pending string, c *llm.Conversation) bool {
 			slog.Warn("discord", "message", "unexpected number of calls", "line", line, "calls", calls)
 			continue
 		}
-		query := calls[0].Arguments["query"]
-		if calls[0].Name != "web_search" || len(calls[0].Arguments) != 1 || query == "" {
-			slog.Warn("discord", "message", "not the call we wanted", "line", line, "calls", calls)
-			continue
-		}
-
-		slog.Info("discord", "tool_call", calls[0].Name, "query", query)
-		search, err := d.toolWebSearch(d.ctx, query)
-		if err != nil {
-			slog.Error("discord", "tool", "web_search", "error", err)
-			// Continue as if it wasn't a tool call.
-			continue
-		}
 		result := ""
-		for _, l := range search.Items {
-			result += "- " + l.Title + ": " + l.Snippet + "\n"
+		// TODO: Use reflect to determine arguments automatically.
+		switch calls[0].Name {
+		case "web_search":
+			query := calls[0].Arguments["query"]
+			if len(calls[0].Arguments) != 1 || query == "" {
+				slog.Warn("discord", "message", "not the call we wanted", "line", line, "calls", calls)
+				continue
+			}
+			slog.Info("discord", "tool_call", calls[0].Name, "query", query)
+			search, err := d.toolWebSearch(d.ctx, query)
+			if err != nil {
+				slog.Error("discord", "tool", "web_search", "error", err)
+				// Continue as if it wasn't a tool call.
+				continue
+			}
+			for _, l := range search.Items {
+				result += "- " + l.Title + ": " + l.Snippet + "\n"
+			}
+			if result == "" {
+				slog.Info("discord", "tool_call", calls[0].Name, "result", result, "error", "no result!")
+				result = "No result was found on the internet due to an internal error in discord-bot"
+			}
+			slog.Info("discord", "tool_call", calls[0].Name, "result", result)
+		case "calculate":
+			op := calls[0].Arguments["operation"]
+			f := calls[0].Arguments["first_number"]
+			s := calls[0].Arguments["second_number"]
+			result = calculate(op, f, s)
+			slog.Info("discord", "tool_call", calls[0].Name, "operation", op, "first", f, "second", s, "result", result)
+		default:
+			slog.Warn("discord", "message", "unknown tool", "line", line, "calls", calls)
 		}
-		slog.Info("discord", "tool_call", calls[0].Name, "result", result)
-		if result == "" {
-			slog.Info("discord", "tool_call", calls[0].Name, "result", result, "error", "no result!")
+		// See MistralRequestValidatorV3._validate_tool_message() in
+		// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/protocol/instruct/validator.py
+		callid := 0
+		for _, c := range c.Messages {
+			if c.Role == llm.ToolCall {
+				callid++
+			}
 		}
-		// TODO: Increment CallID.
-		res := llm.MistralToolCallResult{Content: result, CallID: "c000000001"}
+		res := llm.MistralToolCallResult{Content: result, CallID: fmt.Sprintf("c%08d", callid)}
 		b, err := json.Marshal(res)
 		if err != nil {
 			slog.Error("discord", "tool", "json", "error", err)
 			// Continue as if it wasn't a tool call.
 			continue
 		}
-		// We want to ignore the rest and send a new query.
-		// TODO: Inject CallID instead of pending[:i].
+		// We want to ignore the rest of the reply and send a new query.
+		// TODO: Inject CallID instead of pending[:i]. We need to determine if
+		// Mistral prefers to receive its own content as-is or reformatted?
 		c.Messages = append(c.Messages, llm.Message{Role: llm.ToolCall, Content: line})
 		c.Messages = append(c.Messages, llm.Message{Role: llm.ToolCallResult, Content: string(b)})
-		// TODO: We should probably cancel the context and start
-		// over, there's no point in receiving more data.
+		// TODO: We should probably cancel the context and start over, there's no
+		// point in receiving more data.
 		return true
 	}
 	return false
