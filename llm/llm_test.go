@@ -128,7 +128,8 @@ func TestLLM(t *testing.T) {
 				// Something weird happens on GitHub Actions Runners (M1 Pro IIRC).
 				// Using higher quant works around the problem. It's a bummer because
 				// they are also the ones with the slowest bandwidth.
-				quant = "Q4_K_M"
+				// Q4_K_M is know to fail.
+				quant = "Q8_0"
 			}
 			// The Alibaba team decided to be wild and lower case the quantization
 			// name.

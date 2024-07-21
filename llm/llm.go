@@ -215,6 +215,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			if threads == 0 {
 				threads = 1
 			}
+			// TODO: Investigate using -fa.
 			common := []string{
 				llamasrv, "--model", modelFile, "-ngl", "9999", "--threads", strconv.Itoa(threads), "--port", strconv.Itoa(port),
 			}
