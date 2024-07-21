@@ -158,10 +158,10 @@ knownllms:
 
   # Qwen 2 family
   # https://huggingface.co/collections/Qwen/qwen2-6659360b33528ced941e557f
-  - repo: Qwen/Qwen2-1.5B-Instruct-GGUF
+  - repo: Qwen/Qwen2-0.5B-Instruct-GGUF
     packagingtype: gguf
-    basename: qwen2-1_5b-instruct-
-    upstream: Qwen/Qwen2-1.5B-Instruct
+    basename: qwen2-0_5b-instruct-
+    upstream: Qwen/Qwen2-0.5B-Instruct
     # https://github.com/QwenLM/Qwen/blob/main/tokenization_note.md#special-tokens
     #prompt_encoding:
     #  begin_of_text: ""
@@ -171,6 +171,10 @@ knownllms:
     #  user_token_end: "<|im_end|>\n"
     #  assistant_token_start: ""
     #  assistant_token_end: "<|end_of_text|>\n"
+  - repo: Qwen/Qwen2-1.5B-Instruct-GGUF
+    packagingtype: gguf
+    basename: qwen2-1_5b-instruct-
+    upstream: Qwen/Qwen2-1.5B-Instruct
   - repo: Qwen/Qwen2-7B-Instruct-GGUF
     packagingtype: gguf
     basename: qwen2-7b-instruct-

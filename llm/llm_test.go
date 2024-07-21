@@ -124,12 +124,9 @@ func TestLLM(t *testing.T) {
 		quant := "Q2_K"
 		model := strings.ToLower(k.Basename)
 		if strings.Contains(model, "qwen") {
-			if runtime.GOOS == "darwin" && os.Getenv("CI") == "true" {
-				// Something weird happens on GitHub Actions Runners (M1 Pro IIRC).
-				// Using higher quant works around the problem. It's a bummer because
-				// they are also the ones with the slowest bandwidth.
-				// Q4_K_M is know to fail.
-				quant = "Q8_0"
+			if strings.Contains(model, "0_5b") {
+				// Fails on Q2_K.
+				quant = "Q3_K_M"
 			}
 			// The Alibaba team decided to be wild and lower case the quantization
 			// name.
@@ -158,7 +155,7 @@ func TestLLM(t *testing.T) {
 			if size := estimateModelSize(t, k.Basename); !runLarge && size > 9000000 {
 				t.Skip("skipping large model")
 			}
-			if testing.Short() && !strings.HasPrefix(model, "qwen2-1_5b-instruct-") {
+			if testing.Short() && !strings.HasPrefix(model, "qwen2-0_5b-instruct-") {
 				t.Skip("skipping this model when -short is used")
 			}
 			if strings.Contains(model, "-128k-") {

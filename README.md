@@ -70,9 +70,12 @@ Talk with it and use its commands as described at:
       in [quantized
       form](https://huggingface.co/bartowski/Phi-3-medium-128k-instruct-GGUF)
       with 128K (!!) context window. Requires a ton of RAM.
+    - [Qwen2-0.5B-Instruct](https://huggingface.co/Qwen/Qwen2-0.5B-Instruct) in
+      [quantized form](https://huggingface.co/Qwen/Qwen2-0.5B-Instruct-GGUF).
+      Extremely small model, super fast. Perfect to run in unit tests.
     - [Qwen2-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2-1.5B-Instruct) in
       [quantized form](https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF).
-      Super small model, super fast. Perfect to run in unit tests.
+      Super small model, super fast.
     - [Qwen2-7B-Instruct](https://huggingface.co/Qwen/Qwen2-7B-Instruct) in
       [quantized form](https://huggingface.co/Qwen/Qwen2-7B-Instruct-GGUF).
 - Runs as an image generator. Tested to work with:
