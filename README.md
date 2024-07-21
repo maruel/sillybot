@@ -3,6 +3,10 @@
 A simple Discord and Slack bot written in Go that natively serves LLM and Stable
 Diffusion to chat, generate images, and memes!
 
+⚠️aWarning⚠️ : This is a work in progress. There is no privacy control. Please
+file an [issue](https://github.com/maruel/sillybot/issues/new) for feature
+requests or bugs found.
+
 
 ## Usage
 
@@ -91,13 +95,16 @@ Talk with it and use its commands as described at:
 
 ## Hardware requirement
 
-- LLM: a recent AMD or Intel with 16GiB of RAM or a MacBook Pro. A GPU is not
-  required.
+- LLM: any <4 years old computer really. A GPU is not required. If you are
+  unsure, start with Qwen2 1.5B by using `model: "qwen2-1_5b-instruct-q8_0"` in
+  the `llm:` section of `config.yml`. This requires 2GiB of RAM. Go up with
+  larger models from there.
 - Image Generation: a GPU with 4.7GiB of video memory (VRAM) available or a
   MacBook Pro. While it works on CPU, expect a minute or two to generate each
   image.
 
-You can use 2 computers: one running the LLM and one the image generation.
+You can use 2 computers: one running the LLM and one the image generation! Start
+the server manually then use the `remote:` option in `config.yml`.
 
 
 ## Installation
