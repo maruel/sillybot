@@ -8,6 +8,7 @@ package tools
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 )
 
@@ -118,7 +119,14 @@ func Calculate(op, first_number, second_number string) string {
 	default:
 		return "unknown operation " + op
 	}
-	return fmt.Sprintf("%g", r)
+	// Do not use %g all the time because it tends to use exponents too quickly
+	// and the LLM is super confused about that.
+	// Do not use naive %f all the time because the LLM gets confused with
+	// decimals.
+	if r == math.Trunc(r) {
+		return fmt.Sprintf("%.0f", r)
+	}
+	return fmt.Sprintf("%f", r)
 }
 
 // CalculateMistralTool is the structure to use to pass to use Calculate in
