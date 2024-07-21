@@ -31,7 +31,7 @@ import (
 func estimateModelSize(t *testing.T, name string) int64 {
 	name = strings.ToLower(name)
 	if strings.HasPrefix(name, "phi-3") {
-		// Fuck you microsoft.
+		// I tweeted about it, let's up next one uses a common naming convention.
 		if strings.Contains(name, "-mini-") {
 			// https://huggingface.co/microsoft/Phi-3-mini-4k-instruct
 			// https://huggingface.co/microsoft/Phi-3-mini-128k-instruct
@@ -124,6 +124,12 @@ func TestLLM(t *testing.T) {
 		quant := "Q2_K"
 		model := strings.ToLower(k.Basename)
 		if strings.Contains(model, "qwen") {
+			if runtime.GOOS == "darwin" && os.Getenv("CI") == "true" {
+				// Something weird happens on GitHub Actions Runners (M1 Pro IIRC).
+				// Using higher quant works around the problem. It's a bummer because
+				// they are also the ones with the slowest bandwidth.
+				quant = "Q3_K_M"
+			}
 			// The Alibaba team decided to be wild and lower case the quantization
 			// name.
 			quant = strings.ToLower(quant)
