@@ -597,16 +597,16 @@ func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 		// HACK: We need to specify the function calling style.
 		if d.l.Encoding != nil && strings.Contains(strings.ToLower(d.l.Model), "mistral") {
 			// HACK: Also an hack.
-			tools := []llm.MistralAvailableTool{
+			availtools := []tools.MistralTool{
 				{
 					Type: "function",
-					Function: llm.MistralFunction{
+					Function: tools.MistralFunction{
 						Name:        "web_search",
 						Description: "Search the web for information",
-						Parameters: llm.MistralAvailableToolParameters{
+						Parameters: tools.MistralFunctionParams{
 							Type: "object",
-							Properties: map[string]llm.MistralProperty{
-								"query": llm.MistralProperty{
+							Properties: map[string]tools.MistralProperty{
+								"query": tools.MistralProperty{
 									Type:        "string",
 									Description: "Query to use to search on the internet",
 								},
@@ -617,7 +617,7 @@ func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 				},
 				tools.CalculateMistralTool,
 			}
-			b, err := json.Marshal(tools)
+			b, err := json.Marshal(availtools)
 			if err != nil {
 				panic(err)
 			}
@@ -724,7 +724,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 
 // Is it a tool call?
 func (d *discordBot) handleToolCall(pending string, c *llm.Conversation) bool {
-	var calls []llm.MistralToolCall
+	var calls []tools.MistralToolCall
 	for _, line := range strings.Split(pending, "\n") {
 		if line = strings.TrimSpace(line); line == "" {
 			continue
@@ -778,7 +778,7 @@ func (d *discordBot) handleToolCall(pending string, c *llm.Conversation) bool {
 				callid++
 			}
 		}
-		res := llm.MistralToolCallResult{Content: result, CallID: fmt.Sprintf("c%08d", callid)}
+		res := tools.MistralToolCallResult{Content: result, CallID: fmt.Sprintf("c%08d", callid)}
 		b, err := json.Marshal(res)
 		if err != nil {
 			slog.Error("discord", "tool", "json", "error", err)
