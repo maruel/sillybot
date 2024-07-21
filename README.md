@@ -3,9 +3,9 @@
 A simple Discord and Slack bot written in Go that natively serves LLM and Stable
 Diffusion to chat, generate images, and memes!
 
-⚠️aWarning⚠️ : This is a work in progress. There is no privacy control. Please
+**⚠️Warning⚠️ **: *This is a work in progress. There is no privacy control. Please
 file an [issue](https://github.com/maruel/sillybot/issues/new) for feature
-requests or bugs found.
+requests or bugs found.*
 
 
 ## Usage
