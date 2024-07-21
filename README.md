@@ -48,20 +48,33 @@ Talk with it and use its commands as described at:
       with 8K context window.
     - [Mistral-7B-Instruct-v0.3](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3)
       in [quantized
-      form](https://huggingface.co/MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF)
+      form](https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF)
       with 32K (!) context window.
     - [Mixtral-8x7B-Instruct-v0.1](https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1)
       in [quantized
       form](https://huggingface.co/MaziyarPanahi/Mixtral-8x7B-Instruct-v0.1-GGUF)
       with 32K (!) context window.
-    - [Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct)
+    - [Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) "Phi-3.1"
       in [quantized
-      form](https://huggingface.co/SanctumAI/Phi-3-mini-4k-instruct-GGUF)
+      form](https://huggingface.co/bartowski/Phi-3.1-mini-4k-instruct-GGUF)
       with 4K context window.
+    - [Phi-3-mini-128k-instruct](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct) "Phi-3.1"
+      in [quantized
+      form](https://huggingface.co/bartowski/Phi-3.1-mini-4128-instruct-GGUF)
+      with 4K context window.
+    - [Phi-3-medium-4k-instruct](https://huggingface.co/microsoft/Phi-3-medium-4k-instruct)
+      in [quantized
+      form](https://huggingface.co/bartowski/Phi-3-medium-4k-instruct-GGUF)
+      with 128K (!!) context window. Requires a ton of RAM.
     - [Phi-3-medium-128k-instruct](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct)
       in [quantized
       form](https://huggingface.co/bartowski/Phi-3-medium-128k-instruct-GGUF)
       with 128K (!!) context window. Requires a ton of RAM.
+    - [Qwen2-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2-1.5B-Instruct) in
+      [quantized form](https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF).
+      Super small model, super fast. Perfect to run in unit tests.
+    - [Qwen2-7B-Instruct](https://huggingface.co/Qwen/Qwen2-7B-Instruct) in
+      [quantized form](https://huggingface.co/Qwen/Qwen2-7B-Instruct-GGUF).
 - Runs as an image generator. Tested to work with:
     - [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B) coupled with [LCM
       Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) is super
