@@ -65,23 +65,25 @@ Talk with it and use its commands as described at:
     - [Phi-3-mini-128k-instruct](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct) "Phi-3.1"
       in [quantized
       form](https://huggingface.co/bartowski/Phi-3.1-mini-4128-instruct-GGUF)
-      with 4K context window.
+      with 128K (!!) context window. Requires a ton of RAM.
     - [Phi-3-medium-4k-instruct](https://huggingface.co/microsoft/Phi-3-medium-4k-instruct)
       in [quantized
       form](https://huggingface.co/bartowski/Phi-3-medium-4k-instruct-GGUF)
-      with 128K (!!) context window. Requires a ton of RAM.
+      with 4K context window.
     - [Phi-3-medium-128k-instruct](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct)
       in [quantized
       form](https://huggingface.co/bartowski/Phi-3-medium-128k-instruct-GGUF)
       with 128K (!!) context window. Requires a ton of RAM.
     - [Qwen2-0.5B-Instruct](https://huggingface.co/Qwen/Qwen2-0.5B-Instruct) in
-      [quantized form](https://huggingface.co/Qwen/Qwen2-0.5B-Instruct-GGUF).
-      Extremely small model, super fast. Perfect to run in unit tests.
+      [quantized form](https://huggingface.co/Qwen/Qwen2-0.5B-Instruct-GGUF)
+      with 32K (!) context window. Extremely small model, super fast. Perfect to
+      run in unit tests.
     - [Qwen2-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2-1.5B-Instruct) in
-      [quantized form](https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF).
-      Super small model, super fast.
+      [quantized form](https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF)
+      with 32K (!) context window. Super small model, super fast.
     - [Qwen2-7B-Instruct](https://huggingface.co/Qwen/Qwen2-7B-Instruct) in
-      [quantized form](https://huggingface.co/Qwen/Qwen2-7B-Instruct-GGUF).
+      [quantized form](https://huggingface.co/Qwen/Qwen2-7B-Instruct-GGUF)
+      with 32K (!) context window.
 - Runs as an image generator. Tested to work with:
     - [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B) coupled with [LCM
       Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) is super
