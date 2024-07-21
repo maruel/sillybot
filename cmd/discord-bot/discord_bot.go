@@ -492,18 +492,21 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 }
 
 func (d *discordBot) onMetrics(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
-	metrics, err := d.l.GetMetrics(d.ctx)
-	if err != nil {
+	m := llm.Metrics{}
+	if err := d.l.GetMetrics(d.ctx, &m); err != nil {
 		if err = d.interactionRespond(event.Interaction, "Internal error: "+err.Error()); err != nil {
 			slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
 		}
 		return
 	}
-	s := "Here's the LLM server metrics:\n"
-	for _, m := range metrics {
-		s += fmt.Sprintf("- **%s**: **%g**  (%s)  %s\n", escapeMarkdown(m.Name), m.Value, escapeMarkdown(m.Type), escapeMarkdown(m.Description))
-	}
-	if err = d.interactionRespond(event.Interaction, s); err != nil {
+	s := fmt.Sprintf(
+		"LLM server metrics running %s:\n"+
+			"- Prompt: **%4d** tokens; **% 8.2f** tok/s\n"+
+			"- Generated: **%4d** tokens; **% 8.2f** tok/s",
+		d.l.Model,
+		m.Prompt.Count, m.Prompt.Rate(),
+		m.Generated.Count, m.Generated.Rate())
+	if err := d.interactionRespond(event.Interaction, s); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
 	}
 }

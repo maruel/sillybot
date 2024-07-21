@@ -321,62 +321,86 @@ func (l *Session) GetHealth(ctx context.Context) (string, error) {
 	return msg.Status, nil
 }
 
-// Metric represents a prometheus style metric emitted by the server.
-type Metric struct {
-	Name        string
-	Description string
-	Type        string
-	Value       float64
+// TokenPerformance is the performance for the metrics
+type TokenPerformance struct {
+	Count    int
+	Duration time.Duration
+}
+
+// Rate is the number of token per second.
+func (t *TokenPerformance) Rate() float64 {
+	if t.Duration == 0 {
+		return 0
+	}
+	return float64(t.Count) / (float64(t.Duration) / float64(time.Second))
+}
+
+// Metrics represents the metrics for the LLM server.
+type Metrics struct {
+	Prompt             TokenPerformance
+	Generated          TokenPerformance
+	KVCacheUsage       float64
+	KVCacheTokens      int
+	RequestsProcessing int
+	RequestedPending   int
 }
 
 // GetMetrics retrieves the performance statistics from the server.
-func (l *Session) GetMetrics(ctx context.Context) ([]Metric, error) {
+func (l *Session) GetMetrics(ctx context.Context, m *Metrics) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", l.baseURL+"/metrics", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get metrics response: %w", err)
+		return fmt.Errorf("failed to get metrics response: %w", err)
 	}
 	b, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get metrics response: %w", err)
+		return fmt.Errorf("failed to get metrics response: %w", err)
 	}
-	// Format is:
-	//   # HELP <name> <description>
-	//   # TYPE <name> (counter|gauge)
-	//   <name> <value>
-	var out []Metric
-	// Actively trim the prefix because it's a tad long otherwise.
-	const prefix = "llamacpp:"
+	// We hardcode things here since we know which server we are talking to. See
+	// the commit history if you want the generic prometheus style data.
 	for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
-		if d, found := strings.CutPrefix(l, "# HELP "); found {
-			parts := strings.SplitN(d, " ", 2)
-			if len(parts) != 2 {
-				return out, fmt.Errorf("failed to parse line %q", l)
-			}
-			out = append(out, Metric{Name: strings.TrimPrefix(parts[0], prefix), Description: strings.TrimSuffix(parts[1], ".")})
-		} else if d, found := strings.CutPrefix(l, "# TYPE "); found {
-			parts := strings.Split(d, " ")
-			if len(parts) != 2 || len(out) == 0 || out[len(out)-1].Name != strings.TrimPrefix(parts[0], prefix) {
-				return out, fmt.Errorf("failed to parse line %q", l)
-			}
-			out[len(out)-1].Type = parts[1]
-		} else {
-			parts := strings.Split(d, " ")
-			if len(parts) != 2 || len(out) == 0 || out[len(out)-1].Name != strings.TrimPrefix(parts[0], prefix) {
-				return out, fmt.Errorf("failed to parse line %q", l)
-			}
-			v, err := strconv.ParseFloat(parts[1], 64)
-			if err != nil {
-				return out, fmt.Errorf("failed to parse line %q: %w", l, err)
-			}
-			out[len(out)-1].Value = v
+		if strings.HasPrefix(l, "#") {
+			continue
+		}
+		parts := strings.Split(l, " ")
+		if len(parts) != 2 {
+			return fmt.Errorf("failed to parse line %q: %w", l, err)
+		}
+		// Search for these strings in
+		// https://github.com/ggerganov/llama.cpp/blob/master/examples/server/server.cpp
+		f, err := strconv.ParseFloat(parts[1], 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse line %q: %w", l, err)
+		}
+		i, _ := strconv.Atoi(parts[1])
+		switch parts[0] {
+		case "llamacpp:prompt_tokens_total":
+			m.Prompt.Count = i
+		case "llamacpp:prompt_seconds_total":
+			m.Prompt.Duration = time.Duration(f*1000) * time.Millisecond
+		case "llamacpp:tokens_predicted_total":
+			m.Generated.Count = i
+		case "llamacpp:tokens_predicted_seconds_total":
+			m.Generated.Duration = time.Duration(f*1000) * time.Millisecond
+		case "llamacpp:prompt_tokens_seconds", "llamacpp:predicted_tokens_seconds":
+			// Ignore.
+		case "llamacpp:kv_cache_usage_ratio":
+			m.KVCacheUsage = f
+		case "llamacpp:kv_cache_tokens":
+			m.KVCacheTokens = i
+		case "llamacpp:requests_processing":
+			m.RequestsProcessing = i
+		case "llamacpp:requests_deferred":
+			m.RequestedPending = i
+		default:
+			return fmt.Errorf("unknown metric %q", l)
 		}
 	}
-	return out, nil
+	return nil
 }
 
 // Prompt prompts the LLM and returns the reply.
