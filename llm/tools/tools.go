@@ -140,15 +140,15 @@ var CalculateMistralTool = MistralTool{
 		Parameters: &MistralFunctionParams{
 			Type: "object",
 			Properties: map[string]MistralProperty{
-				"first_number": MistralProperty{
+				"first_number": {
 					Type:        "string",
 					Description: "First number in the operation.",
 				},
-				"second_number": MistralProperty{
+				"second_number": {
 					Type:        "string",
 					Description: "Second number in the operation.",
 				},
-				"operation": MistralProperty{
+				"operation": {
 					Type:        "string",
 					Description: "Arithmetic operation to do.",
 					Enum:        []string{"addition", "subtraction", "multiplication", "division"},

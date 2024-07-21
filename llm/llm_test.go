@@ -152,11 +152,11 @@ func TestMistralTool(t *testing.T) {
 				Parameters: &tools.MistralFunctionParams{
 					Type: "object",
 					Properties: map[string]tools.MistralProperty{
-						"location": tools.MistralProperty{
+						"location": {
 							Type:        "string",
 							Description: "The city and country, e.g. San Francisco, US or Montréal, CA or Berlin, DE",
 						},
-						"format": tools.MistralProperty{
+						"format": {
 							Type:        "string",
 							Enum:        []string{"celsius", "fahrenheiht"},
 							Description: "The temperature unit to use. Infer this from the user's location.",
@@ -275,8 +275,8 @@ func parseToolResponse(t *testing.T, got string, id int) []Message {
 		t.Fatal(err)
 	}
 	return []Message{
-		Message{Role: ToolCall, Content: string(c)},
-		Message{Role: ToolCallResult, Content: string(r)},
+		{Role: ToolCall, Content: string(c)},
+		{Role: ToolCallResult, Content: string(r)},
 	}
 }
 

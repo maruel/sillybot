@@ -606,7 +606,7 @@ func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 						Parameters: &tools.MistralFunctionParams{
 							Type: "object",
 							Properties: map[string]tools.MistralProperty{
-								"query": tools.MistralProperty{
+								"query": {
 									Type:        "string",
 									Description: "Query to use to search on the internet",
 								},
