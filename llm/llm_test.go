@@ -28,39 +28,150 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestLLM(t *testing.T) {
-	const systemPrompt = "You are an AI assistant. You strictly follow orders. Do not add extraneous words. Only reply with what is asked of you."
-	re := regexp.MustCompile(`-(\d+)[bBk]-`)
+func estimateModelSize(t *testing.T, name string) int64 {
+	name = strings.ToLower(name)
+	if strings.HasPrefix(name, "phi-3") {
+		// Fuck you microsoft.
+		if strings.Contains(name, "-mini-") {
+			// https://huggingface.co/microsoft/Phi-3-mini-4k-instruct
+			// https://huggingface.co/microsoft/Phi-3-mini-128k-instruct
+			return 3800000
+		}
+		if strings.Contains(name, "-small-") {
+			// https://huggingface.co/microsoft/Phi-3-small-8k-instruct
+			// https://huggingface.co/microsoft/Phi-3-small-128k-instruct
+			return 3800000
+		}
+		if strings.Contains(name, "-medium-") {
+			// https://huggingface.co/microsoft/Phi-3-medium-4k-instruct
+			// https://huggingface.co/microsoft/Phi-3-medium-128k-instruct
+			return 14000000
+		}
+		t.Fatalf("couldn't guess phi-3 model size %q", name)
+	}
+	// Check if it is a MoE first.
+	if b := regexp.MustCompile(`-(\d+)x(\d+)b-`).FindStringSubmatch(name); len(b) == 3 {
+		nb, err := strconv.Atoi(b[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := strconv.Atoi(b[2])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return int64(nb) * int64(s) * 1000000
+	}
+	// Check if it has a "." or "_", e.g. qwen 1.5B
+	if b := regexp.MustCompile(`-(\d+[\._]\d+)b-`).FindStringSubmatch(name); len(b) == 2 {
+		s, err := strconv.ParseFloat(strings.ReplaceAll(b[1], "_", "."), 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return int64(s * 1000000)
+	}
+	if b := regexp.MustCompile(`-(\d+)b-`).FindStringSubmatch(name); len(b) == 2 {
+		s, err := strconv.Atoi(b[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return int64(s) * 1000000
+	}
+	t.Fatalf("couldn't guess model size for %q", name)
+	return -1
+}
+
+func TestGuessSize(t *testing.T) {
+	// Run to display the estimated size for each model:
+	//   go test -v -run TestGuessSize
+	m := 0
 	for _, k := range loadKnownLLMs(t) {
-		t.Run(k.Basename, func(t *testing.T) {
-			b := re.FindStringSubmatch(k.Basename)
-			if len(b) != 2 {
-				t.Skip("skipping complex")
+		if l := len(k.Basename); l > m {
+			m = l
+		}
+	}
+	for _, k := range loadKnownLLMs(t) {
+		t.Logf("%-*s: %8d", m, k.Basename, estimateModelSize(t, k.Basename))
+	}
+}
+
+func TestLLM(t *testing.T) {
+	// Run with -v to list the model sizes.
+	const systemPrompt = "You are an AI assistant. You strictly follow orders. Reply exactly with what is asked of you."
+	// Skip on models above 9B by default. We don't gain much by running these,
+	// except for full coverage. Comment this out to run the full suite. Only do
+	// if you have above 32GiB of RAM. I confirmed this to pass on a M3 Max with
+	// 36GiB of RAM except Meta-Llama-3-70B-Instruct swaps like crazy, make sure to
+	// stop all apps first. If you never heard your laptop's fan on, you sure
+	// will!
+	// Warning: enabling this flag will download ~80GiB of data in //cache/models/
+	// TODO: We should probably warn the user based on the system's RAM.
+	runLarge := false
+	if runLarge {
+		// This takes a while and the default timeout is 10 minutes. This will not
+		// work out so bail out early.
+		if _, set := t.Deadline(); set {
+			t.Fatal("to run this test case with large models, use -timeout=0")
+		}
+	}
+	var totalSize int64
+	for _, k := range loadKnownLLMs(t) {
+		// Q2_K is an extremely quantized form. As such the prompt must be very
+		// solid. The advantages are:
+		// - model files are much smaller to download, enabling use on GitHub
+		//   Actions with free quota.
+		// - since the models are smaller, they take less memory and they run
+		//   faster, which makes unit test is much faster.
+		quant := "Q2_K"
+		model := strings.ToLower(k.Basename)
+		if strings.Contains(model, "qwen") {
+			// The Alibaba team decided to be wild and lower case the quantization
+			// name.
+			quant = strings.ToLower(quant)
+		} else if strings.HasPrefix(model, "phi-3") {
+			if strings.Contains(model, "-128k-") {
+				// These models really struggle.
+				quant = "Q3_K_M"
+			} else {
+				// I would have suspected it's because it's already a very small model
+				// so it fails at high quantization, but the model fails in Q2_K in
+				// both mini and medium!
+				quant = "Q3_K_S"
 			}
-			size, err := strconv.Atoi(b[1])
-			if err != nil {
-				t.Fatal(err)
+		} else if strings.HasPrefix(model, "mistral") {
+			// Use a higher quantization not because it fails on Q2_K but because
+			// TestMistralTool requires Q3_K_S and there's no point in downloading
+			// two quantization levels.
+			quant = "Q3_K_S"
+		} else if strings.HasPrefix(model, "mixtral-") {
+			// Fails on Q2_K.
+			quant = "Q3_K_S"
+		}
+
+		t.Run(k.Basename+quant, func(t *testing.T) {
+			if size := estimateModelSize(t, k.Basename); !runLarge && size > 9000000 {
+				t.Skip("skipping large model")
 			}
-			if size > 9 {
-				t.Skip("too large")
-			}
-			if !strings.HasPrefix(k.Basename, "Mistral") && testing.Short() {
+			if testing.Short() && !strings.HasPrefix(model, "qwen2-1_5b-instruct-") {
 				t.Skip("skipping this model when -short is used")
 			}
-			if strings.HasPrefix(k.Basename, "phi-3") {
-				// I suspect it's because it's already a small model so it fails at
-				// high quantization.
-				t.Skip("phi-3-mini is misbehaving. TODO: investigate")
+			if strings.Contains(model, "-128k-") {
+				t.Skip("skipping because -fa has to be enabled first")
 			}
-			// I tested with Q2_K and results are unreliable.
-			quant := "Q3_K_M"
-			// Hack: naming conventions are not figured out.
-			if strings.Contains(strings.ToLower(k.Basename), "qwen") {
-				quant = strings.ToLower(quant)
+			start := time.Now()
+			modelFile := testModel(t, k.Basename+quant, systemPrompt)
+			i, err := os.Stat(modelFile)
+			if err != nil {
+				t.Fatalf("%q: %s", modelFile, err)
 			}
-			testModel(t, k.Basename+quant, systemPrompt)
+			// Note: duration is highly relative to the CPU's temperature and thermal
+			// throttling. So the first runs will be super fast and then performance
+			// will lower significantly. So take the numbers with a grain of salt.
+			t.Logf("model %.1fGiB, took %s", float64(i.Size())*0.000000001, time.Since(start).Round(time.Second/10))
+			// This only works because the tests are not run in parallel.
+			totalSize += i.Size()
 		})
 	}
+	t.Logf("processed %.1fGiB of model", float64(totalSize)*0.000000001)
 	t.Run("python", func(t *testing.T) {
 		if testing.Short() {
 			t.Skip("skipping this model when -short is used")
@@ -70,7 +181,7 @@ func TestLLM(t *testing.T) {
 	})
 }
 
-func testModel(t *testing.T, model, systemPrompt string) {
+func testModel(t *testing.T, model, systemPrompt string) string {
 	l := loadModel(t, model)
 	if l.Encoding != nil {
 		t.Run("CustomEncoding", func(t *testing.T) {
@@ -81,6 +192,7 @@ func testModel(t *testing.T, model, systemPrompt string) {
 	t.Run("OpenAI", func(t *testing.T) {
 		testModelInner(t, l, systemPrompt)
 	})
+	return l.modelFile
 }
 
 func testModelInner(t *testing.T, l *Session, systemPrompt string) {
@@ -119,7 +231,12 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 }
 
 func TestMistralTool(t *testing.T) {
-	l := loadModel(t, "Mistral-7B-Instruct-v0.3-Q2_K")
+	if testing.Short() {
+		t.Skip("skipping this test case when -short is used")
+	}
+	// Sadly Q2_K is too quantized for this test to pass, so we need to use
+	// Q3_K_S which is 3.2GiB.
+	l := loadModel(t, "Mistral-7B-Instruct-v0.3-Q3_K_S")
 	// Refs:
 	// - SpecialTokens in
 	//   https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py

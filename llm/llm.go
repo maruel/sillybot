@@ -120,9 +120,10 @@ type Session struct {
 	baseURL  string
 	backend  string
 
-	c      *exec.Cmd
-	done   <-chan error
-	cancel func() error
+	modelFile string
+	c         *exec.Cmd
+	done      <-chan error
+	cancel    func() error
 
 	_ struct{}
 }
@@ -597,6 +598,7 @@ func (l *Session) ensureModel(ctx context.Context, model string, k KnownLLM) (st
 	dst := filepath.Join(l.HF.Cache, model+".gguf")
 	_, err := os.Stat(dst)
 	if err == nil {
+		l.modelFile = dst
 		return dst, nil
 	}
 	slog.Info("llm", "model", model, "state", "missing")
@@ -638,10 +640,11 @@ func (l *Session) ensureModel(ctx context.Context, model string, k KnownLLM) (st
 			}
 			return dst, fmt.Errorf("%w; %s", err, msg)
 		}
+		l.modelFile = dst
+		return dst, nil
 	default:
-		err = fmt.Errorf("internal error: implement packaging type %s", k.PackagingType)
+		return dst, fmt.Errorf("internal error: implement packaging type %s", k.PackagingType)
 	}
-	return dst, err
 }
 
 // processMsgs process the system prompt.
