@@ -373,6 +373,7 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 		slog.Warn("discord", "message", "invalid type", "type", event.Data)
 		return
 	}
+	data.Name = strings.TrimSuffix(data.Name, "_dev")
 	switch data.Name {
 	case "forget":
 		d.onForget(event, data)
