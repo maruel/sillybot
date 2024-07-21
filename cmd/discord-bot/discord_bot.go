@@ -240,6 +240,13 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 			Description: "List available LLM models and the one currently used.",
 		},
 
+		// metrics
+		{
+			Name:        "metrics",
+			Type:        discordgo.ChatApplicationCommand,
+			Description: "Displays the current performance metrics.",
+		},
+
 		// forget
 		{
 			Name:        "forget",
@@ -371,6 +378,8 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 		d.onForget(event, data)
 	case "list_models":
 		d.onListModels(event, data)
+	case "metrics":
+		d.onMetrics(event, data)
 	case "meme_auto", "meme_manual", "meme_labels_auto", "image_auto", "image_manual":
 		d.onImage(event, data)
 	default:
@@ -479,6 +488,23 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 		if _, err := d.dg.ChannelMessageSend(event.Interaction.ChannelID, r); err != nil {
 			slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
 		}
+	}
+}
+
+func (d *discordBot) onMetrics(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	metrics, err := d.l.GetMetrics(d.ctx)
+	if err != nil {
+		if err = d.interactionRespond(event.Interaction, "Internal error: "+err.Error()); err != nil {
+			slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
+		}
+		return
+	}
+	s := "Here's the LLM server metrics:\n"
+	for _, m := range metrics {
+		s += fmt.Sprintf("- **%s**: **%g**  (%s)  %s\n", escapeMarkdown(m.Name), m.Value, escapeMarkdown(m.Type), escapeMarkdown(m.Description))
+	}
+	if err = d.interactionRespond(event.Interaction, s); err != nil {
+		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
 	}
 }
 

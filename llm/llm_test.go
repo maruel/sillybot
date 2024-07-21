@@ -196,6 +196,19 @@ func testModel(t *testing.T, model, systemPrompt string) string {
 	t.Run("OpenAI", func(t *testing.T) {
 		testModelInner(t, l, systemPrompt)
 	})
+	metrics, err := l.GetMetrics(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	max := 0
+	for _, m := range metrics {
+		if n := len(m.Name); n > max {
+			max = n
+		}
+	}
+	for _, m := range metrics {
+		t.Logf("%-*s: %g  (%s)  %s", max, m.Name, m.Value, m.Type, m.Description)
+	}
 	return l.modelFile
 }
 

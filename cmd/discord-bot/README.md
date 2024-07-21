@@ -41,6 +41,7 @@ Chat with it!
     - `<seed>`: Seed to use to enable (or disable with 0) deterministic image
       generation. Defaults to 1
 - `/list_models`: List available LLM models and the one currently used.
+- `/metrics`: Prints performance metrics.
 - `/forget <system_prompt>`: Forget our past conversation. Optionally
   overrides the system prompt. Use this to iterate quickly on new system
   prompts. You can use it without argument to revert to the standard system

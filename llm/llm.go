@@ -217,7 +217,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			}
 			// TODO: Investigate using -fa.
 			common := []string{
-				llamasrv, "--model", modelFile, "-ngl", "9999", "--threads", strconv.Itoa(threads), "--port", strconv.Itoa(port),
+				llamasrv, "--model", modelFile, "--metrics", "-ngl", "9999", "--threads", strconv.Itoa(threads), "--port", strconv.Itoa(port),
 			}
 			cmd := mangleForLlamafile(isLlamafile, append(common, "--nobrowser")...)
 			if !isLlamafile {
@@ -319,6 +319,64 @@ func (l *Session) GetHealth(ctx context.Context) (string, error) {
 	return msg.Status, nil
 }
 
+// Metric represents a prometheus style metric emitted by the server.
+type Metric struct {
+	Name        string
+	Description string
+	Type        string
+	Value       float64
+}
+
+// GetMetrics retrieves the performance statistics from the server.
+func (l *Session) GetMetrics(ctx context.Context) ([]Metric, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", l.baseURL+"/metrics", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get metrics response: %w", err)
+	}
+	b, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get metrics response: %w", err)
+	}
+	// Format is:
+	//   # HELP <name> <description>
+	//   # TYPE <name> (counter|gauge)
+	//   <name> <value>
+	var out []Metric
+	// Actively trim the prefix because it's a tad long otherwise.
+	const prefix = "llamacpp:"
+	for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		if d, found := strings.CutPrefix(l, "# HELP "); found {
+			parts := strings.SplitN(d, " ", 2)
+			if len(parts) != 2 {
+				return out, fmt.Errorf("failed to parse line %q", l)
+			}
+			out = append(out, Metric{Name: strings.TrimPrefix(parts[0], prefix), Description: strings.TrimSuffix(parts[1], ".")})
+		} else if d, found := strings.CutPrefix(l, "# TYPE "); found {
+			parts := strings.Split(d, " ")
+			if len(parts) != 2 || len(out) == 0 || out[len(out)-1].Name != strings.TrimPrefix(parts[0], prefix) {
+				return out, fmt.Errorf("failed to parse line %q", l)
+			}
+			out[len(out)-1].Type = parts[1]
+		} else {
+			parts := strings.Split(d, " ")
+			if len(parts) != 2 || len(out) == 0 || out[len(out)-1].Name != strings.TrimPrefix(parts[0], prefix) {
+				return out, fmt.Errorf("failed to parse line %q", l)
+			}
+			v, err := strconv.ParseFloat(parts[1], 64)
+			if err != nil {
+				return out, fmt.Errorf("failed to parse line %q: %w", l, err)
+			}
+			out[len(out)-1].Value = v
+		}
+	}
+	return out, nil
+}
+
 // Prompt prompts the LLM and returns the reply.
 //
 // See PromptStreaming for the arguments values.
@@ -339,6 +397,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperat
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return reply, err
 	}
+	// TODO: Remove all these.
 	// Llama-3
 	reply = strings.TrimSuffix(reply, "<|eot_id|>")
 	// Gemma-2
@@ -382,6 +441,8 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, seed int,
 	slog.Info("llm", "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
 	return nil
 }
+
+//
 
 func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
 	data := openAIChatCompletionRequest{
@@ -444,6 +505,7 @@ func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, see
 		}
 		word := msg.Choices[0].Delta.Content
 		slog.Debug("llm", "word", word)
+		// TODO: Remove.
 		switch word {
 		// Llama-3, Gemma-2, Phi-3
 		case "<|eot_id|>", "<end_of_turn>", "<|end|>", "<|endoftext|>":
@@ -468,6 +530,7 @@ func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, se
 	if err := internal.JSONPost(ctx, l.baseURL+"/completion", data, &msg); err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
+	slog.Debug("llm", "prompt tok", msg.Timings.PromptN, "gen tok", msg.Timings.PredictedN, "prompt tok/ms", msg.Timings.PromptPerTokenMS, "gen tok/ms", msg.Timings.PredictedPerTokenMS)
 	return msg.Content, nil
 }
 
@@ -512,7 +575,7 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, s
 			return reply, fmt.Errorf("failed to decode llama server response %q: %w", string(line), err)
 		}
 		word := msg.Content
-		slog.Debug("llm", "word", word, "stop", msg.Stop)
+		slog.Debug("llm", "word", word, "stop", msg.Stop, "prompt tok", msg.Timings.PromptN, "gen tok", msg.Timings.PredictedN, "prompt tok/ms", msg.Timings.PromptPerTokenMS, "gen tok/ms", msg.Timings.PredictedPerTokenMS)
 		if word != "" {
 			words <- word
 			reply += word
