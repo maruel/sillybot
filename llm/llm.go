@@ -216,6 +216,8 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 				threads = 1
 			}
 			// TODO: Investigate using -fa.
+			// TODO: Doesn't seem to have any effect, need investigation.
+			// "--prompt-cache", filepath.Join(cache, "llm-prompt-cache.bin"), "--prompt-cache-all",
 			common := []string{
 				llamasrv, "--model", modelFile, "--metrics", "-ngl", "9999", "--threads", strconv.Itoa(threads), "--port", strconv.Itoa(port),
 			}

@@ -265,7 +265,7 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 			Type: discordgo.UserApplicationCommand,
 		},
 	}
-	if strings.Contains(dg.State.User.ID, "(dev)") {
+	if strings.Contains(dg.State.User.Username, "(dev)") {
 		for _, c := range cmds {
 			c.Name += "_dev"
 		}
@@ -574,6 +574,10 @@ func (d *discordBot) interactionRespond(int *discordgo.Interaction, s string) er
 
 // chatRoutine serializes the chat requests.
 func (d *discordBot) chatRoutine() {
+	// Prewarm the system prompt.
+	if _, err := d.l.Prompt(d.ctx, d.getMemory("", "").Messages, 0, 1.0); err != nil {
+		slog.Error("discord", "error", err)
+	}
 	for req := range d.chat {
 		if req.authorID == "" {
 			d.wg.Done()
