@@ -889,25 +889,26 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		return llamafile, true, nil
 	}
 
-	// Time to download.
-	// Do not get the latest version because the odds of it breaking is just too high.
-	// This is best effort.
-	url := "https://github.com/ggerganov/llama.cpp/releases/download/b3386/"
+	// Time to download!
+	// Do not just get the latest version because the odds of it breaking is just
+	// too high. This is best effort.
+	build := "b3428"
+	url := "https://github.com/ggerganov/llama.cpp/releases/download/" + build + "/"
 	zipname := ""
 	files := []string{filepath.Base(llamaserver)}
 	switch runtime.GOOS {
 	case "darwin":
-		zipname = "llama-b3386-bin-macos-arm64.zip"
+		zipname = "llama-" + build + "-bin-macos-arm64.zip"
 		files = append(files, "ggml-metal.metal")
 	case "linux":
-		zipname = "llama-b3386-bin-ubuntu-x64.zip"
+		zipname = "llama-" + build + "-bin-ubuntu-x64.zip"
 	case "windows":
 		if cpu.X86.HasAVX512BF16 {
-			zipname = "llama-b3386-bin-win-avx512-x64.zip"
+			zipname = "llama-" + build + "-bin-win-avx512-x64.zip"
 		} else if cpu.X86.HasAVX2 {
-			zipname = "llama-b3386-bin-win-avx2-x64.zip"
+			zipname = "llama-" + build + "-bin-win-avx2-x64.zip"
 		} else {
-			zipname = "llama-b3386-bin-win-avx-x64.zip"
+			zipname = "llama-" + build + "-bin-win-avx-x64.zip"
 		}
 		files = append(files, "ggml.dll", "llama.dll")
 	}
