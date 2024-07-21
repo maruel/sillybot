@@ -109,7 +109,7 @@ knownllms:
   # https://huggingface.co/mistralai
   - repo: bartowski/Mistral-7B-Instruct-v0.3-GGUF
     packagingtype: gguf
-    basename: Mistral-7B-Instruct-v0.3.
+    basename: Mistral-7B-Instruct-v0.3-
     upstream: mistralai/Mistral-7B-Instruct-v0.3
     # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py#L10
     prompt_encoding:

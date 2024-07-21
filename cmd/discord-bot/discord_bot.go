@@ -603,7 +603,7 @@ func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 					Function: tools.MistralFunction{
 						Name:        "web_search",
 						Description: "Search the web for information",
-						Parameters: tools.MistralFunctionParams{
+						Parameters: &tools.MistralFunctionParams{
 							Type: "object",
 							Properties: map[string]tools.MistralProperty{
 								"query": tools.MistralProperty{
@@ -616,6 +616,8 @@ func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 					},
 				},
 				tools.CalculateMistralTool,
+				tools.GetCurrentTimeMistralTool,
+				tools.GetTodayDateMistralTool,
 			}
 			b, err := json.Marshal(availtools)
 			if err != nil {
@@ -712,7 +714,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 		close(words)
 		wg.Wait()
 		if err != nil {
-			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()); err != nil {
+			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
 				slog.Error("discord", "message", "failed posting message", "error", err)
 			}
 		}
@@ -767,6 +769,12 @@ func (d *discordBot) handleToolCall(pending string, c *llm.Conversation) bool {
 			s := calls[0].Arguments["second_number"]
 			result = tools.Calculate(op, f, s)
 			slog.Info("discord", "tool_call", calls[0].Name, "operation", op, "first", f, "second", s, "result", result)
+		case "get_current_time":
+			result = tools.GetCurrentTime()
+			slog.Info("discord", "tool_call", calls[0].Name, "result", result)
+		case "get_today_date":
+			result = tools.GetTodayDate()
+			slog.Info("discord", "tool_call", calls[0].Name, "result", result)
 		default:
 			slog.Warn("discord", "message", "unknown tool", "line", line, "calls", calls)
 		}

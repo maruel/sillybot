@@ -201,11 +201,11 @@ type serializedMessage struct {
 func (s *serializedMessage) from(m *Message) error {
 	switch m.Role {
 	case System:
-		s.Role = 2
-	case User:
 		s.Role = 0
-	case Assistant:
+	case User:
 		s.Role = 1
+	case Assistant:
+		s.Role = 2
 	case AvailableTools:
 		s.Role = 3
 	case ToolCall:
@@ -221,9 +221,9 @@ func (s *serializedMessage) from(m *Message) error {
 
 func (s *serializedMessage) to(m *Message) error {
 	switch s.Role {
-	case 1:
-		m.Role = System
 	case 0:
+		m.Role = System
+	case 1:
 		m.Role = User
 	case 2:
 		m.Role = Assistant

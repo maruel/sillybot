@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 )
 
 // MistralTool is the description of a tool that the mistral models can use.
@@ -26,7 +27,7 @@ import (
 type MistralTool struct {
 	// Type must be "function". As of 2024-09-20, Mistral doesn't support
 	// anything else.
-	Type     string
+	Type     string          `json:"type"`
 	Function MistralFunction `json:"function,omitempty"`
 
 	_ struct{}
@@ -34,9 +35,9 @@ type MistralTool struct {
 
 // MistralFunction is an available function to call.
 type MistralFunction struct {
-	Name        string
-	Description string
-	Parameters  MistralFunctionParams
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Parameters  *MistralFunctionParams `json:"parameters,omitempty"`
 
 	_ struct{}
 }
@@ -45,10 +46,10 @@ type MistralFunction struct {
 // tool.
 type MistralFunctionParams struct {
 	// Type must be "object".
-	Type       string
-	Properties map[string]MistralProperty
+	Type       string                     `json:"type"`
+	Properties map[string]MistralProperty `json:"properties,omitempty"`
 	// Required is more a "hint".
-	Required []string
+	Required []string `json:"required,omitempty"`
 
 	_ struct{}
 }
@@ -56,9 +57,9 @@ type MistralFunctionParams struct {
 // MistralProperty is a single available tool parameter argument.
 type MistralProperty struct {
 	// Type should be "string" until we find other examples.
-	Type string
+	Type string `json:"type"`
 	// Description should contain a few examples.
-	Description string
+	Description string `json:"description"`
 	// Enum is the list of acceptable values.
 	Enum []string `json:"enum,omitempty"`
 
@@ -68,13 +69,13 @@ type MistralProperty struct {
 // MistralToolCall is returned by the Mistral models when they want to make a
 // tool call.
 type MistralToolCall struct {
-	Name      string
-	Arguments map[string]string
+	Name      string            `json:"name"`
+	Arguments map[string]string `json:"arguments,omitempty"`
 	// ID must be exactly 9 characters long.
 	//
 	// See MistralRequestValidatorV3._validate_tool_message() in
 	// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/protocol/instruct/validator.py
-	ID string `json:"id"`
+	ID string `json:"id,omitempty"`
 
 	_ struct{}
 }
@@ -82,7 +83,7 @@ type MistralToolCall struct {
 // MistralToolCallResult is generated when we return the result of a tool call.
 type MistralToolCallResult struct {
 	// Mistral accepts any JSON result.
-	Content interface{}
+	Content interface{} `json:"content"`
 	// CallID must be exactly 9 characters long.
 	//
 	// See MistralRequestValidatorV3._validate_tool_call() in
@@ -136,7 +137,7 @@ var CalculateMistralTool = MistralTool{
 	Function: MistralFunction{
 		Name:        "calculate",
 		Description: "Calculate an arithmetic operation. Use this tool if you need a calculator to do mathematics calculation.",
-		Parameters: MistralFunctionParams{
+		Parameters: &MistralFunctionParams{
 			Type: "object",
 			Properties: map[string]MistralProperty{
 				"first_number": MistralProperty{
@@ -155,5 +156,37 @@ var CalculateMistralTool = MistralTool{
 			},
 			Required: []string{"first_number", "second_number", "operation"},
 		},
+	},
+}
+
+// GetCurrentTime returns the current time in a format that the LLM can understand
+// easily.
+func GetCurrentTime() string {
+	return time.Now().Format("15:04:05")
+}
+
+// GetCurrentTimeMistralTool is the structure to use to pass to use CurrentTime in
+// Mistral models.
+var GetCurrentTimeMistralTool = MistralTool{
+	Type: "function",
+	Function: MistralFunction{
+		Name:        "get_current_time",
+		Description: "Get the current time on the clock. Use this tool if you need to know what time it is.",
+	},
+}
+
+// GetTodayDate returns the current time in a format that the LLM can understand
+// easily.
+func GetTodayDate() string {
+	return time.Now().Format("Monday 2006-01-02")
+}
+
+// GetTodayDateMistralTool is the structure to use to pass to use GetTodayDate in
+// Mistral models.
+var GetTodayDateMistralTool = MistralTool{
+	Type: "function",
+	Function: MistralFunction{
+		Name:        "get_today_date",
+		Description: "Get the current date. Use this tool if you need to know what day it is.",
 	},
 }

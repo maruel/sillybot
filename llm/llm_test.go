@@ -119,7 +119,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 }
 
 func TestMistralTool(t *testing.T) {
-	l := loadModel(t, "Mistral-7B-Instruct-v0.3.Q3_K_M")
+	l := loadModel(t, "Mistral-7B-Instruct-v0.3-Q2_K")
 	// Refs:
 	// - SpecialTokens in
 	//   https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py
@@ -149,7 +149,7 @@ func TestMistralTool(t *testing.T) {
 			Function: tools.MistralFunction{
 				Name:        "get_current_weather",
 				Description: "Get the current weather",
-				Parameters: tools.MistralFunctionParams{
+				Parameters: &tools.MistralFunctionParams{
 					Type: "object",
 					Properties: map[string]tools.MistralProperty{
 						"location": tools.MistralProperty{

@@ -535,7 +535,7 @@ func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []Message) er
 			data.Prompt += l.Encoding.ToolsAvailableTokenStart + m.Content + l.Encoding.ToolsAvailableTokenEnd
 		case System:
 			if state > 1 {
-				return fmt.Errorf("unexpected available_tools message at index %d; state %d", i, state)
+				return fmt.Errorf("unexpected system message at index %d; state %d", i, state)
 			}
 			state = 2
 			data.Prompt += l.Encoding.SystemTokenStart + m.Content + l.Encoding.SystemTokenEnd
@@ -564,11 +564,13 @@ func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []Message) er
 // files.
 func (l *Session) ensureModel(ctx context.Context, model string, k KnownLLM) (string, error) {
 	// TODO: This is very "meh".
-	ext := strings.TrimLeft(strings.ToUpper(filepath.Ext(model)), ".")
-	if ext == "" {
-		if i := strings.LastIndexByte(model, '-'); i > 0 {
-			ext = strings.ToUpper(model[i+1:])
-		}
+	// Designed to handle special case like Mistral-7B-Instruct-v0.3-Q3_K_M.
+	ext := strings.ToUpper(model)
+	if i := strings.LastIndexByte(ext, '-'); i > 0 {
+		ext = ext[i+1:]
+	}
+	if ext2 := filepath.Ext(ext); ext2 != "" {
+		ext = strings.TrimLeft(ext2, ".")
 	}
 	switch ext {
 	case "GGUF":
