@@ -993,7 +993,11 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	case "linux":
 		zipname = "llama-" + build + "-bin-ubuntu-x64.zip"
 	case "windows":
-		if cpu.X86.HasAVX512BF16 {
+		_, err := exec.Command("nvcc", "--version").CombinedOutput()
+		if err == nil {
+			// This is tricky because in the case of image generation, we may want to run on the CPU instead.
+			zipname = "llama-" + build + "-bin-win-cuda-cu12.2.0-x64.zip"
+		} else if cpu.X86.HasAVX512BF16 {
 			zipname = "llama-" + build + "-bin-win-avx512-x64.zip"
 		} else if cpu.X86.HasAVX2 {
 			zipname = "llama-" + build + "-bin-win-avx2-x64.zip"
@@ -1004,9 +1008,12 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	}
 	zippath := filepath.Join(cache, zipname)
 	if _, err := os.Stat(zippath); err != nil {
+		slog.Info("llm", "retrieving", zipname)
 		if err := huggingface.DownloadFile(ctx, url+zipname, zippath, "", 0o644); err != nil {
 			return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
 		}
+	} else {
+		slog.Info("llm", "reusing", zipname)
 	}
 	z, err := zip.OpenReader(zippath)
 	if err != nil {
