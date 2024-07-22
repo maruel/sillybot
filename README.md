@@ -86,7 +86,7 @@ Talk with it and use its commands as described at:
       with 32K (!) context window.
 - Runs as an image generator. Tested to work with:
     - [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B) coupled with [LCM
-      Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) is super
+      Lora](https://huggingface.co/latent-consistency/lcm-lora-ssd-1b) is quite
       fast. Segmind SSD-1B renders under 10s on a MacBook Pro M3 Max, under
       100s on an Intel i7-13700 on Ubuntu and under 160s on a i9-13900H on Windows
       11. (Depends on the number of steps selected)
@@ -101,8 +101,8 @@ Talk with it and use its commands as described at:
   unsure, start with Qwen2 1.5B by using `model: "qwen2-1_5b-instruct-q8_0"` in
   the `llm:` section of `config.yml`. This requires 2GiB of RAM. Go up with
   larger models from there.
-- Image Generation: a GPU with 4.7GiB of video memory (VRAM) available or a
-  MacBook Pro. While it works on CPU, expect a minute or two to generate each
+- Image Generation: a GPU with 6GiB of video memory (VRAM) (12GiB is better) or
+  a MacBook Pro. While it works on CPU, expect a minute or two to generate each
   image.
 
 You can use 2 computers: one running the LLM and one the image generation! Start
