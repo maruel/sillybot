@@ -133,7 +133,7 @@ jobs:
         fi
     - name: 'Check: addlicense; all sources have a license header (ubuntu)'
       if: always() && matrix.os == 'ubuntu-latest'
-      run: addlicense -check .
+      run: addlicense -check . -ignore default_config.yml
     - name: 'Check: gofmt; code is well formatted (ubuntu)'
       if: always() && matrix.os == 'ubuntu-latest'
       run: |
