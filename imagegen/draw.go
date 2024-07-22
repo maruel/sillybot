@@ -99,6 +99,7 @@ func mustLoadFont(b []byte) *opentype.Font {
 
 // drawTextOnImage draws a single line text on an image.
 func drawTextOnImage(img *image.NRGBA, f *opentype.Font, top int, text string) {
+	// This code is "not awesome". Please send a PR to improve it.
 	bounds := img.Bounds()
 	w := bounds.Dx()
 	h := bounds.Dy()
@@ -110,7 +111,12 @@ func drawTextOnImage(img *image.NRGBA, f *opentype.Font, top int, text string) {
 	face2, _ := opentype.NewFace(notoEmojiFont, &opentype.FaceOptions{Size: 1000, DPI: 72})
 	d.Face = &multiface{faces: []font.Face{face1, face2}}
 
-	textWidth := d.MeasureString(text).Round()
+	// Lazy ass.
+	texttomeasure := text
+	for len(texttomeasure) < 10 {
+		texttomeasure += "a"
+	}
+	textWidth := d.MeasureString(texttomeasure).Round()
 	size := 1000. * float64(w) / (250. + float64(textWidth))
 	face1, _ = opentype.NewFace(memeFont, &opentype.FaceOptions{Size: size, DPI: 72})
 	face2, _ = opentype.NewFace(notoEmojiFont, &opentype.FaceOptions{Size: size, DPI: 72})
@@ -129,8 +135,9 @@ func drawTextOnImage(img *image.NRGBA, f *opentype.Font, top int, text string) {
 	// Draw a crude outline.
 	// TODO: It's not super efficient to draw this many (36) times! Make it
 	// faster unless it's good enough.
+	// Update: it's imperceptibly good enough.
 	// TODO: Rasterize at 8x then downsize to reduce aliasing and not have to
-	// render so many times.
+	// render so many times. That would be sweet.
 	radius := 5.
 	for i := 0; i < 360; i += 10 {
 		a := math.Pi / 180. * float64(i)

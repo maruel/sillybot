@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"image"
 	"image/png"
 	"log/slog"
 	"path/filepath"
@@ -26,7 +25,6 @@ import (
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
 	"github.com/maruel/sillybot/llm/tools"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/customsearch/v1"
 	"google.golang.org/api/option"
 )
@@ -996,53 +994,56 @@ func (d *discordBot) handleImage(req intReq) {
 	}
 }
 
+// genImage generates both manual and automatic images.
+//
+// First generate the labels if needed.
+// Then generate the image description, seeding the labels.
+// Then generate the image.
 func (d *discordBot) genImage(req *intReq) ([]byte, error) {
+	if req.cmdName == "meme_auto" || req.cmdName == "meme_labels_auto" {
+		// Labels: use the LLM to generate the labels based on the description.
+		options := [3]string{}
+		for i := 0; i < len(options); i++ {
+			msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptLabels}, {Role: llm.User, Content: req.description}}
+			meme, err2 := d.l.Prompt(d.ctx, msgs, req.seed+4*i, 1.0)
+			if err2 != nil {
+				return nil, fmt.Errorf("failed to enhance labels: %w", err2)
+			}
+			meme = strings.Trim(meme, "\",.")
+			options[i] = meme
+			if i == 0 || memeLabelHeuristics(meme, req.labelsContent) < 0 {
+				req.labelsContent = meme
+			}
+			if m, n := maxCommaLen(req.labelsContent); n <= 3 && m < 30 {
+				// TODO: Save the seed used.
+				break
+			}
+		}
+		// No great option found, take a guess which is the less bad one.
+		slices.SortFunc(options[:], memeLabelHeuristics)
+	}
+
 	if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
 		// Image: use the LLM to generate the image prompt based on the description.
-		msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptImage}, {Role: llm.User, Content: req.description}}
+		msgs := []llm.Message{
+			{Role: llm.System, Content: d.settings.PromptImage},
+			{Role: llm.User, Content: req.description},
+			{Role: llm.User, Content: req.labelsContent},
+		}
 		reply, err := d.l.Prompt(d.ctx, msgs, req.seed, 1.0)
 		if err != nil {
 			return nil, fmt.Errorf("failed to enhance image generation prompt: %w", err)
 		}
 		req.imagePrompt = reply
 	}
-	var img *image.NRGBA
-	eg, ctx := errgroup.WithContext(d.ctx)
-	eg.Go(func() error {
-		// Labels: use the LLM to generate the labels based on the description.
-		// TODO: Save the seed used.
-		if req.cmdName == "meme_auto" || req.cmdName == "meme_labels_auto" {
-			options := [3]string{}
-			for i := 0; i < len(options); i++ {
-				msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptLabels}, {Role: llm.User, Content: req.description}}
-				meme, err2 := d.l.Prompt(ctx, msgs, req.seed+4*i, 1.0)
-				if err2 != nil {
-					return fmt.Errorf("failed to enhance labels: %w", err2)
-				}
-				meme = strings.Trim(meme, "\",.")
-				options[i] = meme
-				if i == 0 || memeLabelHeuristics(meme, req.labelsContent) < 0 {
-					req.labelsContent = meme
-				}
-				if m, n := maxCommaLen(req.labelsContent); n <= 3 && m < 30 {
-					return nil
-				}
-			}
-			// No great option found, take a guess which is the less bad one.
-			slices.SortFunc(options[:], memeLabelHeuristics)
-		}
-		return nil
-	})
-	if req.cmdName != "meme_labels_auto" {
-		// Generate the image.
+
+	if req.cmdName == "meme_labels_auto" {
 		// "meme_labels_auto" is a special case where we don't actually need an image.
-		eg.Go(func() error {
-			var err2 error
-			img, err2 = d.ig.GenImage(ctx, req.imagePrompt, req.seed)
-			return err2
-		})
+		return nil, nil
 	}
-	err := eg.Wait()
+
+	// Generate the image.
+	img, err := d.ig.GenImage(d.ctx, req.imagePrompt, req.seed)
 	w := bytes.Buffer{}
 	if img != nil {
 		imagegen.DrawLabelsOnImage(img, req.labelsContent)
