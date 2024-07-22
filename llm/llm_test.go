@@ -276,7 +276,7 @@ func TestMistralTool(t *testing.T) {
 			Function: tools.MistralFunction{
 				Name:        "get_current_weather",
 				Description: "Get the current weather",
-				Parameters: &tools.MistralFunctionParams{
+				Parameters: tools.MistralFunctionParams{
 					Type: "object",
 					Properties: map[string]tools.MistralProperty{
 						"location": {

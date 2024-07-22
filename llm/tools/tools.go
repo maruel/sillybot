@@ -35,9 +35,9 @@ type MistralTool struct {
 
 // MistralFunction is an available function to call.
 type MistralFunction struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  *MistralFunctionParams `json:"parameters,omitempty"`
+	Name        string                `json:"name"`
+	Description string                `json:"description"`
+	Parameters  MistralFunctionParams `json:"parameters"`
 
 	_ struct{}
 }
@@ -47,7 +47,7 @@ type MistralFunction struct {
 type MistralFunctionParams struct {
 	// Type must be "object".
 	Type       string                     `json:"type"`
-	Properties map[string]MistralProperty `json:"properties,omitempty"`
+	Properties map[string]MistralProperty `json:"properties"`
 	// Required is more a "hint".
 	Required []string `json:"required,omitempty"`
 
@@ -136,17 +136,17 @@ var CalculateMistralTool = MistralTool{
 	Type: "function",
 	Function: MistralFunction{
 		Name:        "calculate",
-		Description: "Calculate an arithmetic operation. Use this tool if you need a calculator to do mathematics calculation.",
-		Parameters: &MistralFunctionParams{
+		Description: "Calculate an mathematical arithmetic operation.",
+		Parameters: MistralFunctionParams{
 			Type: "object",
 			Properties: map[string]MistralProperty{
 				"first_number": {
 					Type:        "string",
-					Description: "First number in the operation.",
+					Description: "First number in the arithmetic operation.",
 				},
 				"second_number": {
 					Type:        "string",
-					Description: "Second number in the operation.",
+					Description: "Second number in the arithmetic operation.",
 				},
 				"operation": {
 					Type:        "string",
@@ -159,34 +159,22 @@ var CalculateMistralTool = MistralTool{
 	},
 }
 
-// GetCurrentTime returns the current time in a format that the LLM can understand
-// easily.
-func GetCurrentTime() string {
-	return time.Now().Format("15:04:05")
+// GetTodayClockTime returns the current time and day in a format that the LLM
+// can understand.
+func GetTodayClockTime() string {
+	return time.Now().Format("Monday 2006-01-02 15:04:05")
 }
 
-// GetCurrentTimeMistralTool is the structure to use to pass to use CurrentTime in
-// Mistral models.
-var GetCurrentTimeMistralTool = MistralTool{
+// GetTodayClockTimeMistralTool is the structure to use to pass to use
+// GetTodayClockTime in Mistral models.
+var GetTodayClockTimeMistralTool = MistralTool{
 	Type: "function",
 	Function: MistralFunction{
-		Name:        "get_current_time",
-		Description: "Get the current time on the clock. Use this tool if you need to know what time it is.",
-	},
-}
-
-// GetTodayDate returns the current time in a format that the LLM can understand
-// easily.
-func GetTodayDate() string {
-	return time.Now().Format("Monday 2006-01-02")
-}
-
-// GetTodayDateMistralTool is the structure to use to pass to use GetTodayDate in
-// Mistral models.
-var GetTodayDateMistralTool = MistralTool{
-	Type: "function",
-	Function: MistralFunction{
-		Name:        "get_today_date",
-		Description: "Get the current date. Use this tool if you need to know what day it is.",
+		Name:        "get_today_date_current_clock_time",
+		Description: "Get the current clock time and today's date.",
+		Parameters: MistralFunctionParams{
+			Type:       "object",
+			Properties: map[string]MistralProperty{},
+		},
 	},
 }

@@ -43,6 +43,7 @@ type discordBot struct {
 	knownLLMs []llm.KnownLLM
 	ig        *imagegen.Session
 	settings  sillybot.Settings
+	toolMsg   llm.Message
 	chat      chan msgReq
 	image     chan intReq
 	gcptoken  string
@@ -52,6 +53,42 @@ type discordBot struct {
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
 func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings) (*discordBot, error) {
+	msg := llm.Message{}
+	if l.Encoding != nil && strings.Contains(strings.ToLower(l.Model), "mistral") {
+		// HACK: Also an hack.
+		availtools := []tools.MistralTool{
+			/*
+				{
+					Type: "function",
+					Function: tools.MistralFunction{
+						Name:        "web_search",
+						Description: "Search the web for information",
+						Parameters: &tools.MistralFunctionParams{
+							Type: "object",
+							Properties: map[string]tools.MistralProperty{
+								"query": {
+									Type:        "string",
+									Description: "Query to use to search on the internet",
+								},
+							},
+							Required: []string{"query"},
+						},
+					},
+				},
+			*/
+			tools.CalculateMistralTool,
+			tools.GetTodayClockTimeMistralTool,
+		}
+		b, err := json.Marshal(availtools)
+		if err != nil {
+			return nil, err
+		}
+		msg = llm.Message{
+			Role:    llm.AvailableTools,
+			Content: string(b),
+		}
+	}
+
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
@@ -84,6 +121,7 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 		knownLLMs: knownLLMs,
 		ig:        ig,
 		settings:  settings,
+		toolMsg:   msg,
 		chat:      make(chan msgReq, 5),
 		image:     make(chan intReq, 3),
 		gcptoken:  gcptoken,
@@ -626,44 +664,11 @@ func (d *discordBot) toolWebSearch(ctx context.Context, query string) (*customse
 }
 
 func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
+	// TODO: Send a warning or forget when one of Model, Prompt, Tools changed.
 	c := d.mem.Get(authorID, channelID)
 	if len(c.Messages) == 0 {
-		// HACK: We need to specify the function calling style.
-		if d.l.Encoding != nil && strings.Contains(strings.ToLower(d.l.Model), "mistral") {
-			// HACK: Also an hack.
-			availtools := []tools.MistralTool{
-				{
-					Type: "function",
-					Function: tools.MistralFunction{
-						Name:        "web_search",
-						Description: "Search the web for information",
-						Parameters: &tools.MistralFunctionParams{
-							Type: "object",
-							Properties: map[string]tools.MistralProperty{
-								"query": {
-									Type:        "string",
-									Description: "Query to use to search on the internet",
-								},
-							},
-							Required: []string{"query"},
-						},
-					},
-				},
-				tools.CalculateMistralTool,
-				tools.GetCurrentTimeMistralTool,
-				tools.GetTodayDateMistralTool,
-			}
-			b, err := json.Marshal(availtools)
-			if err != nil {
-				panic(err)
-			}
-			c.Messages = []llm.Message{
-				{
-					Role:    llm.AvailableTools,
-					Content: string(b),
-					//Content: `[{"type":▁"function",▁"function":▁{"name":▁"web_search",▁"description":▁"Search the web for information",▁"parameters":▁{"type":▁"object",▁"properties":▁{"query":▁{"type":▁"string",▁"description":▁"Query to use to search on the internet"}}},▁"required":▁["query"]}}}]`,
-				},
-			}
+		if d.toolMsg.Content != "" {
+			c.Messages = []llm.Message{d.toolMsg}
 		}
 		c.Messages = append(c.Messages, llm.Message{Role: llm.System, Content: d.settings.PromptSystem})
 	}
@@ -688,10 +693,22 @@ func (d *discordBot) handlePrompt(req msgReq) {
 				select {
 				case w, ok := <-words:
 					if !ok {
-						if d.l.Encoding != nil && !gotToolCall && d.handleToolCall(pending, c) {
-							gotToolCall = true
-							if err := d.dg.ChannelTyping(req.channelID); err != nil {
-								slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+						if d.l.Encoding != nil && !gotToolCall {
+							if called := d.handleMistralToolCall(pending, c); called != "" {
+								// TODO: Tell the user a function is being used, not after it was used.
+								gotToolCall = true
+								msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
+									Content:   "*An instant please, I'm calling tool " + escapeMarkdown(called) + "*",
+									Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
+								})
+								if err != nil {
+									slog.Error("discord", "message", "failed posting message", "error", err)
+								} else {
+									replyToID = msg.ID
+								}
+								if err = d.dg.ChannelTyping(req.channelID); err != nil {
+									slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+								}
 							}
 						}
 						if !gotToolCall {
@@ -719,10 +736,22 @@ func (d *discordBot) handlePrompt(req msgReq) {
 					if i == 0 {
 						continue
 					}
-					if d.l.Encoding != nil && !gotToolCall && d.handleToolCall(pending[:i], c) {
-						gotToolCall = true
-						if err := d.dg.ChannelTyping(req.channelID); err != nil {
-							slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+					if d.l.Encoding != nil && !gotToolCall {
+						if called := d.handleMistralToolCall(pending[:i], c); called != "" {
+							// TODO: Tell the user a function is being used, not after it was used.
+							gotToolCall = true
+							msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
+								Content:   "*An instant please, I'm calling tool " + escapeMarkdown(called) + "*",
+								Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
+							})
+							if err != nil {
+								slog.Error("discord", "message", "failed posting message", "error", err)
+							} else {
+								replyToID = msg.ID
+							}
+							if err = d.dg.ChannelTyping(req.channelID); err != nil {
+								slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+							}
 						}
 					}
 					if !gotToolCall {
@@ -758,8 +787,12 @@ func (d *discordBot) handlePrompt(req msgReq) {
 	}
 }
 
-// Is it a tool call?
-func (d *discordBot) handleToolCall(pending string, c *llm.Conversation) bool {
+// handleMistralToolCall check if the pending string and returns its name if so.
+//
+// TODO: This shouldn't receive the whole conversation. It should return the
+// name before calling so it can alert the user, especially for tools that take
+// a long time to run.
+func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) string {
 	var calls []tools.MistralToolCall
 	for _, line := range strings.Split(pending, "\n") {
 		if line = strings.TrimSpace(line); line == "" {
@@ -773,8 +806,10 @@ func (d *discordBot) handleToolCall(pending string, c *llm.Conversation) bool {
 			slog.Warn("discord", "message", "unexpected number of calls", "line", line, "calls", calls)
 			continue
 		}
+		name := calls[0].Name
 		result := ""
 		// TODO: Use reflect to determine arguments automatically.
+		// TODO: Stop hardcoding the function names.
 		switch calls[0].Name {
 		case "web_search":
 			query := calls[0].Arguments["query"]
@@ -797,18 +832,18 @@ func (d *discordBot) handleToolCall(pending string, c *llm.Conversation) bool {
 				result = "No result was found on the internet due to an internal error in discord-bot"
 			}
 			slog.Info("discord", "tool_call", calls[0].Name, "result", result)
+			name += fmt.Sprintf("(query=%q) = %s", query, result)
 		case "calculate":
 			op := calls[0].Arguments["operation"]
 			f := calls[0].Arguments["first_number"]
 			s := calls[0].Arguments["second_number"]
 			result = tools.Calculate(op, f, s)
 			slog.Info("discord", "tool_call", calls[0].Name, "operation", op, "first", f, "second", s, "result", result)
-		case "get_current_time":
-			result = tools.GetCurrentTime()
+			name += fmt.Sprintf("(operation=%s, first=%s, second=%s) = %s", op, f, s, result)
+		case "get_today_date_current_clock_time":
+			result = tools.GetTodayClockTime()
 			slog.Info("discord", "tool_call", calls[0].Name, "result", result)
-		case "get_today_date":
-			result = tools.GetTodayDate()
-			slog.Info("discord", "tool_call", calls[0].Name, "result", result)
+			name += fmt.Sprintf("() = %s", result)
 		default:
 			slog.Warn("discord", "message", "unknown tool", "line", line, "calls", calls)
 		}
@@ -834,9 +869,9 @@ func (d *discordBot) handleToolCall(pending string, c *llm.Conversation) bool {
 		c.Messages = append(c.Messages, llm.Message{Role: llm.ToolCallResult, Content: string(b)})
 		// TODO: We should probably cancel the context and start over, there's no
 		// point in receiving more data.
-		return true
+		return name
 	}
-	return false
+	return ""
 }
 
 // splitResponse take pending reply from the LLM and returns the amount of
