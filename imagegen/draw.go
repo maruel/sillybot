@@ -113,7 +113,7 @@ func drawTextOnImage(img *image.NRGBA, f *opentype.Font, top int, text string) {
 
 	// Lazy ass.
 	texttomeasure := text
-	for len(texttomeasure) < 10 {
+	for len(texttomeasure) < 15 {
 		texttomeasure += "a"
 	}
 	textWidth := d.MeasureString(texttomeasure).Round()

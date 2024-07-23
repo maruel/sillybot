@@ -7,10 +7,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"image/png"
 	"log/slog"
+	"math/big"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -561,7 +563,7 @@ func (d *discordBot) onImage(event *discordgo.InteractionCreate, data discordgo.
 		LabelsContent string `json:"labels_content"`
 		// meme_auto, meme_manual, image_auto, image_manual
 		Seed int `json:"seed"`
-	}{Seed: 1}
+	}{}
 	if err := optionsToStruct(data.Options, &opts); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed decoding command options", "error", err)
 		return
@@ -938,150 +940,217 @@ func splitResponse(t string) int {
 	return start + i + 1
 }
 
-// handleImage generates an image based on the user prompt.
+// handleImage generates images based on the user prompt.
 func (d *discordBot) handleImage(req intReq) {
-	// Generate multiple images when the queue is empty.
-	resp := discordgo.WebhookEdit{}
-	content := ""
-	// First repeat what the user provided otherwise it's non-obvious for other
-	// users.
-	if req.description != "" {
-		content += "*Description*: " + escapeMarkdown(req.description) + "\n"
+	// Do it in a separate goroutine so we can send updates to the user as it
+	// progresses. It provides a much better UX than batching all at once at the
+	// end.
+	type update struct {
+		content string
+		img     []byte
+		err     error
 	}
-	if req.imagePrompt != "" {
-		content += "*Image prompt*: " + escapeMarkdown(req.imagePrompt) + "\n"
-	}
-	if req.labelsContent != "" {
-		content += "*Labels*: " + escapeMarkdown(req.labelsContent) + "\n"
-	}
-	seed := req.seed
-	for i := 0; i < 4; i++ {
-		newreq := req
-		newreq.seed = seed
-		img, err := d.genImage(&newreq)
-		if seed != 0 {
-			content += "*Seed*: " + strconv.Itoa(seed) + "\n"
+	ctx, cancel := context.WithCancel(d.ctx)
+	defer cancel()
+	updates := make(chan update, 10)
+	go func() {
+		defer close(updates)
+		// Generate multiple images when the queue is empty.
+		// First repeat what the user provided otherwise it's non-obvious for other
+		// users.
+		u := update{}
+		if req.description != "" {
+			u.content += "*Description*: " + escapeMarkdown(req.description) + "\n"
 		}
-		if len(content)+len(newreq.description)+len(newreq.imagePrompt) < 1900 {
-			// We have to skip on these otherwise we hit the 2000 characters limit super fast.
-			if newreq.description != req.description {
-				content += "*Description*: " + escapeMarkdown(newreq.description) + "\n"
+		if req.imagePrompt != "" {
+			u.content += "*Image prompt*: " + escapeMarkdown(req.imagePrompt) + "\n"
+		}
+		if req.labelsContent != "" {
+			u.content += "*Labels*: " + escapeMarkdown(req.labelsContent) + "\n"
+		}
+		updates <- u
+		for i := 0; i < 4 && ctx.Err() == nil; i++ {
+			// Steps:
+			// - Select seed if needed
+			// - Generate labels if needed
+			// - Generate image description, seeding description + labels if needed
+			// - Generate the image if needed (meme_labels_auto is a special case)
+			seed := req.seed
+			if seed != 0 {
+				// Increment by one for each loop.
+				seed = seed + i
+			} else {
+				// Never pass seed 0, instead select a random seed ourself so the user
+				// can still recreate the output. Generate a number between 1 and
+				// 65000. It's unclear to me what the upper bound it. Do not use 65535
+				// because we loop down below when generating labels.
+				i, err := rand.Int(rand.Reader, big.NewInt(65000))
+				if err != nil {
+					u.err = fmt.Errorf("failed to generate seed: %w", err)
+					updates <- u
+					return
+				}
+				// We never want 0.
+				seed = int(i.Int64()) + 1
 			}
-			if newreq.imagePrompt != req.imagePrompt {
-				content += "*Image prompt*: " + escapeMarkdown(newreq.imagePrompt) + "\n"
-			}
-		}
-		if i == 0 || req.cmdName == "meme_labels_auto" {
-			if newreq.labelsContent != req.labelsContent {
-				content += "*Labels*: " + escapeMarkdown(newreq.labelsContent) + "\n"
-			}
-		}
-		if err != nil {
-			slog.Error("discord", "imagereq", req, "error", err)
-			content += "\n*LLM Eror*: " + escapeMarkdown(err.Error()) + "\n"
-		}
-		resp.Content = &content
-		if len(img) != 0 {
-			resp.Files = []*discordgo.File{{Name: "prompt.png", ContentType: "image/png", Reader: bytes.NewReader(img)}}
-		}
-		if _, err2 := d.dg.InteractionResponseEdit(req.int, &resp); err2 != nil {
-			slog.Error("discord", "imagereq", req, "message", "failed posting interaction", "error", err2)
-			break
-		}
-		// If there were an error or there's another request pending, stop.
-		if err != nil || len(d.image) != 0 || len(d.chat) != 0 {
-			break
-		}
-		seed++
-		if err := d.dg.ChannelTyping(req.int.ChannelID); err != nil {
-			slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
-			break
-		}
-	}
-}
+			u.content += "*Image #" + strconv.Itoa(i+1) + "*: *Seed*: " + strconv.Itoa(seed) + "\n"
 
-// genImage generates both manual and automatic images.
-//
-// First generate the labels if needed.
-// Then generate the image description, seeding the labels.
-// Then generate the image.
-func (d *discordBot) genImage(req *intReq) ([]byte, error) {
-	if req.cmdName == "meme_auto" || req.cmdName == "meme_labels_auto" {
-		// Labels: use the LLM to generate the labels based on the description.
-		options := [3]string{}
-		for i := 0; i < len(options); i++ {
-			msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptLabels}, {Role: llm.User, Content: req.description}}
-			// Intentionally limit the number of tokens, otherwise it's Stable
-			// Diffusion that is unhappy.
-			meme, err2 := d.l.Prompt(d.ctx, msgs, 70, req.seed+4*i, 1.0)
-			if err2 != nil {
-				return nil, fmt.Errorf("failed to enhance labels: %w", err2)
+			// Labels: use the LLM to generate the labels based on the description.a
+			labelsContent := req.labelsContent
+			if req.cmdName == "meme_auto" || req.cmdName == "meme_labels_auto" {
+				options := [3]string{}
+				j := 0
+				for ; j < len(options); j++ {
+					msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptLabels}, {Role: llm.User, Content: req.description}}
+					// Intentionally limit the number of tokens, otherwise it's Stable
+					// Diffusion that is unhappy.
+					imgseed := seed + 4*i + 4*j
+					newLabels, err := d.l.Prompt(ctx, msgs, 70, imgseed, 1.0)
+					if err != nil {
+						u.err = fmt.Errorf("failed to enhance labels: %w", err)
+						updates <- u
+						return
+					}
+					options[j] = strings.Trim(newLabels, "\",.")
+					// Is it good enough?
+					if m, n := maxCommaLen(options[j]); n <= 3 && m < 30 {
+						// Select this one.
+						labelsContent = newLabels
+						if i != 0 || j != 0 {
+							u.content += "*Seed (label)*: " + strconv.Itoa(imgseed) + "\n"
+						}
+						break
+					}
+				}
+				if j == len(options) {
+					// No great option found, take a guess which is the less bad one.
+					// TODO: We loose the seed when we sort.
+					slices.SortFunc(options[:], memeLabelHeuristics)
+					labelsContent = options[0]
+				}
+				u.content += "*Labels*: " + escapeMarkdown(labelsContent) + "\n"
+				updates <- u
+				if req.cmdName == "meme_labels_auto" {
+					// "meme_labels_auto" is a special case where we don't actually need an image.
+					continue
+				}
 			}
-			meme = strings.Trim(meme, "\",.")
-			options[i] = meme
-			if i == 0 || memeLabelHeuristics(meme, req.labelsContent) < 0 {
-				req.labelsContent = meme
+
+			imagePrompt := req.imagePrompt
+			if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
+				// Image: use the LLM to generate the image prompt based on the description.
+				msgs := []llm.Message{
+					{Role: llm.System, Content: d.settings.PromptImage},
+					{Role: llm.User, Content: req.description},
+					{Role: llm.User, Content: labelsContent},
+				}
+				if imagePrompt, u.err = d.l.Prompt(ctx, msgs, 125, seed, 1.0); u.err != nil {
+					u.err = fmt.Errorf("failed to enhance image generation prompt: %w", u.err)
+					updates <- u
+					return
+				}
+				if len(u.content)+len(imagePrompt) < 1900 {
+					// We have to skip on these otherwise we hit the 2000 characters limit super fast.
+					u.content += "*Image prompt*: " + escapeMarkdown(imagePrompt) + "\n"
+					updates <- u
+				}
 			}
-			if m, n := maxCommaLen(req.labelsContent); n <= 3 && m < 30 {
-				// TODO: Save the seed used.
+
+			// Generate the image.
+			img, err := d.ig.GenImage(ctx, imagePrompt, seed)
+			if err != nil {
+				u.err = err
+				updates <- u
+				return
+			}
+			w := bytes.Buffer{}
+			imagegen.DrawLabelsOnImage(img, labelsContent)
+			u.err = png.Encode(&w, img)
+			u.img = w.Bytes()
+			updates <- u
+			u.img = nil
+			if u.err != nil {
+				return
+			}
+			// Save it to disk. Don't fail the user in this case, log an error.
+			p := filepath.Join(d.memDir, time.Now().Format("2006-01-02-15-04-05.000000"))
+			b, err := json.Marshal(map[string]interface{}{
+				"user":         req.int.User.Username,
+				"channel":      req.int.ChannelID,
+				"guild":        req.int.GuildID,
+				"description":  req.description,
+				"image_prompt": imagePrompt,
+				"labels":       labelsContent,
+				"seed":         seed,
+				"command":      req.cmdName,
+			})
+			if err != nil {
+				slog.Error("discord", "message", "failed marshaling metadata", "error", err)
+			}
+			if err2 := os.WriteFile(p+".json", b, 0o644); err2 != nil {
+				slog.Error("discord", "message", "failed saving metadata", "error", err2)
+				err = err2
+			}
+			if err2 := os.WriteFile(p+".png", w.Bytes(), 0o644); err2 != nil {
+				slog.Error("discord", "message", "failed saving png", "error", err2)
+				err = err2
+			}
+			// If there were an error or there's another request pending, stop.
+			if err != nil || len(d.image) != 0 || len(d.chat) != 0 {
 				break
 			}
 		}
-		// No great option found, take a guess which is the less bad one.
-		slices.SortFunc(options[:], memeLabelHeuristics)
-	}
+	}()
 
-	if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
-		// Image: use the LLM to generate the image prompt based on the description.
-		msgs := []llm.Message{
-			{Role: llm.System, Content: d.settings.PromptImage},
-			{Role: llm.User, Content: req.description},
-			{Role: llm.User, Content: req.labelsContent},
+	// Then stream the updates to it feels more interactive. Throttle so discord
+	// doesn't block us.
+	const period = time.Second
+	t := time.NewTicker(period)
+	defer t.Stop()
+	g := update{}
+	hasUpdates := false
+	var lastUpdate time.Time
+	for {
+		ok := true
+		skip := false
+		select {
+		case <-t.C:
+			if !hasUpdates {
+				skip = true
+				if err := d.dg.ChannelTyping(req.int.ChannelID); err != nil {
+					slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+					break
+				}
+			}
+		case g, ok = <-updates:
+			if !ok {
+				return
+			}
+			hasUpdates = true
+			if time.Since(lastUpdate) < period && g.err == nil && g.img == nil {
+				// Throttle.
+				skip = true
+			}
 		}
-		reply, err := d.l.Prompt(d.ctx, msgs, 125, req.seed, 1.0)
-		if err != nil {
-			return nil, fmt.Errorf("failed to enhance image generation prompt: %w", err)
+		if skip {
+			continue
 		}
-		req.imagePrompt = reply
-	}
-
-	if req.cmdName == "meme_labels_auto" {
-		// "meme_labels_auto" is a special case where we don't actually need an image.
-		return nil, nil
-	}
-
-	// Generate the image.
-	img, err := d.ig.GenImage(d.ctx, req.imagePrompt, req.seed)
-	w := bytes.Buffer{}
-	if img != nil {
-		imagegen.DrawLabelsOnImage(img, req.labelsContent)
-		if err2 := png.Encode(&w, img); err == nil {
-			err = err2
+		if g.err != nil {
+			slog.Error("discord", "imagereq", req, "error", g.err)
+			g.content += "\n*Error*: " + escapeMarkdown(g.err.Error()) + "\n"
 		}
+		resp := discordgo.WebhookEdit{Content: &g.content}
+		if len(g.img) != 0 {
+			resp.Files = []*discordgo.File{{Name: "prompt.png", ContentType: "image/png", Reader: bytes.NewReader(g.img)}}
+		}
+		if _, err := d.dg.InteractionResponseEdit(req.int, &resp); err != nil {
+			slog.Error("discord", "imagereq", req, "message", "failed posting interaction", "error", err)
+		}
+		if g.err != nil {
+			return
+		}
+		hasUpdates = false
 	}
-	// Save it to disk.
-	name := time.Now().Format("2006-01-02-15-04-05.000000")
-	p := filepath.Join(d.memDir, name)
-	b, err := json.Marshal(map[string]interface{}{
-		"user":         req.int.User.Username,
-		"channel":      req.int.ChannelID,
-		"guild":        req.int.GuildID,
-		"description":  req.description,
-		"image_prompt": req.imagePrompt,
-		"labels":       req.labelsContent,
-		"seed":         req.seed,
-		"command":      req.cmdName,
-	})
-	if err != nil {
-		slog.Error("discord", "message", "failed marshaling metadata", "error", err)
-	}
-	if err = os.WriteFile(p+".json", b, 0o644); err != nil {
-		slog.Error("discord", "message", "failed saving metadata", "error", err)
-	}
-	if err = os.WriteFile(p+".png", w.Bytes(), 0o644); err != nil {
-		slog.Error("discord", "message", "failed saving png", "error", err)
-	}
-	return w.Bytes(), err
 }
 
 func maxCommaLen(x string) (int, int) {
