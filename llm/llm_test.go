@@ -123,14 +123,17 @@ func TestLLM(t *testing.T) {
 		//   faster, which makes unit test is much faster.
 		quant := "Q2_K"
 		model := strings.ToLower(k.Basename)
-		if strings.Contains(model, "qwen") {
-			if strings.Contains(model, "0_5b") {
-				// Fails on Q2_K.
-				quant = "Q3_K_M"
-			}
-			// The Alibaba team decided to be wild and lower case the quantization
-			// name.
-			quant = strings.ToLower(quant)
+		if strings.HasPrefix(model, "meta-llama-3.1-8b") {
+			// They didn't upload Q2_L yet.
+			quant = "Q3_K_L"
+		} else if strings.HasPrefix(model, "mistral") {
+			// Use a higher quantization not because it fails on Q2_K but because
+			// TestMistralTool requires Q3_K_S and there's no point in downloading
+			// two quantization levels.
+			quant = "Q3_K_S"
+		} else if strings.HasPrefix(model, "mixtral-") {
+			// Fails on Q2_K.
+			quant = "Q3_K_S"
 		} else if strings.HasPrefix(model, "phi-3") {
 			if strings.Contains(model, "-128k-") {
 				// These models really struggle.
@@ -141,14 +144,14 @@ func TestLLM(t *testing.T) {
 				// both mini and medium!
 				quant = "Q3_K_S"
 			}
-		} else if strings.HasPrefix(model, "mistral") {
-			// Use a higher quantization not because it fails on Q2_K but because
-			// TestMistralTool requires Q3_K_S and there's no point in downloading
-			// two quantization levels.
-			quant = "Q3_K_S"
-		} else if strings.HasPrefix(model, "mixtral-") {
-			// Fails on Q2_K.
-			quant = "Q3_K_S"
+		} else if strings.Contains(model, "qwen") {
+			if strings.Contains(model, "0_5b") {
+				// Fails on Q2_K.
+				quant = "Q3_K_M"
+			}
+			// The Alibaba team decided to be wild and lower case the quantization
+			// name.
+			quant = strings.ToLower(quant)
 		}
 
 		t.Run(k.Basename+quant, func(t *testing.T) {

@@ -1086,6 +1086,7 @@ func (d *discordBot) handleImage(req intReq) {
 				"labels":       labelsContent,
 				"seed":         seed,
 				"command":      req.cmdName,
+				"model":        d.l.Model,
 			})
 			if err != nil {
 				slog.Error("discord", "message", "failed marshaling metadata", "error", err)

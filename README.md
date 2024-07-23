@@ -42,11 +42,11 @@ Talk with it and use its commands as described at:
     - [Gemma-2-27B instruct](https://huggingface.co/google/gemma-2-27b-it) in
       [quantized form](https://huggingface.co/bartowski/gemma-2-27b-it-GGUF)
       with 8K context window.
-    - [Meta-Llama3-8B-instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)
+    - [Meta-Llama-3.1-8B-instruct](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct)
       in [quantized
-      form](https://huggingface.co/bartowski/Meta-Llama-3-8B-Instruct-GGUF)
-      with 8K context window.
-    - [Meta-Llama3-70B-instruct](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct)
+      form](https://huggingface.co/lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF)
+      with 128K context window.
+    - [Meta-Llama-3-70B-instruct](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct)
       in [quantized
       form](https://huggingface.co/bartowski/Meta-Llama-3-70B-Instruct-GGUF)
       with 8K context window.

@@ -120,12 +120,13 @@ knownllms:
     basename: gemma-2-27b-it-
     upstream: google/gemma-2-27b-it
 
-  # Llama 3 family:
+  # Llama 3 / 3.1 family:
+  # https://huggingface.co/collections/meta-llama/llama-31-669fc079a0c406a149a5738f
   # https://huggingface.co/collections/meta-llama/meta-llama-3-66214712577ca38149ebb2b6
-  - repo: bartowski/Meta-Llama-3-8B-Instruct-GGUF
+  - repo: lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF
     packagingtype: gguf
-    basename: Meta-Llama-3-8B-Instruct-
-    upstream: meta-llama/Meta-Llama-3-8B-Instruct
+    basename: Meta-Llama-3.1-8B-Instruct-
+    upstream: meta-llama/Meta-Llama-3.1-8B-Instruct
     # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
     #prompt_encoding:
     #  begin_of_text: "<|begin_of_text|>"
@@ -182,7 +183,7 @@ knownllms:
     #  assistant_token_start: ""
     #  assistant_token_end: ""
 
-  # Phi-3 family
+  # Phi-3/3.1 family
   # https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3
   - repo: bartowski/Phi-3.1-mini-4k-instruct-GGUF
     packagingtype: gguf
