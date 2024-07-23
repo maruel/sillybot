@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"image/png"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -41,6 +42,7 @@ type discordBot struct {
 	knownLLMs []llm.KnownLLM
 	ig        *imagegen.Session
 	settings  sillybot.Settings
+	memDir    string
 	toolMsg   llm.Message
 	chat      chan msgReq
 	image     chan intReq
@@ -50,7 +52,7 @@ type discordBot struct {
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
 	msg := llm.Message{}
 	if l.Encoding != nil && strings.Contains(strings.ToLower(l.Model), "mistral") {
 		// HACK: Also an hack.
@@ -119,6 +121,7 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 		knownLLMs: knownLLMs,
 		ig:        ig,
 		settings:  settings,
+		memDir:    memDir,
 		toolMsg:   msg,
 		chat:      make(chan msgReq, 5),
 		image:     make(chan intReq, 3),
@@ -1055,6 +1058,28 @@ func (d *discordBot) genImage(req *intReq) ([]byte, error) {
 		if err2 := png.Encode(&w, img); err == nil {
 			err = err2
 		}
+	}
+	// Save it to disk.
+	name := time.Now().Format("2006-01-02-15-04-05.000000")
+	p := filepath.Join(d.memDir, name)
+	b, err := json.Marshal(map[string]interface{}{
+		"user":         req.int.User.Username,
+		"channel":      req.int.ChannelID,
+		"guild":        req.int.GuildID,
+		"description":  req.description,
+		"image_prompt": req.imagePrompt,
+		"labels":       req.labelsContent,
+		"seed":         req.seed,
+		"command":      req.cmdName,
+	})
+	if err != nil {
+		slog.Error("discord", "message", "failed marshaling metadata", "error", err)
+	}
+	if err = os.WriteFile(p+".json", b, 0o644); err != nil {
+		slog.Error("discord", "message", "failed saving metadata", "error", err)
+	}
+	if err = os.WriteFile(p+".png", w.Bytes(), 0o644); err != nil {
+		slog.Error("discord", "message", "failed saving png", "error", err)
 	}
 	return w.Bytes(), err
 }

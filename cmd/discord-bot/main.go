@@ -10,7 +10,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -123,7 +122,11 @@ func mainImpl() error {
 		}
 	}
 	if err = os.MkdirAll(*cache, 0o755); err != nil {
-		log.Fatal(err)
+		return err
+	}
+	memDir := filepath.Join(*cache, "memory")
+	if err = os.MkdirAll(memDir, 0o755); err != nil {
+		return err
 	}
 	l, ig, err := sillybot.LoadModels(ctx, *cache, &cfg)
 	if l != nil {
@@ -135,9 +138,10 @@ func mainImpl() error {
 	if err != nil {
 		return err
 	}
+
 	// Load memory.
 	mem := &llm.Memory{}
-	memcache := filepath.Join(*cache, "discord_memory.json")
+	memcache := filepath.Join(memDir, "discord.json")
 	f, err := os.Open(memcache)
 	if err == nil {
 		err = mem.Load(f)
@@ -150,7 +154,7 @@ func mainImpl() error {
 		slog.Info("main", "memory", "no memory to load", "error", err)
 	}
 
-	d, err := newDiscordBot(ctx, *bottoken, *gcptoken, *cxtoken, *verbose, l, mem, cfg.KnownLLMs, ig, cfg.Bot.Settings)
+	d, err := newDiscordBot(ctx, *bottoken, *gcptoken, *cxtoken, *verbose, l, mem, cfg.KnownLLMs, ig, cfg.Bot.Settings, memDir)
 	if err != nil {
 		return err
 	}
