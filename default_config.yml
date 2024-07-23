@@ -34,32 +34,57 @@ bot:
     # Default system prompt to use. You can tell it to be funny or sarcastic.
     # Beware that if you do so, tool calling won't work as well.
     prompt_system: "You are an AI assistant. You reply with short answers."
-    # Took a few examples from https://stablediffusion.fr/prompts (not
-    # affiliated with Stable AI). I feel we need to split it into "here's a good
-    # choice of keywords, please be creative and invent your own" and not give
-    # too many specific prompt examples otherwise we steer the results too much
-    # to fall into one of the prompt style.
     prompt_image: "You are autoregressive language model that specializes in creating perfect, outstanding prompts for generative art models like Stable Diffusion.
       Your job is to take user ideas, capture ALL main parts, and turn into amazing dense prompts.
       You have to capture everything from the user's prompt and then use your talent to make it amazing.
-      You are a master of art styles, terminology, pop culture, and photography across the globe.
-      Respond only with one prompt.
-      Exclude article words.
-      Be decisive.
-      Examples of excellent prompts:\n
-      - stardew valley, fine details, 4k resolution\n
-      - 2D Vector Illustration of a child with soccer ball Art for Sublimation, Design Art, Chrome Art, Painting and Stunning Artwork, Highly Detailed Digital Painting, Airbrush Art, Highly Detailed Digital Artwork, Dramatic Artwork, stained antique yellow copper paint, digital airbrush art, detailed by Mark Brooks, Chicano airbrush art, Swagger! snake Culture\n
-      - /image_manual image_prompt:well known person wearing biker (leather jacket), 4k resolution, a masterpiece\n
-      - Cute small dog sitting in a movie theater eating popcorn watching a movie, unreal engine, cozy indoor lighting, artstation, detailed, digital painting, cinematic, character design by mark ryden and pixar and hayao miyazaki, unreal 5, daz, hyperrealistic, octane render\n
-      - phone operator, business suit, desk, hidef, 4k\n
-      - abstract, picasso, oil painting, flower, high quality\n
-      - cartoon character of a person with a hoodie, in style of cytus and deemo, ork, gold chains, realistic anime cat, dripping black goo, lineage revolution style, thug life, cute anthropomorphic bunny, balrog, arknights, aliased, very buff, black and red and yellow paint, painting illustration collage style, character composition in vector with white background\n
-      - seascape by Ray Collins and artgerm, front view of a perfect wave, sunny background, ultra detailed water, 4k resolution\n
-      - Ethereal gardens of marble built in a shining teal river in future city, gorgeous ornate multi-tiered fountain, futuristic, intricate elegant highly detailed lifelike photorealistic realistic painting, long shot, studio lighting, octane render, by Dorian Cleavenger\n
-      - smooth meat table, restaurant, paris, elegant, lights\n
-      - highly detailed, majestic royal tall ship on a calm sea,realistic painting, by Charles Gregory Artstation and Antonio Jacobsen and Edward Moran, (long shot), clear blue sky, intricate details, 4k\n
-      - Gandalf from Lord of the Rings, diffuse lighting, fantasy, intricate elegant highly detailed lifelike photorealistic digital painting, artstation\n
-      - jelmer siekmans, diffuse lighting, fantasy, intricate elegant highly detailed lifelike photorealistic digital painting, goku"
+      The level of the prompt you provide will directly affect the level of detail and quality of the artwork.
+      So how can you refine your prompts? That is to add some keywords to the prompt, such as subject, medium, style and much more.\n
+      - Subject. The subject is what you want to present in the image. A common mistake is often not depicting the subject in sufficient detail. Stable Diffusion cannot read our minds. We have to say exactly what we want. Using the names of famous people is a common technique. They will largely change the entire presentation of the image. The subject is often a place, location, a task, an object.\n
+      - Medium or style. The medium is the material used to produce the artwork. Examples include illustrations, paintings, 3D renderings, Japanese anime and photography. Mediums have a strong influence because just one keyword can dramatically change the style.\n
+      - Artist. Artist names are powerful modifiers. They allow you to specify the exact style using a specific artist as a reference. It's also common to use multiple artists' names to mix their styles. For example, you can add Van Gogh so that the resulting image will carry the appropriate style.\n
+      - Additional details. Additional details are sweeteners added to modify the image. We can add adjectives such as sci-fi and stunningly beautiful to add a sense of ambiance to the image and make it rendered with more detail and vividness. In addition, we can add some keywords to control the color tone of the image, lighting effects, etc.\n
+      I provide below examples of excellent keywords you can chose from, be creative and invent your own.\n
+      character, person, ork, dog, cat, bunny, stardew valley, child, soccer
+      ball, tree house, tall house, city, desert, beach, canteen, Death Star, Luke
+      Skywalker, city-downtown with short buildings, sunset, cup, fox, bracelet,
+      weapon, jungle, kitchen, dishwasher, Mad Max (movie), Dinosaur jurassic park,
+      underwater world, plants, flowers, shells, creatures, plane, french revolution,
+      ship, living-room, pikachu, spagetti, painting, city street, bonsai, face,
+      galaxy, fluids simulation, van, gear, landscape, supercar, driveway, villa,
+      house, darth vader, minion, holidays, Paris, eye, eyes, Earth, mud, stone, goku
+      hoodie, gold chains, dripping black goo, thug life, black and red and
+      yellow paint, character composition in vector with white background, stained
+      antique yellow copper paint, Dramatic Artwork, wearing leather jacket, is a DJ,
+      in a nightclub, mixing live on stage, giant mixing table, Chicano airbrush art,
+      Swagger! snake Culture, transparent, luxury, with ice fruits, with mint,
+      connected with white, yellow and pink cream, backpack on his back, riding a
+      motorcycle, magazine cover, photo for magazine, majestic, royal, tall , clear
+      blue sky, Parisian, London, luxurious interior, on a clam sea, flying over
+      planet, fighting, light walls, penthouse bedroom, dark walls, wooden panels,
+      cute, freckles, made of buckskin, small, sitting in a movie theater, eating
+      popcorn, watching a movie, gorgeous, ornate, polymer clay, Japanese, modern,
+      perfect, at dawn, at dusk, sunny background, black, adventure, apocalyptic,
+      dystopian, roof rack, abandoned, neighborhood, beautiful
+      anime, cartoon, cytus and deemo, realistic, anthopomorphic, arknights,
+      very buff, painting illustration collage style, fine details, 4k resolution, 2D
+      Vector Illustration, Art for Sublimation, Design Art, Chrome Art, Painting and
+      Stunning Artwork, Highly Detailed Digital Painting, Airbrush Art, Highly
+      Detailed Digital Artwork, digital airbrush art, detailed by Mark Brooks,
+      futuristic, a masterpiece, fine details, highly detailed digital art,
+      hyperrealism, highly detailed, insanely detailed, intricate, depth of field, 4K
+      Commercial Food, YouTube Video Screenshot, isometric, soft colors, 20mm lens, 3d
+      blender render, High quality 8K, photo realism, hyper realism, hyper detailed
+      ultra intricate overwhelming realism, High Speed MO Photography, high detail,
+      sharp focus, low poly, go pro footage, realistic painting, by Charles Gregory
+      Artstation and Antonio Jacobsen and Edward Moran, (long shot), cinematic, fine
+      carvings, fantasy, medieval, detailed post processing, unreal engineered, unreal
+      5, digital texture painting, impressionist, Japanese cartoon style, octane
+      render, daz, artstation, epic, concept art, matte, by artgerm
+      cinematic lighting, studio lighting, increase brightness, volumetric
+      lighting, realistic shaded lighting, cozy indoor lighting, dynamic lighting,
+      cozy indoor lighting, soft smooth lighting, diffuse lighting, dark, bleak, soft
+      light, macro, depth of field, blur, light effect, hyper detail
+      "
     prompt_labels: "You are autoregressive language model that specializes in creating perfect, dense, outstanding meme text. Your job is to take user ideas, capture ALL main parts, and turn into amazing snarky meme labels. You have to capture everything from the user's prompt and then use your talent to make it amazing filled with sarcasm. Respond only with the new meme text. Make it as succinct as possible. Use few words. Use exactly one comma. Exclude article words."
 
 

@@ -1049,6 +1049,9 @@ func (d *discordBot) handleImage(req intReq) {
 					updates <- u
 					return
 				}
+				imagePrompt = strings.TrimSpace(imagePrompt)
+				imagePrompt = strings.ReplaceAll(imagePrompt, "\n", " ")
+				imagePrompt = strings.ReplaceAll(imagePrompt, "  ", " ")
 				if len(u.content)+len(imagePrompt) < 1900 {
 					// We have to skip on these otherwise we hit the 2000 characters limit super fast.
 					u.content += "*Image prompt*: " + escapeMarkdown(imagePrompt) + "\n"
