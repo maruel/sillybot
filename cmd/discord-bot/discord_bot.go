@@ -615,7 +615,7 @@ func (d *discordBot) interactionRespond(int *discordgo.Interaction, s string) er
 // chatRoutine serializes the chat requests.
 func (d *discordBot) chatRoutine() {
 	// Prewarm the system prompt.
-	if _, err := d.l.Prompt(d.ctx, d.getMemory("", "").Messages, 0, 1.0); err != nil {
+	if _, err := d.l.Prompt(d.ctx, d.getMemory("", "").Messages, 100, 0, 1.0); err != nil {
 		slog.Error("discord", "error", err)
 	}
 	for req := range d.chat {
@@ -771,7 +771,8 @@ func (d *discordBot) handlePrompt(req msgReq) {
 				}
 			}
 		}()
-		err := d.l.PromptStreaming(d.ctx, c.Messages, 0, 1.0, words)
+		// We're chatting, we don't want too much content.
+		err := d.l.PromptStreaming(d.ctx, c.Messages, 2000, 0, 1.0, words)
 		close(words)
 		wg.Wait()
 		if err != nil {
@@ -939,6 +940,8 @@ func (d *discordBot) handleImage(req intReq) {
 	// Generate multiple images when the queue is empty.
 	resp := discordgo.WebhookEdit{}
 	content := ""
+	// First repeat what the user provided otherwise it's non-obvious for other
+	// users.
 	if req.description != "" {
 		content += "*Description*: " + escapeMarkdown(req.description) + "\n"
 	}
@@ -956,7 +959,7 @@ func (d *discordBot) handleImage(req intReq) {
 		if seed != 0 {
 			content += "*Seed*: " + strconv.Itoa(seed) + "\n"
 		}
-		if i == 0 {
+		if len(content)+len(newreq.description)+len(newreq.imagePrompt) < 1900 {
 			// We have to skip on these otherwise we hit the 2000 characters limit super fast.
 			if newreq.description != req.description {
 				content += "*Description*: " + escapeMarkdown(newreq.description) + "\n"
@@ -1005,7 +1008,9 @@ func (d *discordBot) genImage(req *intReq) ([]byte, error) {
 		options := [3]string{}
 		for i := 0; i < len(options); i++ {
 			msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptLabels}, {Role: llm.User, Content: req.description}}
-			meme, err2 := d.l.Prompt(d.ctx, msgs, req.seed+4*i, 1.0)
+			// Intentionally limit the number of tokens, otherwise it's Stable
+			// Diffusion that is unhappy.
+			meme, err2 := d.l.Prompt(d.ctx, msgs, 70, req.seed+4*i, 1.0)
 			if err2 != nil {
 				return nil, fmt.Errorf("failed to enhance labels: %w", err2)
 			}
@@ -1030,7 +1035,7 @@ func (d *discordBot) genImage(req *intReq) ([]byte, error) {
 			{Role: llm.User, Content: req.description},
 			{Role: llm.User, Content: req.labelsContent},
 		}
-		reply, err := d.l.Prompt(d.ctx, msgs, req.seed, 1.0)
+		reply, err := d.l.Prompt(d.ctx, msgs, 125, req.seed, 1.0)
 		if err != nil {
 			return nil, fmt.Errorf("failed to enhance image generation prompt: %w", err)
 		}

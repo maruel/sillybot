@@ -211,7 +211,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	t.Run("Blocking", func(t *testing.T) {
 		t.Parallel()
 		msgs := []Message{{Role: System, Content: systemPrompt}, {Role: User, Content: prompt}}
-		got, err2 := l.Prompt(ctx, msgs, 1, 0.0)
+		got, err2 := l.Prompt(ctx, msgs, 10, 1, 0.0)
 		if err2 != nil {
 			t.Fatal(err2)
 		}
@@ -230,7 +230,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 			}
 			wg.Done()
 		}()
-		err2 := l.PromptStreaming(ctx, msgs, 1, 0.0, words)
+		err2 := l.PromptStreaming(ctx, msgs, 10, 1, 0.0, words)
 		close(words)
 		wg.Wait()
 		if err2 != nil {
@@ -310,7 +310,7 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl := len(msgs)
-	s, err := l.llamaCPPPromptBlocking(ctx, msgs, 1, 0)
+	s, err := l.llamaCPPPromptBlocking(ctx, msgs, 100, 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0)
+	s, err = l.llamaCPPPromptBlocking(ctx, msgs, 100, 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +338,7 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0); err != nil {
+	if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 100, 1, 0); err != nil {
 		t.Fatal(err)
 	}
 	msgs = append(msgs, parseToolResponse(t, s, 1)...)
@@ -346,7 +346,7 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 1, 0); err != nil {
+	if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 100, 1, 0); err != nil {
 		t.Fatal(err)
 	}
 	msgs = append(msgs, Message{Role: Assistant, Content: s})

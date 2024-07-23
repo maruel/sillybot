@@ -136,9 +136,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # TODO: Structured format and verifications.
     stream = data.get("stream", False)
     prompt = data["messages"]
+    max_tokens = data.get("max_tokens", 500)
     output = self._pipe(
         prompt,
-        max_new_tokens=500,
+        max_new_tokens=max_tokens,
         return_full_text=False,
         temperature=0.0, # ??
         do_sample=False,

@@ -344,7 +344,8 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 			}
 		}
 	}()
-	err = s.l.PromptStreaming(ctx, c.Messages, 0, 1.0, words)
+	// We're chatting, we don't want too much content.
+	err = s.l.PromptStreaming(ctx, c.Messages, 2000, 0, 1.0, words)
 	close(words)
 	wg.Wait()
 
@@ -368,7 +369,9 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 			{Role: llm.User, Content: req.msg},
 		}
 
-		if reply, err := s.l.Prompt(ctx, msgs, 0, 1.0); err != nil {
+		// Intentionally limit the number of tokens, otherwise it's Stable
+		// Diffusion that is unhappy.
+		if reply, err := s.l.Prompt(ctx, msgs, 70, 0, 1.0); err != nil {
 			slog.Error("discord", "message", "failed to enhance prompt", "error", err)
 		} else {
 			msg = reply

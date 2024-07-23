@@ -408,16 +408,16 @@ func (l *Session) GetMetrics(ctx context.Context, m *Metrics) error {
 // See PromptStreaming for the arguments values.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
+func (l *Session) Prompt(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64) (string, error) {
 	start := time.Now()
 	msgs = l.processMsgs(msgs)
 	slog.Info("llm", "msgs", msgs)
 	reply := ""
 	var err error
 	if l.Encoding == nil {
-		reply, err = l.openAIPromptBlocking(ctx, msgs, seed, temperature)
+		reply, err = l.openAIPromptBlocking(ctx, msgs, maxtoks, seed, temperature)
 	} else {
-		reply, err = l.llamaCPPPromptBlocking(ctx, msgs, seed, temperature)
+		reply, err = l.llamaCPPPromptBlocking(ctx, msgs, maxtoks, seed, temperature)
 	}
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
@@ -449,16 +449,16 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, seed int, temperat
 // Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) error {
+func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) error {
 	start := time.Now()
 	msgs = l.processMsgs(msgs)
 	slog.Info("llm", "msgs", msgs)
 	reply := ""
 	var err error
 	if l.Encoding == nil {
-		reply, err = l.openAIPromptStreaming(ctx, msgs, seed, temperature, words)
+		reply, err = l.openAIPromptStreaming(ctx, msgs, maxtoks, seed, temperature, words)
 	} else {
-		reply, err = l.llamaCPPPromptStreaming(ctx, msgs, seed, temperature, words)
+		reply, err = l.llamaCPPPromptStreaming(ctx, msgs, maxtoks, seed, temperature, words)
 	}
 	if err != nil {
 		slog.Error("llm", "reply", reply, "error", err, "duration", time.Since(start).Round(time.Millisecond))
@@ -470,9 +470,10 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, seed int,
 
 //
 
-func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
+func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64) (string, error) {
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",
+		MaxTokens:   maxtoks,
 		Messages:    msgs,
 		Seed:        seed,
 		Temperature: temperature,
@@ -487,10 +488,11 @@ func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, seed
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) (string, error) {
+func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",
 		Messages:    msgs,
+		MaxTokens:   maxtoks,
 		Stream:      true,
 		Seed:        seed,
 		Temperature: temperature,
@@ -544,8 +546,8 @@ func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, see
 	}
 }
 
-func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, seed int, temperature float64) (string, error) {
-	data := llamaCPPCompletionRequest{Seed: int64(seed), Temperature: temperature}
+func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64) (string, error) {
+	data := llamaCPPCompletionRequest{Seed: int64(seed), Temperature: temperature, NPredict: int64(maxtoks)}
 	// Doc mentions it causes non-determinism even if a non-zero seed is
 	// specified. Disable if it becomes a problem.
 	data.CachePrompt = true
@@ -560,11 +562,12 @@ func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, se
 	return msg.Content, nil
 }
 
-func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, seed int, temperature float64, words chan<- string) (string, error) {
+func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	data := llamaCPPCompletionRequest{
 		Stream:      true,
 		Seed:        int64(seed),
 		Temperature: temperature,
+		NPredict:    int64(maxtoks),
 	}
 	// Doc mentions it causes non-determinism even if a non-zero seed is
 	// specified. Disable if it becomes a problem.
@@ -795,7 +798,7 @@ type llamaCPPCompletionRequest struct {
 	// top_k             float64
 	// top_p             float64
 	// min_p             float64
-	// n_predict         int64
+	NPredict int64 `json:"n_predict,omitempty"` // Maximum number of tokens to predict
 	// n_keep            int64
 	// stop              []string
 	// tfs_z             float64
@@ -862,6 +865,7 @@ type llamaCPPCompletionResponse struct {
 // https://platform.openai.com/docs/api-reference/chat/create
 type openAIChatCompletionRequest struct {
 	Model       string    `json:"model"`
+	MaxTokens   int       `json:"max_tokens,omitempty"`
 	Stream      bool      `json:"stream"`
 	Messages    []Message `json:"messages"`
 	Seed        int       `json:"seed,omitempty"`
