@@ -1118,7 +1118,7 @@ func (d *discordBot) handleImage(req intReq) {
 	hasUpdates := false
 	var lastUpdate time.Time
 	for {
-		ok := true
+		ok := false
 		skip := false
 		select {
 		case <-t.C:
