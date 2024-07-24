@@ -930,12 +930,17 @@ func splitResponse(t string) int {
 	}
 
 	// TODO: Highlighting pairs: '*' and '_'
-	i := strings.LastIndexAny(t[start:], ".?!")
-	if i == -1 {
+	m := punctuation.FindStringIndex(t[start:])
+	if m == nil {
 		return 0
 	}
-	return start + i + 1
+	return start + m[1]
 }
+
+// punctuation matches when it's ending the string or when it's followed by a
+// whitespace. We don't need to handle \n (LF) since it's already handled
+// earlier.
+var punctuation = regexp.MustCompile(`[\.\?\!]($| )`)
 
 // handleImage generates images based on the user prompt.
 func (d *discordBot) handleImage(req intReq) {

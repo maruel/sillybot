@@ -29,6 +29,7 @@ func TestSplitResponse(t *testing.T) {
 		{"1. Do.", 0},
 		{"- Do stuff.", 0},
 		{"To do what you want, use `os.ReadFile", 0},
+		{"To do what you want, use node.js and it's going to be fine", 0},
 	}
 	for i, line := range data {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
