@@ -97,16 +97,25 @@ Talk with it and use its commands as described at:
 
 ## Hardware requirement
 
-- LLM: any <4 years old computer really. A GPU is not required. If you are
-  unsure, start with Qwen2 1.5B by using `model: "qwen2-1_5b-instruct-q8_0"` in
-  the `llm:` section of `config.yml`. This requires 2GiB of RAM. Go up with
+- **LLM**: any <4 years old computer, really. A GPU is not required. If you are
+  unsure, start with Qwen2 0.5B by using `model: "qwen2-0_5b-instruct-q5_k_m"`
+  in the `llm:` section of `config.yml`. This requires 1GiB of RAM. Go up with
   larger models from there.
-- Image Generation: a GPU with 6GiB of video memory (VRAM) (12GiB is better) or
-  a MacBook Pro. While it works on CPU, expect a minute or two to generate each
-  image.
+    - I recommend to chat with the bot, use the `/metrics` command and iterate
+      to use increasingly larger models as long as you can keep >=200tok/s for
+      prompt parsing and >=20tok/s for generation.
+    - When using models with large context window (>8K) like Llama 3.1 and
+      Mistral Nemo, you may want to explicitly limit the context window to a
+      smaller size like 16384, 32768 or 65536 so it reduces memory requirements.
+      Counter-intuitively, reducing the context window too much will slow down
+      generation.
+- **Image Generation**: a nVidia GPU with 6GiB of video memory (VRAM) (12GiB is
+  better) or a MacBook Pro. While it works on CPU, expect a minute or two to
+  generate each image.
 
-You can use 2 computers: one running the LLM and one the image generation! Start
-the server manually then use the `remote:` option in `config.yml`.
+**Pro-tip**: You can use 2 computers: one running the LLM and one the image
+generation! Start the llm/imagegen server manually then use the `remote:` option
+in `config.yml`.
 
 
 ## Installation

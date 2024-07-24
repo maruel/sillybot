@@ -46,7 +46,7 @@ type discordBot struct {
 	ig        *imagegen.Session
 	settings  sillybot.Settings
 	memDir    string
-	toolMsg   llm.Message
+	toolsMsg  llm.Message
 	chat      chan msgReq
 	image     chan intReq
 	gcptoken  string
@@ -56,8 +56,9 @@ type discordBot struct {
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
 func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
-	msg := llm.Message{}
+	toolsMsg := llm.Message{}
 	if l.Encoding != nil && strings.Contains(strings.ToLower(string(l.Model)), "mistral") {
+		slog.Info("discord", "message", "tools are enabled", "encoding", l.Encoding)
 		// HACK: Also an hack.
 		availtools := []tools.MistralTool{
 			/*
@@ -86,7 +87,7 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 		if err != nil {
 			return nil, err
 		}
-		msg = llm.Message{
+		toolsMsg = llm.Message{
 			Role:    llm.AvailableTools,
 			Content: string(b),
 		}
@@ -125,7 +126,7 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 		ig:        ig,
 		settings:  settings,
 		memDir:    memDir,
-		toolMsg:   msg,
+		toolsMsg:  toolsMsg,
 		chat:      make(chan msgReq, 5),
 		image:     make(chan intReq, 3),
 		gcptoken:  gcptoken,
@@ -336,7 +337,9 @@ func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.Guild
 		"  * I can generate images and memes 🖼️. Try `/image_auto flowers garden gorgeous realistic`, or `/meme_auto AI overlord` or `/meme_auto flowers garden fun`\n" +
 		"  * Get information about me. Try `/list_models`, `/metrics`\n" +
 		"  * I sometimes get stuck! Reset my memory 🧠 and optionally change my system prompt with `/forget`\n" +
-		"**Warning**: I have no privacy protection yet."
+		"I'm a work in progress! Please submit fixes and improvements at https://github.com/maruel/sillybot !\n" +
+		"**Warning**: I have no privacy protection yet. I do not listen unless you tag me directly.\n" +
+		"**Important**: Keep it civil otherwise I'll have to be turned down.\n"
 	for _, channel := range event.Guild.Channels {
 		if t := channel.Type; t == discordgo.ChannelTypeGuildVoice || t == discordgo.ChannelTypeGuildCategory {
 			continue
@@ -349,7 +352,8 @@ func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.Guild
 		}
 		skip := false
 		for _, msg := range msgs {
-			if msg.Author.ID == dg.State.User.ID && msg.Content == welcome {
+			//  && msg.Content == welcome
+			if msg.Author.ID == dg.State.User.ID {
 				slog.Info("discord", "message", "skipping welcome to not spam", "channel", channel.Name)
 				skip = true
 				break
@@ -622,8 +626,11 @@ func (d *discordBot) interactionRespond(int *discordgo.Interaction, s string) er
 
 // chatRoutine serializes the chat requests.
 func (d *discordBot) chatRoutine() {
-	// Prewarm the system prompt.
-	if _, err := d.l.Prompt(d.ctx, d.getMemory("", "").Messages, 100, 0, 1.0); err != nil {
+	// Prewarm the system prompt, clearing previous memory.
+	c := d.getMemory("", "")
+	c.Messages = nil
+	c = d.getMemory("", "")
+	if _, err := d.l.Prompt(d.ctx, c.Messages, 100, 0, 1.0); err != nil {
 		slog.Error("discord", "error", err)
 	}
 	for req := range d.chat {
@@ -673,8 +680,8 @@ func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 	// TODO: Send a warning or forget when one of Model, Prompt, Tools changed.
 	c := d.mem.Get(authorID, channelID)
 	if len(c.Messages) == 0 {
-		if d.toolMsg.Content != "" {
-			c.Messages = []llm.Message{d.toolMsg}
+		if d.toolsMsg.Content != "" {
+			c.Messages = []llm.Message{d.toolsMsg}
 		}
 		c.Messages = append(c.Messages, llm.Message{Role: llm.System, Content: d.settings.PromptSystem})
 	}
