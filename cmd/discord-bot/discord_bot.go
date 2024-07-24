@@ -330,7 +330,13 @@ func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.Guild
 	if event.Guild.Unavailable {
 		return
 	}
-	const welcome = "I'm back up! Check out my commands by typing the '/' slash key. I can generate images and memes.\n**Warning**: I have no privacy protection yet."
+	const welcome = "I'm back up! 👋 I can do many things!\n" +
+		"- Tag me in channels to chat with me. Start a DM to talk alone, then no need to tag me at every messages.\n" +
+		"- Check out my commands by typing the '/' slash key:\n" +
+		"  * I can generate images and memes 🖼️. Try `/image_auto flowers garden gorgeous realistic`, or `/meme_auto AI overlord` or `/meme_auto flowers garden fun`\n" +
+		"  * Get information about me. Try `/list_models`, `/metrics`\n" +
+		"  * I sometimes get stuck! Reset my memory 🧠 and optionally change my system prompt with `/forget`\n" +
+		"**Warning**: I have no privacy protection yet."
 	for _, channel := range event.Guild.Channels {
 		if t := channel.Type; t == discordgo.ChannelTypeGuildVoice || t == discordgo.ChannelTypeGuildCategory {
 			continue
@@ -1043,8 +1049,7 @@ func (d *discordBot) handleImage(req intReq) {
 				// Image: use the LLM to generate the image prompt based on the description.
 				msgs := []llm.Message{
 					{Role: llm.System, Content: d.settings.PromptImage},
-					{Role: llm.User, Content: req.description},
-					{Role: llm.User, Content: labelsContent},
+					{Role: llm.User, Content: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent},
 				}
 				if imagePrompt, u.err = d.l.Prompt(ctx, msgs, 125, seed, 1.0); u.err != nil {
 					u.err = fmt.Errorf("failed to enhance image generation prompt: %w", u.err)
