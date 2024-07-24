@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
+	"github.com/maruel/sillybot/huggingface"
 	"github.com/maruel/sillybot/llm/tools"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -85,12 +86,12 @@ func TestGuessSize(t *testing.T) {
 	//   go test -v -run TestGuessSize
 	m := 0
 	for _, k := range loadKnownLLMs(t) {
-		if l := len(k.Basename); l > m {
+		if l := len(k.Source.Basename()); l > m {
 			m = l
 		}
 	}
 	for _, k := range loadKnownLLMs(t) {
-		t.Logf("%-*s: %8d", m, k.Basename, estimateModelSize(t, k.Basename))
+		t.Logf("%-*s: %8d", m, k.Source.Basename(), estimateModelSize(t, k.Source.Basename()))
 	}
 }
 
@@ -122,7 +123,7 @@ func TestLLM(t *testing.T) {
 		// - since the models are smaller, they take less memory and they run
 		//   faster, which makes unit test is much faster.
 		quant := "Q2_K"
-		model := strings.ToLower(k.Basename)
+		model := strings.ToLower(k.Source.Basename())
 		if strings.HasPrefix(model, "meta-llama-3.1-8b") {
 			// They didn't upload Q2_L yet.
 			quant = "Q3_K_L"
@@ -154,8 +155,8 @@ func TestLLM(t *testing.T) {
 			quant = strings.ToLower(quant)
 		}
 
-		t.Run(k.Basename+quant, func(t *testing.T) {
-			if size := estimateModelSize(t, k.Basename); !runLarge && size > 9000000 {
+		t.Run(k.Source.Basename()+quant, func(t *testing.T) {
+			if size := estimateModelSize(t, k.Source.Basename()); !runLarge && size > 9000000 {
 				t.Skip("skipping large model")
 			}
 			if testing.Short() && !strings.HasPrefix(model, "qwen2-0_5b-instruct-") {
@@ -165,7 +166,7 @@ func TestLLM(t *testing.T) {
 				t.Skip("skipping because -fa has to be enabled first")
 			}
 			start := time.Now()
-			modelFile := testModel(t, k.Basename+quant, systemPrompt)
+			modelFile := testModel(t, k.Source+huggingface.PackedFileRef(quant), systemPrompt)
 			i, err := os.Stat(modelFile)
 			if err != nil {
 				t.Fatalf("%q: %s", modelFile, err)
@@ -188,7 +189,7 @@ func TestLLM(t *testing.T) {
 	})
 }
 
-func testModel(t *testing.T, model, systemPrompt string) string {
+func testModel(t *testing.T, model huggingface.PackedFileRef, systemPrompt string) string {
 	l := loadModel(t, model)
 	if l.Encoding != nil {
 		t.Run("CustomEncoding", func(t *testing.T) {
@@ -249,7 +250,7 @@ func TestMistralTool(t *testing.T) {
 	}
 	// Sadly Q2_K is too quantized for this test to pass, so we need to use
 	// Q3_K_S which is 3.2GiB.
-	l := loadModel(t, "Mistral-7B-Instruct-v0.3-Q3_K_S")
+	l := loadModel(t, "hf:bartowski/Mistral-7B-Instruct-v0.3-GGUF/HEAD/Mistral-7B-Instruct-v0.3-Q3_K_S")
 	// Refs:
 	// - SpecialTokens in
 	//   https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py
@@ -423,7 +424,7 @@ func get_current_weather(t *testing.T, location, format string) string {
 
 //
 
-func loadModel(t *testing.T, model string) *Session {
+func loadModel(t *testing.T, model huggingface.PackedFileRef) *Session {
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)

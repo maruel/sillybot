@@ -21,9 +21,31 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
+func TestPackedFileRef(t *testing.T) {
+	p := PackedFileRef("hf:author/repo/HEAD/file")
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.RepoID(); got != "author/repo" {
+		t.Fatal(got)
+	}
+	if got := p.Author(); got != "author" {
+		t.Fatal(got)
+	}
+	if got := p.Repo(); got != "repo" {
+		t.Fatal(got)
+	}
+	if got := p.Basename(); got != "file" {
+		t.Fatal(got)
+	}
+	if got := p.RepoURL(); got != "https://huggingface.co/author/repo" {
+		t.Fatal(got)
+	}
+}
+
 func TestGetModelInfo(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/models/microsoft/Phi-3-mini-4k-instruct/revision/main" {
+		if r.URL.Path != "/api/models/microsoft/Phi-3-mini-4k-instruct/revision/HEAD" {
 			t.Errorf("unexpected path, got: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)

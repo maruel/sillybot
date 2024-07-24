@@ -44,29 +44,58 @@ type Options struct {
 	// It will be selected automatically from KnownLLMs.
 	//
 	// Use "python" to use the integrated python backend.
-	Model string
+	Model huggingface.PackedFileRef
 
 	_ struct{}
+}
+
+// Validate checks for obvious errors in the fields.
+func (o *Options) Validate() error {
+	// TODO: Remote.
+	if o.Model != "" && o.Model != "python" {
+		if err := o.Model.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // KnownLLM is a known model.
 //
 // Currently assumes the model is hosted on HuggingFace.
 type KnownLLM struct {
-	// RepoID is the repository in the form <author>/<repo>.
-	RepoID string `yaml:"repo"`
+	// Source is the repository in the form "hf:<author>/<repo>/<basename>".
+	Source huggingface.PackedFileRef `yaml:"source"`
 	// PackagingType is the file format used in the model. It can be one of
 	// "safetensors" or "gguf".
 	PackagingType string
-	// Basename is the base filename when PackagingType is one of "gguf".
-	Basename string
-	// UpstreamID is the upstream repo when the model is based on another one.
-	UpstreamID string `yaml:"upstream"`
+	// Upstream is the upstream repo in the form "hf:<author>/<repo>" when the
+	// model is based on another one.
+	Upstream huggingface.PackedRepoRef `yaml:"upstream"`
 	// PromptEncoding is only used when using llama-server in /completion mode.
 	// When not present, llama-server is used in OpenAI compatible API mode.
 	PromptEncoding *PromptEncoding `yaml:"prompt_encoding"`
 
 	_ struct{}
+}
+
+// Validate checks for obvious errors in the fields.
+func (k *KnownLLM) Validate() error {
+	if err := k.Source.Validate(); err != nil {
+		return fmt.Errorf("invalid source: %w", err)
+	}
+	if k.PackagingType != "safetensors" && k.PackagingType != "gguf" {
+		return fmt.Errorf("invalid packaginetype %q", k.PackagingType)
+	}
+	if err := k.Upstream.Validate(); err != nil {
+		return fmt.Errorf("invalid upstream: %w", err)
+	}
+	if k.PromptEncoding != nil {
+		if err := k.PromptEncoding.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // PromptEncoding describes how to encode the prompt.
@@ -89,23 +118,9 @@ type PromptEncoding struct {
 	_ struct{}
 }
 
-// URL returns the canonical URL for this repository.
-func (k *KnownLLM) URL() string {
-	return "https://huggingface.co/" + k.RepoID
-}
-
-// Validate checks for obvious errors in the fields.
-func (k *KnownLLM) Validate() error {
-	if strings.Count(k.RepoID, "/") != 1 {
-		return fmt.Errorf("invalid repo %q", k.RepoID)
-	}
-	if k.PackagingType != "safetensors" && k.PackagingType != "gguf" {
-		return fmt.Errorf("invalid packaginetype %q", k.PackagingType)
-	}
-	if strings.Count(k.UpstreamID, "/") != 1 {
-		return fmt.Errorf("invalid upstream %q", k.UpstreamID)
-	}
-	// TODO: more validation.
+// validate checks for obvious errors in the fields.
+func (p *PromptEncoding) validate() error {
+	// TODO: I lied. Please send a PR.
 	return nil
 }
 
@@ -115,7 +130,7 @@ func (k *KnownLLM) Validate() error {
 // requirement.
 type Session struct {
 	HF       *huggingface.Client
-	Model    string
+	Model    huggingface.PackedFileRef
 	Encoding *PromptEncoding
 	baseURL  string
 	backend  string
@@ -131,6 +146,9 @@ type Session struct {
 // New instantiates a llama.cpp or llamafile server, or optionally uses
 // python instead.
 func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM) (*Session, error) {
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
 	cacheModels := filepath.Join(cache, "models")
 	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create the directory to cache models: %w", err)
@@ -143,7 +161,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	known := -1
 	if opts.Model != "python" {
 		for i, k := range knownLLMs {
-			if strings.HasPrefix(opts.Model, k.Basename) {
+			if strings.HasPrefix(string(opts.Model), string(k.Source)) {
 				known = i
 				l.Encoding = k.PromptEncoding
 				break
@@ -656,10 +674,10 @@ func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []Message) er
 //
 // Currently hard-coded to GGUF files and Hugging Face. Doesn't support split
 // files.
-func (l *Session) ensureModel(ctx context.Context, model string, k KnownLLM) (string, error) {
+func (l *Session) ensureModel(ctx context.Context, model huggingface.PackedFileRef, k KnownLLM) (string, error) {
 	// TODO: This is very "meh".
 	// Designed to handle special case like Mistral-7B-Instruct-v0.3-Q3_K_M.
-	ext := strings.ToUpper(model)
+	ext := strings.ToUpper(model.Basename())
 	if i := strings.LastIndexByte(ext, '-'); i > 0 {
 		ext = ext[i+1:]
 	}
@@ -688,23 +706,22 @@ func (l *Session) ensureModel(ctx context.Context, model string, k KnownLLM) (st
 	}
 
 	// Hack: quickly check if the file is there, if so, just return this.
-	dst := filepath.Join(l.HF.Cache, model+".gguf")
+	dst := filepath.Join(l.HF.Cache, model.Basename()+".gguf")
 	_, err := os.Stat(dst)
 	if err == nil {
 		l.modelFile = dst
 		return dst, nil
 	}
 	slog.Info("llm", "model", model, "state", "missing")
-	if k.RepoID == "" {
+	if k.Source.RepoID() == "" {
 		return "", fmt.Errorf("can't guess model %q huggingface repo", model)
 	}
 	// Hack: we assume everything is on HuggingFace.
 	switch k.PackagingType {
 	case "gguf":
-		if dst, err = l.HF.EnsureFile(ctx, k.RepoID, model+".gguf", 0o644); err != nil {
+		if dst, err = l.HF.EnsureFile(ctx, model+".gguf", 0o644); err != nil {
 			// Get the list of files to help the user.
-			parts := strings.SplitN(k.RepoID, "/", 2)
-			m := huggingface.Model{ModelRef: huggingface.ModelRef{Author: parts[0], Repo: parts[1]}}
+			m := huggingface.Model{ModelRef: model.ModelRef()}
 			err = fmt.Errorf("can't find model %q at %s: %w", model, m.URL(), err)
 			if err2 := l.HF.GetModelInfo(ctx, &m); err2 != nil {
 				return dst, errors.Join(err, err2)
@@ -713,7 +730,7 @@ func (l *Session) ensureModel(ctx context.Context, model string, k KnownLLM) (st
 			added := false
 			for _, f := range m.Files {
 				// TODO: Move this into a common function.
-				if !strings.HasPrefix(f, k.Basename) {
+				if !strings.HasPrefix(f, k.Source.Basename()) {
 					continue
 				}
 				if strings.Contains(f, "/") {
@@ -728,7 +745,7 @@ func (l *Session) ensureModel(ctx context.Context, model string, k KnownLLM) (st
 				if added {
 					msg += ", "
 				}
-				msg += strings.TrimSuffix(f[len(k.Basename):], ".gguf")
+				msg += strings.TrimSuffix(f[len(model.Basename()):], ".gguf")
 				added = true
 			}
 			return dst, fmt.Errorf("%w; %s", err, msg)
@@ -753,7 +770,7 @@ func (l *Session) processMsgs(msgs []Message) []Message {
 
 	keys := map[string]string{
 		"Now":   time.Now().Format("Monday 2006-01-02T15:04:05 MST"),
-		"Model": l.Model,
+		"Model": string(l.Model),
 	}
 	b := bytes.Buffer{}
 	if err = t.Execute(&b, keys); err != nil {

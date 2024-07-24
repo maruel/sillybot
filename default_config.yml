@@ -12,11 +12,11 @@ bot:
     # See https://github.com/maruel/sillybot/blob/main/py/README.md for how
     # to run.
     remote: ""
-    # Mistral-7B-Instruct-v0.3.Q5_K_M is fast enough on unaccelerated CPU and
-    # takes 9GiB of RAM which should work on most computers. It has a permissive
-    # license.
+    # Meta-Llama-3.1-8B-Instruct-Q5_K_M and Mistral-7B-Instruct-v0.3.Q5_K_M are
+    # fast enough on unaccelerated CPU and takes 9GiB of RAM which should work
+    # on most computers. Mistral has a permissive license, Llama doesn't.
     # Use "python" to use the embedded pytorch generator.
-    model: Mistral-7B-Instruct-v0.3.Q5_K_M
+    model: hf:lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/Meta-Llama-3.1-8B-Instruct-Q5_K_M
   image_gen:
     # Specify a "host:port" of an already running py/image_gen.py server.
     #
@@ -102,10 +102,9 @@ bot:
 knownllms:
   # Gemma 2 family:
   # https://huggingface.co/collections/google/gemma-2-release-667d6600fd5220e7b967f315
-  - repo: bartowski/gemma-2-9b-it-GGUF
+  - source: hf:bartowski/gemma-2-9b-it-GGUF/HEAD/gemma-2-9b-it-
     packagingtype: gguf
-    basename: gemma-2-9b-it-
-    upstream: google/gemma-2-9b-it
+    upstream: hf:google/gemma-2-9b-it
     # https://ai.google.dev/gemma/docs/formatting
     #prompt_encoding:
     #  begin_of_text: ""
@@ -115,18 +114,16 @@ knownllms:
     #  user_token_end: "<end_of_turn>\n"
     #  assistant_token_start: "<start_of_turn>model\n"
     #  assistant_token_end: "<end_of_turn>\n"
-  - repo: bartowski/gemma-2-27b-it-GGUF
+  - source: hf:bartowski/gemma-2-27b-it-GGUF/HEAD/gemma-2-27b-it-
     packagingtype: gguf
-    basename: gemma-2-27b-it-
-    upstream: google/gemma-2-27b-it
+    upstream: hf:google/gemma-2-27b-it
 
   # Llama 3 / 3.1 family:
   # https://huggingface.co/collections/meta-llama/llama-31-669fc079a0c406a149a5738f
   # https://huggingface.co/collections/meta-llama/meta-llama-3-66214712577ca38149ebb2b6
-  - repo: lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF
+  - source: hf:lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/HEAD/Meta-Llama-3.1-8B-Instruct-
     packagingtype: gguf
-    basename: Meta-Llama-3.1-8B-Instruct-
-    upstream: meta-llama/Meta-Llama-3.1-8B-Instruct
+    upstream: hf:meta-llama/Meta-Llama-3.1-8B-Instruct
     # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
     #prompt_encoding:
     #  begin_of_text: "<|begin_of_text|>"
@@ -138,18 +135,17 @@ knownllms:
     #  assistant_token_end: "<|eot_id|>\n"
     # TODO: This repo put Q5_K_L and higher into subdirectories, which is
     # unsupported.
-  - repo: bartowski/Meta-Llama-3-70B-Instruct-GGUF
+  - source: hf:bartowski/Meta-Llama-3-70B-Instruct-GGUF/HEAD/Meta-Llama-3-70B-Instruct-
     packagingtype: gguf
-    basename: Meta-Llama-3-70B-Instruct-
-    upstream: meta-llama/Meta-Llama-3-70B-Instruct
+    upstream: hf:meta-llama/Meta-Llama-3-70B-Instruct
 
   # Mistral family
   # https://huggingface.co/mistralai
-  - repo: bartowski/Mistral-7B-Instruct-v0.3-GGUF
+  - source: hf:bartowski/Mistral-7B-Instruct-v0.3-GGUF/HEAD/Mistral-7B-Instruct-v0.3-
     packagingtype: gguf
-    basename: Mistral-7B-Instruct-v0.3-
-    upstream: mistralai/Mistral-7B-Instruct-v0.3
-    # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py#L10
+    upstream: hf:mistralai/Mistral-7B-Instruct-v0.3
+    # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py
+    # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py
     prompt_encoding:
       begin_of_text:                "<s>"
       system_token_start:           "[INST]\u2581"
@@ -166,29 +162,15 @@ knownllms:
       tool_call_result_token_end:   "[/TOOL_RESULTS]"
     # bartowski/Mixtral-8x22B-v0.1-GGUF only contain segmented files and I
     # didn't implement support yet.
-  - repo: MaziyarPanahi/Mixtral-8x7B-Instruct-v0.1-GGUF
+  - source: hf:MaziyarPanahi/Mixtral-8x7B-Instruct-v0.1-GGUF/HEAD/Mixtral-8x7B-Instruct-v0.1.
     packagingtype: gguf
-    basename: Mixtral-8x7B-Instruct-v0.1.
-    upstream: mistralai/Mixtral-8x7B-Instruct-v0.1
-    # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py#L10
-    # and
-    # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py#L348
-    # See py/mistral_test.py
-    #prompt_encoding:
-    #  begin_of_text: "<s>"
-    #  system_token_start: "[INST]▁"
-    #  system_token_end: " [/INST]\n"
-    #  user_token_start: "[INST]▁"
-    #  user_token_end: " [/INST]\n"
-    #  assistant_token_start: ""
-    #  assistant_token_end: ""
+    upstream: hf:mistralai/Mixtral-8x7B-Instruct-v0.1
 
   # Phi-3/3.1 family
   # https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3
-  - repo: bartowski/Phi-3.1-mini-4k-instruct-GGUF
+  - source: hf:bartowski/Phi-3.1-mini-4k-instruct-GGUF/HEAD/Phi-3.1-mini-4k-instruct-
     packagingtype: gguf
-    basename: Phi-3.1-mini-4k-instruct-
-    upstream: microsoft/Phi-3-mini-4k-instruct
+    upstream: hf:microsoft/Phi-3-mini-4k-instruct
     # https://huggingface.co/microsoft/Phi-3-mini-4k-instruct#chat-format
     #prompt_encoding:
     #  begin_of_text: ""
@@ -198,26 +180,22 @@ knownllms:
     #  user_token_end: "<|end|>\n"
     #  assistant_token_start: "<|assistant|>\n"
     #  assistant_token_end: "<|end|>\n"
-  - repo: bartowski/Phi-3.1-mini-128k-instruct-GGUF
+  - source: hf:bartowski/Phi-3.1-mini-128k-instruct-GGUF/HEAD/Phi-3.1-mini-128k-instruct-
     packagingtype: gguf
-    basename: Phi-3.1-mini-128k-instruct-
-    upstream: microsoft/Phi-3-mini-128k-instruct
+    upstream: hf:microsoft/Phi-3-mini-128k-instruct
   # Nobody uploaded Phi-3-small-* gguf files. Weird.
-  - repo: bartowski/Phi-3-medium-4k-instruct-GGUF
+  - source: hf:bartowski/Phi-3-medium-4k-instruct-GGUF/HEAD/Phi-3-medium-4k-instruct-
     packagingtype: gguf
-    basename: Phi-3-medium-4k-instruct-
-    upstream: microsoft/Phi-3-medium-4k-instruct
-  - repo: bartowski/Phi-3-medium-128k-instruct-GGUF
+    upstream: hf:microsoft/Phi-3-medium-4k-instruct
+  - source: hf:bartowski/Phi-3-medium-128k-instruct-GGUF/HEAD/Phi-3-medium-128k-instruct-
     packagingtype: gguf
-    basename: Phi-3-medium-128k-instruct-
-    upstream: microsoft/Phi-3-medium-128k-instruct
+    upstream: hf:microsoft/Phi-3-medium-128k-instruct
 
   # Qwen 2 family
   # https://huggingface.co/collections/Qwen/qwen2-6659360b33528ced941e557f
-  - repo: Qwen/Qwen2-0.5B-Instruct-GGUF
+  - source: hf:Qwen/Qwen2-0.5B-Instruct-GGUF/HEAD/qwen2-0_5b-instruct-
     packagingtype: gguf
-    basename: qwen2-0_5b-instruct-
-    upstream: Qwen/Qwen2-0.5B-Instruct
+    upstream: hf:Qwen/Qwen2-0.5B-Instruct
     # https://github.com/QwenLM/Qwen/blob/main/tokenization_note.md#special-tokens
     #prompt_encoding:
     #  begin_of_text: ""
@@ -227,11 +205,9 @@ knownllms:
     #  user_token_end: "<|im_end|>\n"
     #  assistant_token_start: ""
     #  assistant_token_end: "<|end_of_text|>\n"
-  - repo: Qwen/Qwen2-1.5B-Instruct-GGUF
+  - source: hf:Qwen/Qwen2-1.5B-Instruct-GGUF/HEAD/qwen2-1_5b-instruct-
     packagingtype: gguf
-    basename: qwen2-1_5b-instruct-
-    upstream: Qwen/Qwen2-1.5B-Instruct
-  - repo: Qwen/Qwen2-7B-Instruct-GGUF
+    upstream: hf:Qwen/Qwen2-1.5B-Instruct
+  - source: hf:Qwen/Qwen2-7B-Instruct-GGUF/HEAD/qwen2-7b-instruct-
     packagingtype: gguf
-    basename: qwen2-7b-instruct-
-    upstream: Qwen/Qwen2-7B-Instruct
+    upstream: hf:Qwen/Qwen2-7B-Instruct

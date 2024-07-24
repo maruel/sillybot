@@ -76,14 +76,8 @@ func mainImpl() error {
 		if *config != "" {
 			if cfg.LoadOrDefault(*config) == nil {
 				fmt.Fprintf(o, "\nAvailable LLM models:\n")
-				l := 0
 				for _, k := range cfg.KnownLLMs {
-					if m := len(k.Basename); m > l {
-						l = m
-					}
-				}
-				for _, k := range cfg.KnownLLMs {
-					fmt.Fprintf(o, "  %-*s: %s\n", l, k.Basename, k.URL())
+					fmt.Fprintf(o, "  %s\n", k.Source)
 				}
 			}
 		}

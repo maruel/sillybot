@@ -56,7 +56,7 @@ type discordBot struct {
 // newDiscordBot opens a websocket connection to Discord and begin listening.
 func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
 	msg := llm.Message{}
-	if l.Encoding != nil && strings.Contains(strings.ToLower(l.Model), "mistral") {
+	if l.Encoding != nil && strings.Contains(strings.ToLower(string(l.Model)), "mistral") {
 		// HACK: Also an hack.
 		availtools := []tools.MistralTool{
 			/*
@@ -459,9 +459,8 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 	var replies []string
 	reply := "Known models:\n"
 	for _, k := range d.knownLLMs {
-		reply += "- [`" + k.Basename + "`](" + k.URL() + ") "
-		parts := strings.SplitN(k.RepoID, "/", 2)
-		info := huggingface.Model{ModelRef: huggingface.ModelRef{Author: parts[0], Repo: parts[1]}}
+		reply += "- [`" + k.Source.Basename() + "`](" + k.Source.RepoURL() + ") "
+		info := huggingface.Model{ModelRef: k.Source.ModelRef()}
 		if err := d.l.HF.GetModelInfo(d.ctx, &info); err != nil {
 			reply += " Oh no, we failed to query: " + err.Error()
 			slog.Error("discord", "command", data.Name, "error", err)
@@ -470,7 +469,7 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 			added := false
 			for _, f := range info.Files {
 				// TODO: Move this into a common function.
-				if !strings.HasPrefix(f, k.Basename) {
+				if !strings.HasPrefix(f, k.Source.Basename()) {
 					continue
 				}
 				if strings.Contains(f, "/") {
@@ -485,15 +484,12 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 				if added {
 					reply += ", "
 				}
-				reply += strings.TrimSuffix(f[len(k.Basename):], ".gguf")
+				reply += strings.TrimSuffix(f[len(k.Source.Basename()):], ".gguf")
 				added = true
 			}
 			if info.Upstream.Author == "" && info.Upstream.Repo == "" {
 				// Some forks are not setting up upstream properly. What a shame.
-				if parts := strings.SplitN(k.UpstreamID, "/", 2); len(parts) == 2 {
-					info.Upstream.Author = parts[0]
-					info.Upstream.Repo = parts[1]
-				}
+				info.Upstream = k.Upstream.ModelRef()
 			}
 			if info.Upstream.Author != "" && info.Upstream.Repo != "" {
 				infoUpstream := huggingface.Model{ModelRef: info.Upstream}

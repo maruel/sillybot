@@ -22,6 +22,126 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
+// PackedFileRef is a packed reference to a file in an hugging face repository.
+//
+// The form is "hf:<author>/<repo>/HEAD/<file>"
+//
+// It doesn't have allowance for a branch or commit at the moment, HEAD is
+// required until further implementation is done.
+type PackedFileRef string
+
+// RepoID returns the canonical "<author>/<repo>" for this repository.
+func (p PackedFileRef) RepoID() string {
+	if i := strings.LastIndexByte(string(p), '/'); i != -1 {
+		if i = strings.LastIndexByte(string(p[:i]), '/'); i != -1 {
+			return strings.TrimPrefix(string(p)[:i], "hf:")
+		}
+	}
+	return ""
+}
+
+// Author returns the <author> part of the packed reference.
+func (p PackedFileRef) Author() string {
+	if i := strings.IndexByte(string(p), '/'); i != -1 {
+		return strings.TrimPrefix(string(p)[:i], "hf:")
+	}
+	return ""
+}
+
+// Repo returns the <repo> part of the packed reference.
+func (p PackedFileRef) Repo() string {
+	if i := strings.IndexByte(string(p), '/'); i != -1 {
+		if j := strings.IndexByte(string(p)[i+1:], '/'); j != -1 {
+			return string(p)[i+1 : i+1+j]
+		}
+	}
+	return ""
+}
+
+// ModelRef returns the ModelRef reference to the repo containing this file.
+func (p PackedFileRef) ModelRef() ModelRef {
+	return ModelRef{Author: p.Author(), Repo: p.Repo()}
+}
+
+// Basename returns the basename part of this reference.
+func (p PackedFileRef) Basename() string {
+	if i := strings.LastIndexByte(string(p), '/'); i != -1 {
+		return string(p)[i+1:]
+	}
+	return ""
+}
+
+// RepoURL returns the canonical URL for this repository.
+func (p PackedFileRef) RepoURL() string {
+	return "https://huggingface.co/" + p.RepoID()
+}
+
+// Validate checks for obvious errors in the string.
+func (p PackedFileRef) Validate() error {
+	if !strings.HasPrefix(string(p), "hf:") {
+		return fmt.Errorf("invalid file ref %q", p)
+	}
+	parts := strings.Split(string(p)[4:], "/")
+	if len(parts) != 4 {
+		return fmt.Errorf("invalid file ref %q", p)
+	}
+	if parts[2] != "HEAD" {
+		// Add allowance for commit later. I'm looking at you, Microsoft.
+		return fmt.Errorf("invalid file ref %q", p)
+	}
+	for _, p := range parts {
+		if len(p) < 3 {
+			return fmt.Errorf("invalid file ref %q", p)
+		}
+	}
+	return nil
+}
+
+// PackedRepoRef is a packed reference to an hugging face repository.
+//
+// The form is "hf:<author>/<repo>"
+type PackedRepoRef string
+
+// RepoID returns the canonical "<author>/<repo>" for this repository.
+func (p PackedRepoRef) RepoID() string {
+	return strings.TrimPrefix(string(p), "hf:")
+}
+
+// ModelRef converts to a ModelRef reference.
+func (p PackedRepoRef) ModelRef() ModelRef {
+	out := ModelRef{}
+	if parts := strings.SplitN(p.RepoID(), "/", 2); len(parts) == 2 {
+		out.Author = parts[0]
+		out.Repo = parts[1]
+	}
+	return out
+}
+
+// RepoURL returns the canonical URL for this repository.
+func (p PackedRepoRef) RepoURL() string {
+	return "https://huggingface.co/" + strings.TrimPrefix(string(p), "hf:")
+}
+
+// Validate checks for obvious errors in the string.
+func (p PackedRepoRef) Validate() error {
+	if strings.Count(string(p), "/") != 1 {
+		return fmt.Errorf("invalid repo %q", p)
+	}
+	if !strings.HasPrefix(string(p), "hf:") {
+		return fmt.Errorf("invalid repo %q", p)
+	}
+	parts := strings.Split(string(p)[3:], "/")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid repo %q", p)
+	}
+	for _, p := range parts {
+		if len(p) < 3 {
+			return fmt.Errorf("invalid repo %q", p)
+		}
+	}
+	return nil
+}
+
 // ModelRef is a reference to a model stored on https://huggingface.co
 type ModelRef struct {
 	// Author is the owner, either a person or an organization.
@@ -135,7 +255,7 @@ type modelInfoResponse struct {
 // GetModelInfo fills the supplied Model with information from the HuggingFace Hub.
 func (c *Client) GetModelInfo(ctx context.Context, m *Model) error {
 	slog.Info("hf", "model", m.RepoID())
-	url := c.serverBase + "/api/models/" + m.RepoID() + "/revision/main"
+	url := c.serverBase + "/api/models/" + m.RepoID() + "/revision/HEAD"
 	resp, err := authGet(ctx, url, c.token)
 	if err != nil {
 		return fmt.Errorf("failed to list repoID %s: %w", m.RepoID(), err)
@@ -177,12 +297,12 @@ func (c *Client) GetModelInfo(ctx context.Context, m *Model) error {
 // EnsureFile ensures the file is available, downloads it otherwise.
 //
 // TODO: Support split files.
-func (c *Client) EnsureFile(ctx context.Context, repoID string, filename string, mode os.FileMode) (string, error) {
-	dst := filepath.Join(c.Cache, filename)
+func (c *Client) EnsureFile(ctx context.Context, ref PackedFileRef, mode os.FileMode) (string, error) {
+	dst := filepath.Join(c.Cache, ref.Basename())
 	if _, err := os.Stat(dst); err == nil {
 		return dst, err
 	}
-	url := c.serverBase + "/" + repoID + "/resolve/main/" + filename + "?download=true"
+	url := c.serverBase + "/" + ref.RepoID() + "/resolve/HEAD/" + ref.Basename() + "?download=true"
 	return dst, DownloadFile(ctx, url, dst, c.token, mode)
 }
 
