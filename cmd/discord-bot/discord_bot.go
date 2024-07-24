@@ -1073,9 +1073,7 @@ func (d *discordBot) handleImage(req intReq) {
 				return
 			}
 			// Save it to disk. Don't fail the user in this case, log an error.
-			p := filepath.Join(d.memDir, time.Now().Format("2006-01-02-15-04-05.000000"))
-			b, err := json.Marshal(map[string]interface{}{
-				"user":         req.int.User.Username,
+			data := map[string]interface{}{
 				"channel":      req.int.ChannelID,
 				"guild":        req.int.GuildID,
 				"description":  req.description,
@@ -1084,10 +1082,18 @@ func (d *discordBot) handleImage(req intReq) {
 				"seed":         seed,
 				"command":      req.cmdName,
 				"model":        d.l.Model,
-			})
+			}
+			if req.int.User != nil {
+				data["user"] = req.int.User.Username
+			}
+			if req.int.Member != nil {
+				data["user"] = req.int.Member.User.Username
+			}
+			b, err := json.Marshal(data)
 			if err != nil {
 				slog.Error("discord", "message", "failed marshaling metadata", "error", err)
 			}
+			p := filepath.Join(d.memDir, time.Now().Format("2006-01-02-15-04-05.000000"))
 			if err2 := os.WriteFile(p+".json", b, 0o644); err2 != nil {
 				slog.Error("discord", "message", "failed saving metadata", "error", err2)
 				err = err2
