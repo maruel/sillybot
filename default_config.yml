@@ -12,11 +12,20 @@ bot:
     # See https://github.com/maruel/sillybot/blob/main/py/README.md for how
     # to run.
     remote: ""
-    # Meta-Llama-3.1-8B-Instruct-Q5_K_M and Mistral-7B-Instruct-v0.3.Q5_K_M are
-    # fast enough on unaccelerated CPU and takes 9GiB of RAM which should work
-    # on most computers. Mistral has a permissive license, Llama doesn't.
+    # Select the model from the known models in
+    # https://github.com/maruel/sillybot/blob/main/default_config.yml or select
+    # a new one from Hugging Face.
+    #
     # Use "python" to use the embedded pytorch generator.
-    model: hf:lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/Meta-Llama-3.1-8B-Instruct-Q5_K_M
+    #
+    # Recommended small and fast model to start with. If you have a high end
+    # computer, you may want to try
+    # "hf:bartowski/Mistral-Nemo-Instruct-2407-GGUF/HEAD/Mistral-Nemo-Instruct-2407-Q5_K_M"
+    model: hf:Qwen/Qwen2-0.5B-Instruct-GGUF/HEAD/qwen2-0_5b-instruct-q5_k_m
+    # Limit the context length for high context length models. 128K context
+    # length requires a ton of RAM and significantly slow down the processing.
+    # The default is to use the full model's context length.
+    #context_length: 0
   image_gen:
     # Specify a "host:port" of an already running py/image_gen.py server.
     #
@@ -160,11 +169,9 @@ knownllms:
       tool_call_token_end:          "</s>"
       tool_call_result_token_start: "[TOOL_RESULTS]\u2581"
       tool_call_result_token_end:   "[/TOOL_RESULTS]"
-    # bartowski/Mixtral-8x22B-v0.1-GGUF only contain segmented files and I
-    # didn't implement support yet.
-  - source: hf:MaziyarPanahi/Mixtral-8x7B-Instruct-v0.1-GGUF/HEAD/Mixtral-8x7B-Instruct-v0.1.
+  - source: hf:bartowski/Mistral-Nemo-Instruct-2407-GGUF/HEAD/Mistral-Nemo-Instruct-2407-
     packagingtype: gguf
-    upstream: hf:mistralai/Mixtral-8x7B-Instruct-v0.1
+    upstream: hf:mistralai/Mistral-Nemo-Instruct-2407
 
   # Phi-3/3.1 family
   # https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3

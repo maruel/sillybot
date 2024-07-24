@@ -45,6 +45,10 @@ type Options struct {
 	//
 	// Use "python" to use the integrated python backend.
 	Model huggingface.PackedFileRef
+	// ContextLength will limit the context length. This is useful with the newer
+	// 128K context window models that will require too much memory and quite
+	// slow to run. A good value to recommend is 8192 or 32768.
+	ContextLength int `yaml:"context_length"`
 
 	_ struct{}
 }
@@ -238,6 +242,10 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			// "--prompt-cache", filepath.Join(cache, "llm-prompt-cache.bin"), "--prompt-cache-all",
 			common := []string{
 				llamasrv, "--model", modelFile, "--metrics", "-ngl", "9999", "--threads", strconv.Itoa(threads), "--port", strconv.Itoa(port),
+			}
+			// Limit the context window for now.
+			if opts.ContextLength != 0 {
+				common = append(common, "--ctx-size", strconv.Itoa(opts.ContextLength))
 			}
 			cmd := mangleForLlamafile(isLlamafile, append(common, "--nobrowser")...)
 			if !isLlamafile {
@@ -1003,7 +1011,7 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	// Time to download!
 	// Do not just get the latest version because the odds of it breaking is just
 	// too high. This is best effort.
-	build := "b3428"
+	build := "b3450"
 	url := "https://github.com/ggerganov/llama.cpp/releases/download/" + build + "/"
 	zipname := ""
 	files := []string{filepath.Base(llamaserver)}

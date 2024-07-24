@@ -50,6 +50,11 @@ func estimateModelSize(t *testing.T, name string) int64 {
 		}
 		t.Fatalf("couldn't guess phi-3 model size %q", name)
 	}
+	if strings.Contains(name, "-nemo-") {
+		// This is disappointing.
+		// https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407
+		return 14000000
+	}
 	// Check if it is a MoE first.
 	if b := regexp.MustCompile(`-(\d+)x(\d+)b-`).FindStringSubmatch(name); len(b) == 3 {
 		nb, err := strconv.Atoi(b[1])

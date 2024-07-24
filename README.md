@@ -54,10 +54,10 @@ Talk with it and use its commands as described at:
       in [quantized
       form](https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF)
       with 32K (!) context window.
-    - [Mixtral-8x7B-Instruct-v0.1](https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1)
+    - [Mistral-Nemo-Instruct-2407](https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407)
       in [quantized
-      form](https://huggingface.co/MaziyarPanahi/Mixtral-8x7B-Instruct-v0.1-GGUF)
-      with 32K (!) context window.
+      form](https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF)
+      with 128K (!) context window.
     - [Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) "Phi-3.1"
       in [quantized
       form](https://huggingface.co/bartowski/Phi-3.1-mini-4k-instruct-GGUF)
