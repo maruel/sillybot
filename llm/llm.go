@@ -703,8 +703,16 @@ func (l *Session) ensureModel(ctx context.Context, model huggingface.PackedFileR
 
 		// Well known quantizations.
 	case "F32", "F16", "FP16":
-	case "Q8_0", "Q6_K", "Q5_K_S", "Q5_K_M", "Q5_1", "Q5_0", "Q4_K_S", "Q4_K_M", "Q4_K", "Q4_1", "Q4_0", "Q3_K_S", "Q3_K_M", "Q3_K_L", "Q2_K":
-	case "IQ4_NL", "IQ3_XXS", "IQ3_XS", "IQ3_S", "IQ3_M", "IQ2_XXS", "IQ2_XS", "IQ2_S", "IQ2_M", "IQ1_S", "IQ1_M":
+	case "Q8_0":
+	case "Q6_K_L", "Q6_K":
+	case "Q5_K_L", "Q5_K_M", "Q5_K_S", "Q5_1", "Q5_0":
+	case "Q4_K_L", "Q4_K_M", "Q4_K_S", "Q4_K", "Q4_1", "Q4_0":
+	case "Q3_K_XL", "Q3_K_L", "Q3_K_M", "Q3_K_S":
+	case "Q2_K_L", "Q2_K":
+	case "IQ4_NL", "IQ4_XS":
+	case "IQ3_M", "IQ3_S", "IQ3_XS", "IQ3_XXS":
+	case "IQ2_M", "IQ2_S", "IQ2_XS", "IQ2_XXS":
+	case "IQ1_M", "IQ1_S":
 
 	case "":
 		return "", fmt.Errorf("you forgot to add a quantization suffix like 'BF16', 'F16', 'Q8_0' or 'Q5_K_M' when specifying model %q", model)
