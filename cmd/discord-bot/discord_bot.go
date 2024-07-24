@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"image/jpeg"
 	"image/png"
 	"log/slog"
 	"math/big"
@@ -1064,7 +1065,7 @@ func (d *discordBot) handleImage(req intReq) {
 			}
 			w := bytes.Buffer{}
 			imagegen.DrawLabelsOnImage(img, labelsContent)
-			u.err = png.Encode(&w, img)
+			u.err = jpeg.Encode(&w, img, nil)
 			u.img = w.Bytes()
 			updates <- u
 			u.img = nil
@@ -1089,6 +1090,12 @@ func (d *discordBot) handleImage(req intReq) {
 			}
 			if err2 := os.WriteFile(p+".json", b, 0o644); err2 != nil {
 				slog.Error("discord", "message", "failed saving metadata", "error", err2)
+				err = err2
+			}
+			// Create a new buffer.
+			w = bytes.Buffer{}
+			if err2 := png.Encode(&w, img); err2 != nil {
+				slog.Error("discord", "message", "failed encoding png", "error", err2)
 				err = err2
 			}
 			if err2 := os.WriteFile(p+".png", w.Bytes(), 0o644); err2 != nil {
@@ -1141,7 +1148,7 @@ func (d *discordBot) handleImage(req intReq) {
 		}
 		resp := discordgo.WebhookEdit{Content: &g.content}
 		if len(g.img) != 0 {
-			resp.Files = []*discordgo.File{{Name: "prompt.png", ContentType: "image/png", Reader: bytes.NewReader(g.img)}}
+			resp.Files = []*discordgo.File{{Name: "prompt.jpg", ContentType: "image/jpeg", Reader: bytes.NewReader(g.img)}}
 		}
 		if _, err := d.dg.InteractionResponseEdit(req.int, &resp); err != nil {
 			slog.Error("discord", "imagereq", req, "message", "failed posting interaction", "error", err)
