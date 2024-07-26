@@ -331,37 +331,40 @@ func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.Guild
 	if event.Guild.Unavailable {
 		return
 	}
-	const welcome = "I'm back up! 👋 I can do many things!\n" +
-		"- Tag me in channels to chat with me. Start a DM to talk alone, then no need to tag me at every messages.\n" +
-		"- Check out my commands by typing the '/' slash key:\n" +
-		"  * I can generate images and memes 🖼️. Try `/image_auto flowers garden gorgeous realistic`, or `/meme_auto AI overlord` or `/meme_auto flowers garden fun`\n" +
-		"  * Get information about me. Try `/list_models`, `/metrics`\n" +
-		"  * I sometimes get stuck! Reset my memory 🧠 and optionally change my system prompt with `/forget`\n" +
-		"I'm a work in progress! Please submit fixes and improvements at https://github.com/maruel/sillybot !\n" +
-		"**Warning**: I have no privacy protection yet. I do not listen unless you tag me directly.\n" +
-		"**Important**: Keep it civil otherwise I'll have to be turned down.\n"
-	for _, channel := range event.Guild.Channels {
-		if t := channel.Type; t == discordgo.ChannelTypeGuildVoice || t == discordgo.ChannelTypeGuildCategory {
-			continue
-		}
-		// Don't alert again if the last connection was recent, to not spam the
-		// channel.
-		msgs, err := dg.ChannelMessages(channel.ID, 5, "", "", "")
-		if err != nil {
-			slog.Error("discord", "error", err)
-		}
-		skip := false
-		for _, msg := range msgs {
-			//  && msg.Content == welcome
-			if msg.Author.ID == dg.State.User.ID {
-				slog.Info("discord", "message", "skipping welcome to not spam", "channel", channel.Name)
-				skip = true
-				break
+	// This is too spammy.
+	if false {
+		const welcome = "I'm back up! 👋 I can do many things!\n" +
+			"- Tag me in channels to chat with me. Start a DM to talk alone, then no need to tag me at every messages.\n" +
+			"- Check out my commands by typing the '/' slash key:\n" +
+			"  * I can generate images and memes 🖼️. Try `/image_auto flowers garden gorgeous realistic`, or `/meme_auto AI overlord` or `/meme_auto flowers garden fun`\n" +
+			"  * Get information about me. Try `/list_models`, `/metrics`\n" +
+			"  * I sometimes get stuck! Reset my memory 🧠 and optionally change my system prompt with `/forget`\n" +
+			"I'm a work in progress! Please submit fixes and improvements at https://github.com/maruel/sillybot !\n" +
+			"**Warning**: I have no privacy protection yet. I do not listen unless you tag me directly.\n" +
+			"**Important**: Keep it civil otherwise I'll have to be turned down.\n"
+		for _, channel := range event.Guild.Channels {
+			if t := channel.Type; t == discordgo.ChannelTypeGuildVoice || t == discordgo.ChannelTypeGuildCategory {
+				continue
 			}
-		}
-		if !skip {
-			slog.Info("discord", "message", "welcome", "channel", channel.Name)
-			_, _ = dg.ChannelMessageSend(channel.ID, welcome)
+			// Don't alert again if the last connection was recent, to not spam the
+			// channel.
+			msgs, err := dg.ChannelMessages(channel.ID, 5, "", "", "")
+			if err != nil {
+				slog.Error("discord", "error", err)
+			}
+			skip := false
+			for _, msg := range msgs {
+				//  && msg.Content == welcome
+				if msg.Author.ID == dg.State.User.ID {
+					slog.Info("discord", "message", "skipping welcome to not spam", "channel", channel.Name)
+					skip = true
+					break
+				}
+			}
+			if !skip {
+				slog.Info("discord", "message", "welcome", "channel", channel.Name)
+				_, _ = dg.ChannelMessageSend(channel.ID, welcome)
+			}
 		}
 	}
 }
