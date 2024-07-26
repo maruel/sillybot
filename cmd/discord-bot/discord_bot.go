@@ -472,10 +472,6 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 }
 
 func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
-	u := event.User
-	if event.Member != nil {
-		u = event.Member.User
-	}
 	opts := struct {
 		SystemPrompt string `json:"system_prompt"`
 	}{SystemPrompt: d.settings.PromptSystem}
@@ -484,12 +480,12 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 		return
 	}
 	reply := "I don't know you. I can't wait to start our discussion so I can get to know you better!"
-	c := d.getMemory(u.ID, event.ChannelID)
+	c := d.getMemory(event.ChannelID)
 	if len(c.Messages) >= 1 && c.Messages[len(c.Messages)-1].Role != llm.System {
 		reply = "The memory of our past conversations just got zapped."
 	}
 	c.Messages = nil
-	c = d.getMemory(u.ID, event.ChannelID)
+	c = d.getMemory(event.ChannelID)
 	c.Messages[len(c.Messages)-1].Content = opts.SystemPrompt
 	reply += "\n*System prompt*: " + escapeMarkdown(opts.SystemPrompt)
 	if err := d.interactionRespond(event.Interaction, reply); err != nil {
@@ -658,9 +654,9 @@ func (d *discordBot) interactionRespond(int *discordgo.Interaction, s string) er
 // chatRoutine serializes the chat requests.
 func (d *discordBot) chatRoutine() {
 	// Prewarm the system prompt, clearing previous memory.
-	c := d.getMemory("", "")
+	c := d.getMemory("")
 	c.Messages = nil
-	c = d.getMemory("", "")
+	c = d.getMemory("")
 	if _, err := d.l.Prompt(d.ctx, c.Messages, 100, 0, 1.0); err != nil {
 		slog.Error("discord", "error", err)
 	}
@@ -707,9 +703,9 @@ func (d *discordBot) toolWebSearch(ctx context.Context, query string) (*customse
 	// - https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/CognitiveSearch
 }
 
-func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
+func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 	// TODO: Send a warning or forget when one of Model, Prompt, Tools changed.
-	c := d.mem.Get(authorID, channelID)
+	c := d.mem.Get("", channelID)
 	if len(c.Messages) == 0 {
 		if d.toolsMsg.Content != "" {
 			c.Messages = []llm.Message{d.toolsMsg}
@@ -721,7 +717,7 @@ func (d *discordBot) getMemory(authorID, channelID string) *llm.Conversation {
 
 // handlePrompt uses the LLM to generate a response.
 func (d *discordBot) handlePrompt(req msgReq) {
-	c := d.getMemory(req.authorID, req.channelID)
+	c := d.getMemory(req.channelID)
 	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
 	wg := sync.WaitGroup{}
 	for {
