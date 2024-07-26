@@ -276,14 +276,17 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 			},
 		},
 
-		// list_models
+		// Various
+		{
+			Name:        "close_thread",
+			Type:        discordgo.ChatApplicationCommand,
+			Description: "Close the thread that was created.",
+		},
 		{
 			Name:        "list_models",
 			Type:        discordgo.ChatApplicationCommand,
 			Description: "List available LLM models and the one currently used.",
 		},
-
-		// metrics
 		{
 			Name:        "metrics",
 			Type:        discordgo.ChatApplicationCommand,
@@ -412,8 +415,8 @@ func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.Message
 	msg := strings.TrimSpace(strings.ReplaceAll(m.Content, user, ""))
 	replyToID := m.ID
 	if !isDM && !isThread {
-		// Create thread with MessageThreadStart.
-		thread, err := dg.MessageThreadStartComplex(m.ChannelID, m.ID, &discordgo.ThreadStart{Name: msg})
+		// Create thread.
+		thread, err := dg.MessageThreadStart(m.ChannelID, m.ID, msg, 4320)
 		if err != nil {
 			slog.Error("discord", "message", "failed starting thread", "error", err)
 			return
@@ -458,6 +461,8 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 	}
 	data.Name = strings.TrimSuffix(data.Name, "_dev")
 	switch data.Name {
+	case "close_thread":
+		d.onCloseThread(event, data)
 	case "forget":
 		d.onForget(event, data)
 	case "list_models":
@@ -468,6 +473,17 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 		d.onImage(event, data)
 	default:
 		slog.Warn("discord", "unexpected command", data.Name, "data", event.Interaction)
+	}
+}
+
+func (d *discordBot) onCloseThread(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	r := &discordgo.InteractionResponse{Type: discordgo.InteractionResponseChannelMessageWithSource}
+	if err := d.dg.InteractionRespond(event.Interaction, r); err != nil {
+		slog.Error("discord", "message", "failed to respond to archive thread", "error", err)
+	}
+	archived := true
+	if _, err := d.dg.ChannelEditComplex(event.ChannelID, &discordgo.ChannelEdit{Archived: &archived}); err != nil {
+		slog.Error("discord", "message", "failed to archive thread", "error", err)
 	}
 }
 
