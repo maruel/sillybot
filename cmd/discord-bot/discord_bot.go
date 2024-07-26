@@ -373,42 +373,70 @@ func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.Guild
 func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	slog.Debug("discord", "event", "messageCreate", "message", m.Message, "state", dg.State)
 	botid := dg.State.User.ID
-	if m.Author.ID == botid {
+	if m.Author.ID == botid || m.Pinned {
 		return
+	}
+
+	// A DM doesn't have a GuildID (server) associated. If it's a DM, it's a
+	// message directly for us.
+	isDM := m.GuildID == ""
+	// If the created the thread, we reply to every messages. In theory it could
+	// be a channel but the code doesn't create channels, only threads.
+	isThread := false
+	if !isDM {
+		ch, err := dg.State.Channel(m.ChannelID)
+		if err != nil {
+			slog.Error("discord", "message", "failed getting channel", "error", err)
+			return
+		}
+		slog.Info("discord", "event", "messageCreate", "ch", ch)
+		isThread = ch.OwnerID == botid
 	}
 	user := fmt.Sprintf("<@%s>", botid)
-	if m.GuildID != "" && !strings.Contains(m.Content, user) {
-		// Ignore if the bot is not explicitly referenced to.
+	// Ignore if not DM, threads we created, and not tagged in a public channel.
+	if !isDM && !isThread && !strings.Contains(m.Content, user) {
+		slog.Debug("discord", "event", "messageCreate", "author", m.Author.Username, "server", m.GuildID, "channel", m.ChannelID, "message", "ignored")
 		return
 	}
-	msg := strings.TrimSpace(strings.ReplaceAll(m.Content, user, ""))
-	slog.Info("discord", "event", "messageCreate", "author", m.Author.Username, "message", msg)
 	if d.l == nil {
 		if _, err := dg.ChannelMessageSend(m.ChannelID, "LLM is not enabled."); err != nil {
 			slog.Error("discord", "message", "failed posting message", "error", err)
 		}
 		return
 	}
+
+	channel := m.ChannelID
+	msg := strings.TrimSpace(strings.ReplaceAll(m.Content, user, ""))
+	replyToID := m.ID
+	if !isDM && !isThread {
+		// Create thread with MessageThreadStart.
+		thread, err := dg.MessageThreadStartComplex(m.ChannelID, m.ID, &discordgo.ThreadStart{Name: msg})
+		if err != nil {
+			slog.Error("discord", "message", "failed starting thread", "error", err)
+			return
+		}
+		slog.Info("discord", "event", "messageCreate", "message", "created thread")
+		channel = thread.ID
+		// When creating a thread, there's no initial message to reply to yet.
+		replyToID = ""
+	}
+	slog.Info("discord", "event", "messageCreate", "author", m.Author.Username, "server", m.GuildID, "channel", channel, "isdm", isDM, "isthread", isThread)
 	// Immediately signal the user that the bot is preparing a reply.
-	if err := dg.ChannelTyping(m.ChannelID); err != nil {
+	if err := dg.ChannelTyping(channel); err != nil {
 		slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
 		// Continue anyway.
 	}
 	req := msgReq{
 		msg:       msg,
 		authorID:  m.Author.ID,
-		channelID: m.ChannelID,
+		channelID: channel,
 		guildID:   m.GuildID,
-		replyToID: m.ID,
+		replyToID: replyToID,
 	}
 	select {
 	case d.chat <- req:
 	default:
-		_, err := dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-			Content:   "Sorry! I have too many pending chat requests. Please retry in a moment.",
-			Reference: &discordgo.MessageReference{MessageID: req.replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-		})
-		if err != nil {
+		if _, err := d.channelMessageSendComplex(req.replyToID, req.channelID, req.guildID, "Sorry! I have too many pending chat requests. Please retry in a moment."); err != nil {
 			slog.Error("discord", "message", "failed posting message", "error", err)
 		}
 	}
@@ -710,16 +738,12 @@ func (d *discordBot) handlePrompt(req msgReq) {
 							if called := d.handleMistralToolCall(pending, c); called != "" {
 								// TODO: Tell the user a function is being used, not after it was used.
 								gotToolCall = true
-								msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-									Content:   "*An instant please, I'm calling tool " + escapeMarkdown(called) + "*",
-									Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-								})
-								if err != nil {
+								if msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*"); err != nil {
 									slog.Error("discord", "message", "failed posting message", "error", err)
 								} else {
 									replyToID = msg.ID
 								}
-								if err = d.dg.ChannelTyping(req.channelID); err != nil {
+								if err := d.dg.ChannelTyping(req.channelID); err != nil {
 									slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
 								}
 							}
@@ -727,11 +751,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 						if !gotToolCall {
 							if pending != "" {
 								text += pending
-								_, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-									Content:   pending,
-									Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-								})
-								if err != nil {
+								if _, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, pending); err != nil {
 									slog.Error("discord", "message", "failed posting message", "error", err)
 								}
 							}
@@ -753,10 +773,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 						if called := d.handleMistralToolCall(pending[:i], c); called != "" {
 							// TODO: Tell the user a function is being used, not after it was used.
 							gotToolCall = true
-							msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-								Content:   "*An instant please, I'm calling tool " + escapeMarkdown(called) + "*",
-								Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-							})
+							msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
 							if err != nil {
 								slog.Error("discord", "message", "failed posting message", "error", err)
 							} else {
@@ -768,10 +785,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 						}
 					}
 					if !gotToolCall {
-						msg, err := d.dg.ChannelMessageSendComplex(req.channelID, &discordgo.MessageSend{
-							Content:   pending[:i],
-							Reference: &discordgo.MessageReference{MessageID: replyToID, ChannelID: req.channelID, GuildID: req.guildID},
-						})
+						msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, pending[:i])
 						if err != nil {
 							slog.Error("discord", "message", "failed posting message", "error", err)
 						} else {
@@ -799,6 +813,14 @@ func (d *discordBot) handlePrompt(req msgReq) {
 			break
 		}
 	}
+}
+
+func (d *discordBot) channelMessageSendComplex(replyToID, channelID, guildID, content string) (st *discordgo.Message, err error) {
+	msgSend := discordgo.MessageSend{Content: content}
+	if replyToID != "" {
+		msgSend.Reference = &discordgo.MessageReference{MessageID: replyToID, ChannelID: channelID, GuildID: guildID}
+	}
+	return d.dg.ChannelMessageSendComplex(channelID, &msgSend)
 }
 
 // handleMistralToolCall check if the pending string and returns its name if so.
