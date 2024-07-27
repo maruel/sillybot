@@ -994,15 +994,21 @@ func splitResponse(t string, urgent bool) (string, string) {
 		t = t[:i]
 	} else if backticks >= 2 {
 		// Cut right after the second.
-		start := strings.Index(t, "```") + 3
-		end := strings.Index(t[start:], "```") + start + 3
+		start := strings.Index(t, "```")
+		end := strings.Index(t[start+3:], "```") + start + 3 + 3
 		if end > maxMessage {
 			// Dang we need to slice it. Look for empty lines to split at natural
 			// places.
 			if i := strings.LastIndex(t[:maxMessage], "\n\n"); i != -1 {
-				// TODO: We need to inject a new 3 backticks to reconstruct the
-				// escaping. Will be a follow up.
-				return t[:i+1], t[i+1:]
+				// Inject a new 3 backticks to reconstruct the escaping.
+				suffix := "\n```"
+				prefix := "```\n"
+				if tend := strings.Index(t[start:], "\n"); tend != -1 {
+					// Take the original one as it may contain the highlighting style,
+					// like ```python or ```bash.
+					prefix = t[start : start+tend]
+				}
+				return t[:i+1] + suffix, prefix + t[i+1:]
 			}
 		}
 		return t[:end], t[end:]
