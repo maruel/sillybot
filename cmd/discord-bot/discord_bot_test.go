@@ -17,7 +17,7 @@ func TestSplitResponse(t *testing.T) {
 		wantt    string
 		wantrest string
 	}{
-		{"", false, "", ""},
+		{"", false, "", ""}, // 0
 		{"", true, "", ""},
 		{"Hi", false, "", "Hi"},
 		{"Hi", true, "", "Hi"},
@@ -25,21 +25,19 @@ func TestSplitResponse(t *testing.T) {
 		{"Hi fellow kids!", true, "Hi fellow kids!", ""},
 		{"This is code:\n```", false, "", "This is code:\n```"},
 		{"This is code:\n```", true, "This is code:\n", "```"},
-		{"This is code:\nFoo", false, "", "This is code:\nFoo"},
-		{"This is code:\nFoo", true, "This is code:\n", "Foo"},
-		{"This is code:\n```Foo", false, "", "This is code:\n```Foo"},
-		{"This is code:\n```Foo", true, "This is code:\n", "```Foo"},
-		{"This is code:\n``Foo```", false, "", "This is code:\n``Foo```"},
-		{"This is code:\n``Foo```", true, "This is code:\n", "``Foo```"},
-		{"This is code:\n```Foo```", false, "This is code:\n```Foo```", ""},
-		{"This is code:\n```Foo```", true, "This is code:\n```Foo```", ""},
-		{"This is code:\n```Foo```\nAnd happiness", false, "This is code:\n```Foo```", "\nAnd happiness"},
-		{"This is code:\n```Foo```\nAnd happiness", true, "This is code:\n```Foo```", "\nAnd happiness"},
+		{"This is code:\nexit 1", false, "", "This is code:\nexit 1"},
+		{"This is code:\nexit 1", true, "This is code:\n", "exit 1"},
+		{"This is code:\n```bash\n", false, "", "This is code:\n```bash\n"}, // 10
+		{"This is code:\n```bash\n", true, "This is code:\n", "```bash\n"},
+		{"This is code:\n```bash\nexit 1\n```", false, "This is code:\n```bash\nexit 1\n```", ""},
+		{"This is code:\n```bash\nexit 1\n```", true, "This is code:\n```bash\nexit 1\n```", ""},
+		{"This is code:\n```bash\nexit 1\n```\nAnd happiness", false, "This is code:\n```bash\nexit 1\n```", "\nAnd happiness"},
+		{"This is code:\n```bash\nexit 1\n```\nAnd happiness", true, "This is code:\n```bash\nexit 1\n```", "\nAnd happiness"},
 		{"This is enumeration:\n1. ", false, "", "This is enumeration:\n1. "},
 		{"This is enumeration:\n1. ", true, "This is enumeration:\n", "1. "},
 		{"1. Do stuff.", false, "", "1. Do stuff."},
 		{"1. Do stuff.", true, "1. ", "Do stuff."},
-		{"1. Do stuff.\n", false, "", "1. Do stuff.\n"},
+		{"1. Do stuff.\n", false, "", "1. Do stuff.\n"}, // 20
 		{"1. Do stuff.\n", true, "1. Do stuff.\n", ""},
 		{"1. Do.", false, "", "1. Do."},
 		{"1. Do.", true, "", "1. Do."},
@@ -51,7 +49,7 @@ func TestSplitResponse(t *testing.T) {
 		// Do not split on "node.js"
 		{"To do what you want, use node.js and it's going to be fine", false, "", "To do what you want, use node.js and it's going to be fine"},
 		{"To do what you want, use node.js and it's going to be fine", true, "", "To do what you want, use node.js and it's going to be fine"},
-		{"To do what you want, use Go and it's going to be fine\n\nHello!\nThis is", false, "To do what you want, use Go and it's going to be fine\n", "\nHello!\nThis is"},
+		{"To do what you want, use Go and it's going to be fine\n\nHello!\nThis is", false, "To do what you want, use Go and it's going to be fine\n", "\nHello!\nThis is"}, // 30
 		{"To do what you want, use Go and it's going to be fine\n\nHello!\nThis is", true, "To do what you want, use Go and it's going to be fine\n", "\nHello!\nThis is"},
 		{
 			" Here is a simple example of a snake game written in Python. This program is a text-based version and does not involve graphics.\n\n```python\nimport random\n\ndef print_screen(snake):\n    for y, row in enumerate(snake):\n",
@@ -67,24 +65,24 @@ func TestSplitResponse(t *testing.T) {
 		},
 		// This is incorrect, a new set of backticks must be injected.
 		{
-			"```" + strings.Repeat("123456789\n12345678\n\n", 110) + "```",
+			"```python\n" + strings.Repeat("123456789\nabcdefgh\n\n", 110) + "```",
 			false,
 			func() string {
 				// Strip one \n.
-				x := "```" + strings.Repeat("123456789\n12345678\n\n", 99)
+				x := "```python\n" + strings.Repeat("123456789\nabcdefgh\n\n", 99)
 				return x[:len(x)-1]
 			}(),
-			"\n" + strings.Repeat("123456789\n12345678\n\n", 11) + "```",
+			"\n" + strings.Repeat("123456789\nabcdefgh\n\n", 11) + "```",
 		},
 		{
-			"```" + strings.Repeat("123456789\n12345678\n\n", 110) + "```",
+			"```python\n" + strings.Repeat("123456789\nabcdefgh\n\n", 110) + "```",
 			true,
 			func() string {
 				// Strip one \n.
-				x := "```" + strings.Repeat("123456789\n12345678\n\n", 99)
+				x := "```python\n" + strings.Repeat("123456789\nabcdefgh\n\n", 99)
 				return x[:len(x)-1]
 			}(),
-			"\n" + strings.Repeat("123456789\n12345678\n\n", 11) + "```",
+			"\n" + strings.Repeat("123456789\nabcdefgh\n\n", 11) + "```",
 		},
 		// This is incorrect, a new set of backticks must be injected.
 		{
