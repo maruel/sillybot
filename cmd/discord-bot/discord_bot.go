@@ -33,6 +33,8 @@ import (
 	"google.golang.org/api/option"
 )
 
+// Discord returns HTTP 400 BASE_TYPE_MAX_LENGTH if the message is longer than
+// that. There's a 4000 limit in some case (embeds?), investigate.
 const maxMessage = 2000
 
 // discordBot is the live instance of the bot talking to the Discord API.
@@ -482,7 +484,7 @@ func (d *discordBot) onInteractionCreate(dg *discordgo.Session, event *discordgo
 }
 
 func (d *discordBot) onCloseThread(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
-	r := &discordgo.InteractionResponse{Type: discordgo.InteractionResponseChannelMessageWithSource}
+	r := &discordgo.InteractionResponse{Type: discordgo.InteractionResponseChannelMessageWithSource, Data: &discordgo.InteractionResponseData{Content: "_Archived_."}}
 	if err := d.dg.InteractionRespond(event.Interaction, r); err != nil {
 		slog.Error("discord", "message", "failed to respond to archive thread", "error", err)
 	}
@@ -766,7 +768,9 @@ func (d *discordBot) handlePrompt(req msgReq) {
 		words := make(chan string, 10)
 		wg.Add(1)
 		go func() {
-			t := time.NewTicker(3 * time.Second)
+			const rate = 2000 * time.Millisecond
+			t := time.NewTicker(rate)
+			last := time.Now()
 			replyToID := req.replyToID
 			text := ""
 			pending := ""
@@ -779,7 +783,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 								// TODO: Tell the user a function is being used, not after it was used.
 								gotToolCall = true
 								if msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*"); err != nil {
-									slog.Error("discord", "message", "failed posting message", "error", err)
+									slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
 								} else {
 									replyToID = msg.ID
 								}
@@ -789,10 +793,29 @@ func (d *discordBot) handlePrompt(req msgReq) {
 							}
 						}
 						if !gotToolCall {
+							// That's the end, flush all the remaining content.
 							if pending != "" {
 								text += pending
+								// When a model is asked to do a large program, it's frequent
+								// that it will buffer the whole response and send it back in
+								// one shot. In this case, the content received can be very
+								// large.
+								// TODO: It could be a function call!! Handle it.
+								for len(pending) > maxMessage {
+									i := splitResponse(pending, true)
+									if i == 0 {
+										i = maxMessage
+									}
+									msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, pending[:i])
+									if err != nil {
+										slog.Error("discord", "message", "failed posting message", "error", err, "content", pending[:i])
+									} else {
+										replyToID = msg.ID
+									}
+									pending = pending[i:]
+								}
 								if _, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, pending); err != nil {
-									slog.Error("discord", "message", "failed posting message", "error", err)
+									slog.Error("discord", "message", "failed posting message", "error", err, "content", pending)
 								}
 							}
 							// Remember our own answer.
@@ -803,40 +826,41 @@ func (d *discordBot) handlePrompt(req msgReq) {
 						return
 					}
 					pending += w
-				case <-t.C:
-					// TODO: function call is when a line starts with "["
-					i := splitResponse(pending)
-					if i == 0 {
-						continue
-					}
-					if d.l.Encoding != nil && !gotToolCall {
-						if called := d.handleMistralToolCall(pending[:i], c); called != "" {
-							// TODO: Tell the user a function is being used, not after it was used.
-							gotToolCall = true
-							msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
+				case now := <-t.C:
+					// TODO: Handle when the model replies with more than maxMessage per
+					// rate.
+					// It becomes urgent when it's twice the period.
+					if i := splitResponse(pending, now.Sub(last) >= 2*rate); i != 0 {
+						if d.l.Encoding != nil && !gotToolCall {
+							// TODO: function call is when a line, any line, starts with "[".
+							// Sometimes the last "]" is not followed by a \n, which breaks json
+							// parsing.
+							if called := d.handleMistralToolCall(pending[:i], c); called != "" {
+								// TODO: Tell the user a function is being used, not after it was used.
+								gotToolCall = true
+								msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
+								if err != nil {
+									slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
+								} else {
+									replyToID = msg.ID
+								}
+							}
+						}
+						if !gotToolCall {
+							msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, pending[:i])
 							if err != nil {
-								slog.Error("discord", "message", "failed posting message", "error", err)
+								slog.Error("discord", "message", "failed posting message", "error", err, "content", pending[:i])
 							} else {
 								replyToID = msg.ID
 							}
-							if err = d.dg.ChannelTyping(req.channelID); err != nil {
-								slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
-							}
+							last = now
 						}
+						text += pending[:i]
+						pending = pending[i:]
 					}
-					if !gotToolCall {
-						msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, pending[:i])
-						if err != nil {
-							slog.Error("discord", "message", "failed posting message", "error", err)
-						} else {
-							replyToID = msg.ID
-						}
-					}
-					text += pending[:i]
-					pending = pending[i:]
-					if err := d.dg.ChannelTyping(req.channelID); err != nil {
-						slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
-					}
+				}
+				if err := d.dg.ChannelTyping(req.channelID); err != nil {
+					slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
 				}
 			}
 		}()
@@ -958,22 +982,43 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 //
 // If you spot a case where it doesn't work right in the wild, please fix and
 // add a test case! Make sure it's 100% test coverage (except the panic).
-func splitResponse(t string) int {
-	// First priority is 3 backquotes. We must never break that in the middle.
-	if backquotes := strings.Count(t, "```"); backquotes == 1 {
+func splitResponse(t string, urgent bool) int {
+	// First priority is 3 backticks. We must never break that in the middle,
+	// unless it's longer than maxMessage.
+	if backticks := strings.Count(t, "```"); backticks == 1 {
+		// Trim everything before the backticks.
 		i := strings.Index(t, "```")
 		t = t[:i]
-	} else if backquotes >= 2 {
+	} else if backticks >= 2 {
 		// Cut right after the second.
 		start := strings.Index(t, "```") + 3
-		return strings.Index(t[start:], "```") + start + 3
+		end := strings.Index(t[start:], "```") + start + 3
+		if end > maxMessage {
+			// Dang we need to slice it. Look for empty lines to split at natural
+			// places.
+			if i := strings.LastIndex(t[:maxMessage], "\n\n"); i != -1 {
+				// TODO: We need to inject a new 3 backticks to reconstruct the
+				// escaping. Will be a follow up.
+				return i + 1
+			}
+		}
+		return end
 	}
 	if t == "" {
 		return 0
 	}
 
+	minLength := 50
+	if urgent {
+		minLength = 10
+	}
+
+	// If there's an empty line, use it.
+	if i := strings.LastIndex(t, "\n\n"); i >= minLength && i < maxMessage {
+		return i + 1
+	}
 	// If there's a EOL, use it.
-	if i := strings.LastIndexByte(t, '\n'); i >= 10 {
+	if i := strings.LastIndexByte(t, '\n'); i >= minLength && i < maxMessage {
 		return i + 1
 	}
 
@@ -987,20 +1032,20 @@ func splitResponse(t string) int {
 			panic(err)
 		}
 	}
-	if isEnum {
+	if isEnum && !urgent {
 		return 0
 	}
 
-	if len(t) < 10 {
+	if len(t) < minLength {
 		// Not enough characters to send, ignore.
 		return 0
 	}
 
-	// If there's backquotes, e.g. `foo.bar`, they mess up punctuation search. So
-	// only start the search after the last backquote.
+	// If there's backticks, e.g. `foo.bar`, they mess up punctuation search. So
+	// only start the search after the last backticks.
 	start := 0
-	if backquotes := strings.Count(t, "`"); (backquotes & 1) == 1 {
-		// Impair number of backquotes. Limit ourselves up to the last one.
+	if backticks := strings.Count(t, "`"); (backticks & 1) == 1 {
+		// Impair number of backticks. Limit ourselves up to the last one.
 		t = t[:strings.LastIndexByte(t, '`')]
 	}
 
@@ -1009,7 +1054,12 @@ func splitResponse(t string) int {
 	if m == nil {
 		return 0
 	}
-	return start + m[1]
+	end := start + m[1]
+	if end > maxMessage {
+		// Arbitrary cut.
+		end = maxMessage
+	}
+	return end
 }
 
 // punctuation matches when it's ending the string or when it's followed by a
