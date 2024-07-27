@@ -502,7 +502,17 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	}
 	c.Messages = nil
 	c = d.getMemory(event.ChannelID)
-	c.Messages[len(c.Messages)-1].Content = opts.SystemPrompt
+	// Either update, remove or add, depending.
+	if (opts.SystemPrompt == "") != (d.settings.PromptSystem == "") {
+		if opts.SystemPrompt != "" {
+			c.Messages = append(c.Messages, llm.Message{Role: llm.System, Content: opts.SystemPrompt})
+		} else if len(c.Messages) != 0 {
+			c.Messages = c.Messages[:len(c.Messages)-1]
+		}
+	} else if opts.SystemPrompt != "" {
+		c.Messages[len(c.Messages)-1].Content = opts.SystemPrompt
+	}
+
 	reply += "\n*System prompt*: " + escapeMarkdown(opts.SystemPrompt)
 	if err := d.interactionRespond(event.Interaction, reply); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
@@ -726,7 +736,9 @@ func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 		if d.toolsMsg.Content != "" {
 			c.Messages = []llm.Message{d.toolsMsg}
 		}
-		c.Messages = append(c.Messages, llm.Message{Role: llm.System, Content: d.settings.PromptSystem})
+		if d.settings.PromptSystem != "" {
+			c.Messages = append(c.Messages, llm.Message{Role: llm.System, Content: d.settings.PromptSystem})
+		}
 	}
 	return c
 }

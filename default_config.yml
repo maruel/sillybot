@@ -50,6 +50,8 @@ bot:
     # including "You reply with short answers." to Mistral-Nemo will make it
     # absolutely terse, while Llama will just not care and will still be overly
     # verbose.
+    #
+    # It's not required, the model will take the first user message as is.
     prompt_system: "You are an AI assistant. You reply with short answers."
     # Prompt to use to generate Stable Diffusion prompts from a short
     # description the user provides.
