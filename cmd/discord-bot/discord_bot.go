@@ -683,11 +683,13 @@ func (d *discordBot) interactionRespond(int *discordgo.Interaction, s string) er
 // chatRoutine serializes the chat requests.
 func (d *discordBot) chatRoutine() {
 	// Prewarm the system prompt, clearing previous memory.
-	c := d.getMemory("")
-	c.Messages = nil
-	c = d.getMemory("")
-	if _, err := d.l.Prompt(d.ctx, c.Messages, 100, 0, 1.0); err != nil {
-		slog.Error("discord", "error", err)
+	if d.settings.PromptSystem != "" {
+		c := d.getMemory("")
+		c.Messages = nil
+		c = d.getMemory("")
+		if _, err := d.l.Prompt(d.ctx, c.Messages, 100, 0, 1.0); err != nil {
+			slog.Error("discord", "error", err)
+		}
 	}
 	for req := range d.chat {
 		if req.authorID == "" {
