@@ -423,12 +423,12 @@ func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.Message
 		if len(title) > 95 {
 			title = title[:95] + "..."
 		}
+		slog.Info("discord", "event", "messageCreate", "message", "created thread", "title", title)
 		thread, err := dg.MessageThreadStart(m.ChannelID, m.ID, title, 4320)
 		if err != nil {
 			slog.Error("discord", "message", "failed starting thread", "error", err)
 			return
 		}
-		slog.Info("discord", "event", "messageCreate", "message", "created thread")
 		channel = thread.ID
 		// When creating a thread, there's no initial message to reply to yet.
 		replyToID = ""
