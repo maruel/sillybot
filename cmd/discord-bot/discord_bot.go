@@ -33,6 +33,8 @@ import (
 	"google.golang.org/api/option"
 )
 
+const maxMessage = 2000
+
 // discordBot is the live instance of the bot talking to the Discord API.
 //
 // Throughout the code, a Discord Server is called a "Guild". See
@@ -523,16 +525,15 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 }
 
 func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
-	var replies []string
-	reply := "Known models:\n"
+	lines := []string{"Known models:"}
 	for _, k := range d.knownLLMs {
-		reply += "- [`" + k.Source.Basename() + "`](" + k.Source.RepoURL() + ") "
+		line := "- [`" + k.Source.Basename() + "`](" + k.Source.RepoURL() + ") "
 		info := huggingface.Model{ModelRef: k.Source.ModelRef()}
 		if err := d.l.HF.GetModelInfo(d.ctx, &info); err != nil {
-			reply += " Oh no, we failed to query: " + err.Error()
+			line += " Oh no, we failed to query: " + err.Error()
 			slog.Error("discord", "command", data.Name, "error", err)
 		} else {
-			reply += " Quantizations: "
+			line += " Quantizations: "
 			added := false
 			for _, f := range info.Files {
 				// TODO: Move this into a common function.
@@ -549,9 +550,9 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 					continue
 				}
 				if added {
-					reply += ", "
+					line += ", "
 				}
-				reply += strings.TrimSuffix(f[len(k.Source.Basename()):], ".gguf")
+				line += strings.TrimSuffix(f[len(k.Source.Basename()):], ".gguf")
 				added = true
 			}
 			if info.Upstream.Author == "" && info.Upstream.Repo == "" {
@@ -561,34 +562,41 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 			if info.Upstream.Author != "" && info.Upstream.Repo != "" {
 				infoUpstream := huggingface.Model{ModelRef: info.Upstream}
 				if err = d.l.HF.GetModelInfo(d.ctx, &infoUpstream); err != nil {
-					reply += " Oh no, we failed to query: " + err.Error()
+					line += " Oh no, we failed to query: " + err.Error()
 					slog.Error("discord", "command", data.Name, "error", err)
 				} else {
 					if infoUpstream.NumWeights != 0 {
-						reply += fmt.Sprintf(" Tensors: %s in %.fB", infoUpstream.TensorType, float64(infoUpstream.NumWeights)*0.000000001)
+						line += fmt.Sprintf(" Tensors: %s in %.fB", infoUpstream.TensorType, float64(infoUpstream.NumWeights)*0.000000001)
 					}
 					if infoUpstream.LicenseURL != "" {
-						reply += " License: [" + infoUpstream.License + "](" + infoUpstream.LicenseURL + ")"
+						line += " License: [" + infoUpstream.License + "](" + infoUpstream.LicenseURL + ")"
 					} else {
-						reply += " License: " + infoUpstream.License
+						line += " License: " + infoUpstream.License
 					}
 				}
 			}
 		}
-		reply += "\n"
-		if len(reply) > 1000 {
-			// Don't hit the 2000 characters limit.
-			replies = append(replies, reply)
-			reply = ""
+		lines = append(lines, line)
+	}
+	var toSend []string
+	buf := ""
+	for _, line := range lines {
+		if len(buf)+len(line) >= maxMessage {
+			toSend = append(toSend, buf)
+			buf = ""
 		}
+		if buf != "" {
+			buf += "\n"
+		}
+		buf += line
 	}
-	if reply != "" {
-		replies = append(replies, reply)
+	if buf != "" {
+		toSend = append(toSend, buf)
 	}
-	if err := d.interactionRespond(event.Interaction, replies[0]); err != nil {
+	if err := d.interactionRespond(event.Interaction, toSend[0]); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
 	}
-	for _, r := range replies[1:] {
+	for _, r := range toSend[1:] {
 		// TODO: use MessageID so it becomes a set of replies.
 		if _, err := d.dg.ChannelMessageSend(event.Interaction.ChannelID, r); err != nil {
 			slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
@@ -833,7 +841,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 			}
 		}()
 		// We're chatting, we don't want too much content.
-		err := d.l.PromptStreaming(d.ctx, c.Messages, 2000, 0, 1.0, words)
+		err := d.l.PromptStreaming(d.ctx, c.Messages, 32768, 0, 1.0, words)
 		close(words)
 		wg.Wait()
 		if err != nil {
@@ -1120,7 +1128,7 @@ func (d *discordBot) handleImage(req intReq) {
 				imagePrompt = strings.TrimSpace(imagePrompt)
 				imagePrompt = strings.ReplaceAll(imagePrompt, "\n", " ")
 				imagePrompt = strings.ReplaceAll(imagePrompt, "  ", " ")
-				if len(u.content)+len(imagePrompt) < 1900 {
+				if len(u.content)+len(imagePrompt) < maxMessage-100 {
 					// We have to skip on these otherwise we hit the 2000 characters limit super fast.
 					u.content += "*Image prompt*: " + escapeMarkdown(imagePrompt) + "\n"
 					updates <- u
