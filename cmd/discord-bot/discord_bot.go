@@ -395,7 +395,6 @@ func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.Message
 			slog.Error("discord", "message", "failed getting channel", "error", err)
 			return
 		}
-		slog.Info("discord", "event", "messageCreate", "ch", ch)
 		isThread = ch.OwnerID == botid
 	}
 	user := fmt.Sprintf("<@%s>", botid)
