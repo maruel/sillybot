@@ -415,7 +415,11 @@ func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.Message
 	replyToID := m.ID
 	if !isDM && !isThread {
 		// Create thread.
-		thread, err := dg.MessageThreadStart(m.ChannelID, m.ID, msg, 4320)
+		title := msg
+		if len(title) > 95 {
+			title = title[:95] + "..."
+		}
+		thread, err := dg.MessageThreadStart(m.ChannelID, m.ID, title, 4320)
 		if err != nil {
 			slog.Error("discord", "message", "failed starting thread", "error", err)
 			return
