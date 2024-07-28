@@ -435,14 +435,18 @@ func (l *Session) GetMetrics(ctx context.Context, m *Metrics) error {
 //
 // The first message is assumed to be the system prompt.
 func (l *Session) Prompt(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64) (string, error) {
+	if len(msgs) == 0 {
+		return "", errors.New("input required")
+	}
 	start := time.Now()
 	msgs = l.processMsgs(msgs)
-	slog.Info("llm", "msgs", msgs)
 	reply := ""
 	var err error
 	if l.Encoding == nil {
+		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "blocking")
 		reply, err = l.openAIPromptBlocking(ctx, msgs, maxtoks, seed, temperature)
 	} else {
+		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "blocking")
 		reply, err = l.llamaCPPPromptBlocking(ctx, msgs, maxtoks, seed, temperature)
 	}
 	if err != nil {
@@ -476,14 +480,18 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, maxtoks, seed int,
 //
 // The first message is assumed to be the system prompt.
 func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) error {
+	if len(msgs) == 0 {
+		return errors.New("input required")
+	}
 	start := time.Now()
 	msgs = l.processMsgs(msgs)
-	slog.Info("llm", "msgs", msgs)
 	reply := ""
 	var err error
 	if l.Encoding == nil {
+		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "streaming")
 		reply, err = l.openAIPromptStreaming(ctx, msgs, maxtoks, seed, temperature, words)
 	} else {
+		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "streaming")
 		reply, err = l.llamaCPPPromptStreaming(ctx, msgs, maxtoks, seed, temperature, words)
 	}
 	if err != nil {
@@ -545,10 +553,11 @@ func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, max
 		if len(line) == 0 {
 			continue
 		}
-		if !bytes.HasPrefix(line, []byte("data: ")) {
+		const prefix = "data: "
+		if !bytes.HasPrefix(line, []byte(prefix)) {
 			return reply, fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
 		}
-		d := json.NewDecoder(bytes.NewReader(line[len("data: "):]))
+		d := json.NewDecoder(bytes.NewReader(line[len(prefix):]))
 		d.DisallowUnknownFields()
 		msg := openAIChatCompletionsStreamResponse{}
 		if err = d.Decode(&msg); err != nil {
@@ -621,9 +630,14 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, m
 			return reply, fmt.Errorf("failed to get llama server response: %w", err)
 		}
 		if len(line) == 0 {
+			slog.Debug("llm", "message", "no line")
 			continue
 		}
-		d := json.NewDecoder(bytes.NewReader(line))
+		const prefix = "data: "
+		if !bytes.HasPrefix(line, []byte(prefix)) {
+			return reply, fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
+		}
+		d := json.NewDecoder(bytes.NewReader(line[len(prefix):]))
 		d.DisallowUnknownFields()
 		msg := llamaCPPCompletionResponse{}
 		if err = d.Decode(&msg); err != nil {
@@ -827,7 +841,7 @@ type llamaCPPCompletionRequest struct {
 	DynaTempRange    float64     `json:"dynatemp_range,omitempty"`
 	DynaTempExponent float64     `json:"dynatemp_exponent,omitempty"`
 	CachePrompt      bool        `json:"cache_prompt,omitempty"`
-	Stream           bool
+	Stream           bool        `json:"stream"`
 	// top_k             float64
 	// top_p             float64
 	// min_p             float64
@@ -857,15 +871,15 @@ type llamaCPPCompletionRequest struct {
 // llamaCPPCompletionResponse is documented at
 // https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#result-json
 type llamaCPPCompletionResponse struct {
-	Content            string
-	Stop               bool
+	Content            string      `json:"content"`
+	Stop               bool        `json:"stop"`
 	GenerationSettings interface{} `json:"generation_settings"`
-	Model              string
-	Prompt             string
-	StoppedEOS         bool   `json:"stopped_eos"`
-	StoppedLimit       bool   `json:"stopped_limit"`
-	StoppedWord        bool   `json:"stopped_word"`
-	StoppingWord       string `json:"stopping_word"`
+	Model              string      `json:"model"`
+	Prompt             string      `json:"prompt"`
+	StoppedEOS         bool        `json:"stopped_eos"`
+	StoppedLimit       bool        `json:"stopped_limit"`
+	StoppedWord        bool        `json:"stopped_word"`
+	StoppingWord       string      `json:"stopping_word"`
 	Timings            struct {
 		// Undocumented:
 		PromptN             int64   `json:"prompt_n"`
@@ -879,7 +893,7 @@ type llamaCPPCompletionResponse struct {
 	}
 	TokensCached            int64 `json:"tokens_cached"`
 	TokensEvaluated         int64 `json:"tokens_evaluated"`
-	Truncated               bool
+	Truncated               bool  `json:"truncated"`
 	CompletionProbabilities []struct {
 		Content string
 		Probs   []struct {
@@ -890,8 +904,9 @@ type llamaCPPCompletionResponse struct {
 	// Undocumented:
 	IDSlot          int64 `json:"id_slot"`
 	TokensPredicted int64 `json:"tokens_predicted"`
+	Multimodal      bool  `json:"multimodal"`
 	// Error case:
-	Error errorResponse
+	Error errorResponse `json:"error"`
 }
 
 // openAIChatCompletionRequest is documented at

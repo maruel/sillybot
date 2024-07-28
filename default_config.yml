@@ -175,7 +175,7 @@ knownllms:
     # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py
     # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py
     prompt_encoding:
-      begin_of_text:                "<s>"
+      begin_of_text:                ""
       system_token_start:           "[INST]\u2581"
       system_token_end:             " [/INST]"
       user_token_start:             "[INST]\u2581"
