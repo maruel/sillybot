@@ -1,3 +1,4 @@
 /cache
 /config.yml
 /token_*.txt
+/*.out

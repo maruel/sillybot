@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"runtime/trace"
 	"strings"
 	"syscall"
 	"time"
@@ -103,6 +104,7 @@ func mainImpl() error {
 	verbose := flag.Bool("v", false, "Enable verbose logging")
 	config := flag.String("config", "config.yml", "Configuration file. If not present, it is automatically created.")
 	version := flag.Bool("version", false, "Print version then exit")
+	tracefile := flag.String("trace", "", "file to save trace to. A frequent name is trace.out; you can ananalyze it with go tool trace -http=:6060 trace.out")
 	flag.Usage = func() {
 		o := flag.CommandLine.Output()
 		fmt.Fprintf(o, "Usage of %s:\n", os.Args[0])
@@ -124,6 +126,15 @@ func mainImpl() error {
 	if *version {
 		fmt.Printf("discord-bot %s\n", commit())
 		return nil
+	}
+	if *tracefile != "" {
+		f, err := os.Create(*tracefile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		trace.Start(f)
+		defer trace.Stop()
 	}
 	if *verbose {
 		programLevel.Set(slog.LevelDebug)
