@@ -434,7 +434,7 @@ func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.Message
 		// When creating a thread, there's no initial message to reply to yet.
 		replyToID = ""
 	}
-	slog.Info("discord", "event", "messageCreate", "author", m.Author.Username, "server", m.GuildID, "channel", channel, "isdm", isDM, "isthread", isThread)
+	slog.Info("discord", "event", "messageCreate", "author", m.Author.Username, "server", m.GuildID, "channel", channel, "isdm", isDM, "isthread", isThread, "message", msg)
 	// Immediately signal the user that the bot is preparing a reply.
 	if err := dg.ChannelTyping(channel); err != nil {
 		slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
@@ -761,6 +761,75 @@ func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 
 // handlePrompt uses the LLM to generate a response.
 func (d *discordBot) handlePrompt(req msgReq) {
+	if true {
+		d.handlePromptStreaming(req)
+	} else {
+		d.handlePromptBlocking(req)
+	}
+}
+
+// handlePromptBlocking asks the LLM to reply back, wait for the whole answer,
+// then process it. This function exists for testing.
+func (d *discordBot) handlePromptBlocking(req msgReq) {
+	c := d.getMemory(req.channelID)
+	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
+	for {
+		// 32768
+		reply, err := d.l.Prompt(d.ctx, c.Messages, 0, 0, 1.0)
+		if err != nil {
+			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
+				slog.Error("discord", "message", "failed posting message", "error", err)
+			}
+			return
+		}
+		// Remember our own answer.
+		c.Messages = append(c.Messages, llm.Message{Role: llm.Assistant, Content: reply})
+		gotToolCall := false
+		replyToID := req.replyToID
+		for reply != "" {
+			if d.l.Encoding != nil && !gotToolCall {
+				if called := d.handleMistralToolCall(reply, c); called != "" {
+					// TODO: Tell the user a function is being used, not after it was used.
+					gotToolCall = true
+					if msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*"); err != nil {
+						slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
+					} else {
+						replyToID = msg.ID
+					}
+					if err := d.dg.ChannelTyping(req.channelID); err != nil {
+						slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+					}
+					// We need to do a new loop.
+					break
+				}
+			}
+			// Only split the response if it is too large.
+			t := reply
+			rest := ""
+			if len(reply) > maxMessage {
+				if t, rest = splitResponse(reply, false); t == "" {
+					if t, rest = splitResponse(reply, true); t == "" {
+						t = rest[:maxMessage]
+						rest = rest[maxMessage:]
+					}
+				}
+			}
+			msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, t)
+			if err != nil {
+				slog.Error("discord", "message", "failed posting message", "error", err, "content", t)
+			} else {
+				replyToID = msg.ID
+			}
+			reply = rest
+		}
+		if !gotToolCall {
+			return
+		}
+	}
+}
+
+// handlePromptStreaming request a reply from the LLM and streams replies back.
+func (d *discordBot) handlePromptStreaming(req msgReq) {
 	c := d.getMemory(req.channelID)
 	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
 	wg := sync.WaitGroup{}
@@ -878,7 +947,8 @@ func (d *discordBot) handlePrompt(req msgReq) {
 			}
 		}()
 		// We're chatting, we don't want too much content.
-		err := d.l.PromptStreaming(ctx, c.Messages, 32768, 0, 1.0, words)
+		// 32768
+		err := d.l.PromptStreaming(ctx, c.Messages, 0, 0, 1.0, words)
 		close(words)
 		wg.Wait()
 		cancel()
