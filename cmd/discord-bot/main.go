@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"runtime/pprof"
 	"runtime/trace"
 	"strings"
 	"syscall"
@@ -104,7 +105,8 @@ func mainImpl() error {
 	verbose := flag.Bool("v", false, "Enable verbose logging")
 	config := flag.String("config", "config.yml", "Configuration file. If not present, it is automatically created.")
 	version := flag.Bool("version", false, "Print version then exit")
-	tracefile := flag.String("trace", "", "file to save trace to. A frequent name is trace.out; you can ananalyze it with go tool trace -http=:6060 trace.out")
+	cpuprofile := flag.String("cpuprofile", "", "file to save trace to. A frequent name is cpu.pprof; you can analyze it with go tool pprof -http=:6060 cpu.pprof")
+	tracefile := flag.String("trace", "", "file to save trace to. A frequent name is trace.out; you can analyze it with go tool trace -http=:6060 trace.out")
 	flag.Usage = func() {
 		o := flag.CommandLine.Output()
 		fmt.Fprintf(o, "Usage of %s:\n", os.Args[0])
@@ -133,8 +135,21 @@ func mainImpl() error {
 			return err
 		}
 		defer f.Close()
-		trace.Start(f)
+		if err := trace.Start(f); err != nil {
+			return err
+		}
 		defer trace.Stop()
+	}
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return err
+		}
+		defer pprof.StopCPUProfile()
 	}
 	if *verbose {
 		programLevel.Set(slog.LevelDebug)

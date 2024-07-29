@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/trace"
 	"strconv"
 	"strings"
 	"syscall"
@@ -265,10 +266,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			if err = l.c.Start(); err != nil {
 				return nil, fmt.Errorf("failed to start llm server: %w", err)
 			}
-			go func() {
-				done <- l.c.Wait()
-				slog.Info("llm", "state", "terminated")
-			}()
+			go l.waitForTerminated(done)
 			slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", port)
 		}
 	} else {
@@ -437,6 +435,8 @@ func (l *Session) GetMetrics(ctx context.Context, m *Metrics) error {
 //
 // The first message is assumed to be the system prompt.
 func (l *Session) Prompt(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64) (string, error) {
+	r := trace.StartRegion(ctx, "llm.Prompt")
+	defer r.End()
 	if len(msgs) == 0 {
 		return "", errors.New("input required")
 	}
@@ -482,6 +482,8 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, maxtoks, seed int,
 //
 // The first message is assumed to be the system prompt.
 func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) error {
+	r := trace.StartRegion(ctx, "llm.PromptStreaming")
+	defer r.End()
 	if len(msgs) == 0 {
 		return errors.New("input required")
 	}
@@ -505,6 +507,11 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, maxtoks, 
 }
 
 //
+
+func (l *Session) waitForTerminated(done chan<- error) {
+	done <- l.c.Wait()
+	slog.Info("llm", "state", "terminated")
+}
 
 func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64) (string, error) {
 	data := openAIChatCompletionRequest{
