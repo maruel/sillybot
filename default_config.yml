@@ -172,6 +172,7 @@ knownllms:
   - source: hf:bartowski/Mistral-7B-Instruct-v0.3-GGUF/HEAD/Mistral-7B-Instruct-v0.3-
     packagingtype: gguf
     upstream: hf:mistralai/Mistral-7B-Instruct-v0.3
+    # https://docs.mistral.ai/guides/tokenization/#v3-tokenizer
     # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/base.py
     # https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py
     prompt_encoding:

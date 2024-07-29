@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image/jpeg"
 	"image/png"
@@ -173,7 +174,7 @@ func (d *discordBot) Close() error {
 // It's the very first message. At this point, guilds are not yet available.
 // See https://discord.com/developers/docs/topics/gateway-events#ready
 func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
-	slog.Debug("discord", "event", "ready", "session", dg, "event", r)
+	//slog.Debug("discord", "event", "ready", "session", dg, "event", r)
 	slog.Info("discord", "event", "ready", "user", r.User.String())
 
 	// TODO: Get list of DMs and tell users "I'm back up!"
@@ -333,7 +334,7 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 //
 // https://discord.com/developers/docs/topics/gateway-events#guild-create
 func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.GuildCreate) {
-	slog.Debug("discord", "event", "guildCreate", "event", event.Guild)
+	//slog.Debug("discord", "event", "guildCreate", "event", event.Guild)
 	slog.Info("discord", "event", "guildCreate", "name", event.Guild.Name)
 	if event.Guild.Unavailable {
 		return
@@ -764,8 +765,12 @@ func (d *discordBot) handlePrompt(req msgReq) {
 	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
 	wg := sync.WaitGroup{}
 	for {
+		ctx, cancel := context.WithCancel(d.ctx)
 		gotToolCall := false
-		words := make(chan string, 10)
+		// Make it blocking to force a goroutine context switch when a word is
+		// received. When it's buffered, there can be significant delay when LLM is
+		// running on the CPU.
+		words := make(chan string)
 		wg.Add(1)
 		go func() {
 			const rate = 2000 * time.Millisecond
@@ -777,12 +782,15 @@ func (d *discordBot) handlePrompt(req msgReq) {
 			for {
 				select {
 				case w, ok := <-words:
-					slog.Debug("discord", "w", w, "ok", ok)
+					//slog.Debug("discord", "w", w, "ok", ok)
 					if !ok {
 						if d.l.Encoding != nil && !gotToolCall {
 							if called := d.handleMistralToolCall(pending, c); called != "" {
 								// TODO: Tell the user a function is being used, not after it was used.
 								gotToolCall = true
+								// No need to wait for additional content.
+								// TODO: investigate why it's not taking effect faster.
+								cancel()
 								if msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*"); err != nil {
 									slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
 								} else {
@@ -840,6 +848,9 @@ func (d *discordBot) handlePrompt(req msgReq) {
 							if called := d.handleMistralToolCall(t, c); called != "" {
 								// TODO: Tell the user a function is being used, not after it was used.
 								gotToolCall = true
+								// No need to wait for additional content.
+								// TODO: investigate why it's not taking effect faster.
+								cancel()
 								msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
 								if err != nil {
 									slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
@@ -867,9 +878,13 @@ func (d *discordBot) handlePrompt(req msgReq) {
 			}
 		}()
 		// We're chatting, we don't want too much content.
-		err := d.l.PromptStreaming(d.ctx, c.Messages, 32768, 0, 1.0, words)
+		err := d.l.PromptStreaming(ctx, c.Messages, 32768, 0, 1.0, words)
 		close(words)
 		wg.Wait()
+		cancel()
+		if errors.Is(err, context.Canceled) {
+			err = nil
+		}
 		if err != nil {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
 				slog.Error("discord", "message", "failed posting message", "error", err)

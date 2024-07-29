@@ -232,8 +232,10 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 				return nil, fmt.Errorf("failed to create llm server log file: %w", err)
 			}
 			defer log.Close()
-			// Surprisingly llama-server seems to be hardcoded to 8 threads.
-			threads := runtime.NumCPU() - 1
+			// Surprisingly llama-server seems to be hardcoded to 8 threads. Leave 2
+			// cores (especially critical when HT) to allow us to get some CPU time.
+			// TODO: we should probably nice it a bit.
+			threads := runtime.NumCPU() - 2
 			if threads == 0 {
 				threads = 1
 			}
@@ -523,6 +525,7 @@ func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, maxt
 }
 
 func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+	start := time.Now()
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",
 		Messages:    msgs,
@@ -567,7 +570,7 @@ func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, max
 			return reply, fmt.Errorf("llama server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
 		}
 		word := msg.Choices[0].Delta.Content
-		slog.Debug("llm", "word", word)
+		slog.Debug("llm", "word", word, "duration", time.Since(start).Round(time.Millisecond))
 		// TODO: Remove.
 		switch word {
 		// Llama-3, Gemma-2, Phi-3
@@ -599,6 +602,7 @@ func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, ma
 }
 
 func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+	start := time.Now()
 	data := llamaCPPCompletionRequest{
 		Stream:      true,
 		Seed:        int64(seed),
@@ -644,7 +648,7 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, m
 			return reply, fmt.Errorf("failed to decode llama server response %q: %w", string(line), err)
 		}
 		word := msg.Content
-		slog.Debug("llm", "word", word, "stop", msg.Stop, "prompt tok", msg.Timings.PromptN, "gen tok", msg.Timings.PredictedN, "prompt tok/ms", msg.Timings.PromptPerTokenMS, "gen tok/ms", msg.Timings.PredictedPerTokenMS)
+		slog.Debug("llm", "word", word, "stop", msg.Stop, "prompt tok", msg.Timings.PromptN, "gen tok", msg.Timings.PredictedN, "prompt tok/ms", msg.Timings.PromptPerTokenMS, "gen tok/ms", msg.Timings.PredictedPerTokenMS, "duration", time.Since(start).Round(time.Millisecond))
 		if word != "" {
 			// Mistral Nemo really likes "▁".
 			word = strings.ReplaceAll(msg.Content, "\u2581", " ")
@@ -940,8 +944,6 @@ const (
 type Message struct {
 	Role    Role   `json:"role"`
 	Content string `json:"content"`
-
-	_ struct{}
 }
 
 // openAIChatCompletionsResponse is documented at

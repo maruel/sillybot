@@ -48,8 +48,41 @@ func mainImpl() error {
 	programLevel := &slog.LevelVar{}
 	logger := slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
 		Level:      programLevel,
-		TimeFormat: time.TimeOnly,
+		TimeFormat: "15:04:05.000", // Like time.TimeOnly plus milliseconds.
 		NoColor:    !isatty.IsTerminal(os.Stderr.Fd()),
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			switch t := a.Value.Any().(type) {
+			case string:
+				if t == "" {
+					return slog.Attr{}
+				}
+			case bool:
+				if t == false {
+					return slog.Attr{}
+				}
+			case uint64:
+				if t == 0 {
+					return slog.Attr{}
+				}
+			case int64:
+				if t == 0 {
+					return slog.Attr{}
+				}
+			case float64:
+				if t == 0 {
+					return slog.Attr{}
+				}
+			case time.Time:
+				if t.IsZero() {
+					return slog.Attr{}
+				}
+			case time.Duration:
+				if t == 0 {
+					return slog.Attr{}
+				}
+			}
+			return a
+		},
 	}))
 	slog.SetDefault(logger)
 	go func() {
