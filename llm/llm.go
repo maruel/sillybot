@@ -594,7 +594,8 @@ func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, ma
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
 	slog.Debug("llm", "prompt tok", msg.Timings.PromptN, "gen tok", msg.Timings.PredictedN, "prompt tok/ms", msg.Timings.PromptPerTokenMS, "gen tok/ms", msg.Timings.PredictedPerTokenMS)
-	return msg.Content, nil
+	// Mistral Nemo really likes "▁".
+	return strings.ReplaceAll(msg.Content, "\u2581", " "), nil
 }
 
 func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
@@ -630,7 +631,6 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, m
 			return reply, fmt.Errorf("failed to get llama server response: %w", err)
 		}
 		if len(line) == 0 {
-			slog.Debug("llm", "message", "no line")
 			continue
 		}
 		const prefix = "data: "
@@ -646,6 +646,8 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, m
 		word := msg.Content
 		slog.Debug("llm", "word", word, "stop", msg.Stop, "prompt tok", msg.Timings.PromptN, "gen tok", msg.Timings.PredictedN, "prompt tok/ms", msg.Timings.PromptPerTokenMS, "gen tok/ms", msg.Timings.PredictedPerTokenMS)
 		if word != "" {
+			// Mistral Nemo really likes "▁".
+			word = strings.ReplaceAll(msg.Content, "\u2581", " ")
 			words <- word
 			reply += word
 		}

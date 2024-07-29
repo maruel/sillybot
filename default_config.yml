@@ -191,6 +191,20 @@ knownllms:
   - source: hf:bartowski/Mistral-Nemo-Instruct-2407-GGUF/HEAD/Mistral-Nemo-Instruct-2407-
     packagingtype: gguf
     upstream: hf:mistralai/Mistral-Nemo-Instruct-2407
+    prompt_encoding:
+      begin_of_text:                ""
+      system_token_start:           "[INST]\u2581"
+      system_token_end:             " [/INST]"
+      user_token_start:             "[INST]\u2581"
+      user_token_end:               "[/INST]"
+      assistant_token_start:        ""
+      assistant_token_end:          "</s>"
+      tools_available_token_start:  "[AVAILABLE_TOOLS]\u2581"
+      tools_available_token_end:    "[/AVAILABLE_TOOLS]"
+      tool_call_token_start:        "[TOOL_CALLS]\u2581"
+      tool_call_token_end:          "</s>"
+      tool_call_result_token_start: "[TOOL_RESULTS]\u2581"
+      tool_call_result_token_end:   "[/TOOL_RESULTS]"
 
   # Phi-3/3.1 family
   # https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3

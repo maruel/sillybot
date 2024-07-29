@@ -381,7 +381,7 @@ func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.Guild
 //
 // See https://discord.com/developers/docs/topics/gateway-events#message-create
 func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.MessageCreate) {
-	slog.Debug("discord", "event", "messageCreate", "message", m.Message, "state", dg.State)
+	//slog.Debug("discord", "event", "messageCreate", "message", m.Message, "state", dg.State)
 	botid := dg.State.User.ID
 	if m.Author.ID == botid || m.Pinned {
 		return
@@ -777,6 +777,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 			for {
 				select {
 				case w, ok := <-words:
+					slog.Debug("discord", "w", w, "ok", ok)
 					if !ok {
 						if d.l.Encoding != nil && !gotToolCall {
 							if called := d.handleMistralToolCall(pending, c); called != "" {
