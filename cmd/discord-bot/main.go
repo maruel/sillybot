@@ -59,7 +59,7 @@ func mainImpl() error {
 					return slog.Attr{}
 				}
 			case bool:
-				if t == false {
+				if !t {
 					return slog.Attr{}
 				}
 			case uint64:

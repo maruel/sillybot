@@ -773,6 +773,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 func (d *discordBot) handlePromptBlocking(req msgReq) {
 	c := d.getMemory(req.channelID)
 	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
+	replyToID := req.replyToID
 	for {
 		// 32768
 		reply, err := d.l.Prompt(d.ctx, c.Messages, 0, 0, 1.0)
@@ -785,7 +786,6 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 		// Remember our own answer.
 		c.Messages = append(c.Messages, llm.Message{Role: llm.Assistant, Content: reply})
 		gotToolCall := false
-		replyToID := req.replyToID
 		for reply != "" {
 			if d.l.Encoding != nil && !gotToolCall {
 				if called := d.handleMistralToolCall(reply, c); called != "" {
