@@ -130,23 +130,23 @@ func mainImpl() error {
 		return nil
 	}
 	if *tracefile != "" {
-		f, err := os.Create(*tracefile)
-		if err != nil {
-			return err
+		f, err2 := os.Create(*tracefile)
+		if err2 != nil {
+			return err2
 		}
 		defer f.Close()
-		if err := trace.Start(f); err != nil {
+		if err = trace.Start(f); err != nil {
 			return err
 		}
 		defer trace.Stop()
 	}
 	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			return err
+		f, err2 := os.Create(*cpuprofile)
+		if err2 != nil {
+			return err2
 		}
 		defer f.Close()
-		if err := pprof.StartCPUProfile(f); err != nil {
+		if err = pprof.StartCPUProfile(f); err != nil {
 			return err
 		}
 		defer pprof.StopCPUProfile()
