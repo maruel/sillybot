@@ -7,6 +7,9 @@ Diffusion to chat, generate images, and memes!
 file an [issue](https://github.com/maruel/sillybot/issues/new) for feature
 requests or bugs found.*
 
+I made a talk about it: [youtu.be/uGkrjsMl-ok](https://youtu.be/uGkrjsMl-ok)!
+[![sillybot](https://github.com/user-attachments/assets/cff11181-b28b-440a-91d9-42d7a669bbde)](https://youtu.be/uGkrjsMl-ok)
+
 
 ## Usage
 
