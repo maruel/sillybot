@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot"
-	"github.com/maruel/sillybot/huggingface"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
 	"github.com/maruel/sillybot/llm/tools"

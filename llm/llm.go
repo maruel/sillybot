@@ -29,7 +29,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/maruel/sillybot/huggingface"
+	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/internal"
 	"github.com/maruel/sillybot/py"
 	"golang.org/x/sys/cpu"

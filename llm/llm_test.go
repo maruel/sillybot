@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
-	"github.com/maruel/sillybot/huggingface"
+	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/llm/tools"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
