@@ -66,8 +66,8 @@ github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aN
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/lmittmann/tint v1.0.5 h1:NQclAutOfYsqs2F1Lenue6OoWCajs5wJcP3DfWVpePw=
 github.com/lmittmann/tint v1.0.5/go.mod h1:HIS3gSy7qNwGCj+5oRjAutErFBl4BzdQP6cJZ0NfMwE=
-github.com/maruel/huggingface v0.0.0-20241105193848-09c894c2ddea h1:WLV3bcYN+4h/S7Nj5YN9/TAubXrlM4/GmOf8ZhJ5xsY=
-github.com/maruel/huggingface v0.0.0-20241105193848-09c894c2ddea/go.mod h1:EdeaPNI0FvCNCBa4xUj6eE+DWgcVOrPah7rgpxC2Adw=
+github.com/maruel/huggingface v0.0.0-20241106125430-0d392a2c05d8 h1:Lxmsf3w1GHefgJOGSU+WbnvMRXuwILckrNmRfG5xJDo=
+github.com/maruel/huggingface v0.0.0-20241106125430-0d392a2c05d8/go.mod h1:EdeaPNI0FvCNCBa4xUj6eE+DWgcVOrPah7rgpxC2Adw=
 github.com/mattn/go-colorable v0.1.13 h1:fFA4WZxdEF4tXPZVKMLwD8oUnCTTo08duU7wxecdEvA=
 github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovkB8vQcUbaXHg=
 github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=

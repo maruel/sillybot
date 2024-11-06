@@ -532,7 +532,7 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 	for _, k := range d.knownLLMs {
 		line := "- [`" + k.Source.Basename() + "`](" + k.Source.RepoURL() + ") "
 		info := huggingface.Model{ModelRef: k.Source.ModelRef()}
-		if err := d.l.HF.GetModelInfo(d.ctx, &info); err != nil {
+		if err := d.l.HF.GetModelInfo(d.ctx, &info, "main"); err != nil {
 			line += " Oh no, we failed to query: " + err.Error()
 			slog.Error("discord", "command", data.Name, "error", err)
 		} else {
@@ -564,7 +564,7 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 			}
 			if info.Upstream.Author != "" && info.Upstream.Repo != "" {
 				infoUpstream := huggingface.Model{ModelRef: info.Upstream}
-				if err = d.l.HF.GetModelInfo(d.ctx, &infoUpstream); err != nil {
+				if err = d.l.HF.GetModelInfo(d.ctx, &infoUpstream, "main"); err != nil {
 					line += " Oh no, we failed to query: " + err.Error()
 					slog.Error("discord", "command", data.Name, "error", err)
 				} else {

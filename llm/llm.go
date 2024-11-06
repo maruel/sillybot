@@ -32,6 +32,7 @@ import (
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/internal"
 	"github.com/maruel/sillybot/py"
+	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sys/cpu"
 )
 
@@ -45,7 +46,7 @@ type Options struct {
 	// It will be selected automatically from KnownLLMs.
 	//
 	// Use "python" to use the integrated python backend.
-	Model huggingface.PackedFileRef
+	Model PackedFileRef
 	// ContextLength will limit the context length. This is useful with the newer
 	// 128K context window models that will require too much memory and quite
 	// slow to run. A good value to recommend is 8192 or 32768.
@@ -70,13 +71,13 @@ func (o *Options) Validate() error {
 // Currently assumes the model is hosted on HuggingFace.
 type KnownLLM struct {
 	// Source is the repository in the form "hf:<author>/<repo>/<basename>".
-	Source huggingface.PackedFileRef `yaml:"source"`
+	Source PackedFileRef `yaml:"source"`
 	// PackagingType is the file format used in the model. It can be one of
 	// "safetensors" or "gguf".
 	PackagingType string
 	// Upstream is the upstream repo in the form "hf:<author>/<repo>" when the
 	// model is based on another one.
-	Upstream huggingface.PackedRepoRef `yaml:"upstream"`
+	Upstream PackedRepoRef `yaml:"upstream"`
 	// PromptEncoding is only used when using llama-server in /completion mode.
 	// When not present, llama-server is used in OpenAI compatible API mode.
 	PromptEncoding *PromptEncoding `yaml:"prompt_encoding"`
@@ -135,11 +136,12 @@ func (p *PromptEncoding) validate() error {
 // requirement.
 type Session struct {
 	HF       *huggingface.Client
-	Model    huggingface.PackedFileRef
+	Model    PackedFileRef
 	Encoding *PromptEncoding
 	baseURL  string
 	backend  string
 
+	cache     string
 	modelFile string
 	c         *exec.Cmd
 	done      <-chan error
@@ -158,11 +160,11 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create the directory to cache models: %w", err)
 	}
-	hf, err := huggingface.New("", cacheModels)
+	hf, err := huggingface.New("")
 	if err != nil {
 		return nil, err
 	}
-	l := &Session{HF: hf, Model: opts.Model}
+	l := &Session{HF: hf, Model: opts.Model, cache: cacheModels}
 	known := -1
 	if opts.Model != "python" {
 		for i, k := range knownLLMs {
@@ -709,7 +711,7 @@ func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []Message) er
 //
 // Currently hard-coded to GGUF files and Hugging Face. Doesn't support split
 // files.
-func (l *Session) ensureModel(ctx context.Context, model huggingface.PackedFileRef, k KnownLLM) (string, error) {
+func (l *Session) ensureModel(ctx context.Context, model PackedFileRef, k KnownLLM) (string, error) {
 	// TODO: This is very "meh".
 	// Designed to handle special case like Mistral-7B-Instruct-v0.3-Q3_K_M.
 	ext := strings.ToUpper(model.Basename())
@@ -749,7 +751,7 @@ func (l *Session) ensureModel(ctx context.Context, model huggingface.PackedFileR
 	}
 
 	// Hack: quickly check if the file is there, if so, just return this.
-	dst := filepath.Join(l.HF.Cache, model.Basename()+".gguf")
+	dst := filepath.Join(l.cache, model.Basename()+".gguf")
 	_, err := os.Stat(dst)
 	if err == nil {
 		l.modelFile = dst
@@ -760,14 +762,15 @@ func (l *Session) ensureModel(ctx context.Context, model huggingface.PackedFileR
 		return "", fmt.Errorf("can't guess model %q huggingface repo", model)
 	}
 	// Hack: we assume everything is on HuggingFace.
+	ln := filepath.Join(l.cache, model.Basename()+".gguf")
 	switch k.PackagingType {
 	case "gguf":
-		if dst, err = l.HF.EnsureFile(ctx, model+".gguf", 0o644); err != nil {
+		if dst, err = l.HF.EnsureFile(ctx, model.ModelRef(), model.Revision(), model.Basename()+".gguf"); err != nil {
 			// Get the list of files to help the user.
 			m := huggingface.Model{ModelRef: model.ModelRef()}
 			err = fmt.Errorf("can't find model %q at %s: %w", model, m.URL(), err)
-			if err2 := l.HF.GetModelInfo(ctx, &m); err2 != nil {
-				return dst, errors.Join(err, err2)
+			if err2 := l.HF.GetModelInfo(ctx, &m, model.Revision()); err2 != nil {
+				return ln, errors.Join(err, err2)
 			}
 			msg := "Supported quantizations: "
 			added := false
@@ -791,12 +794,15 @@ func (l *Session) ensureModel(ctx context.Context, model huggingface.PackedFileR
 				msg += strings.TrimSuffix(f[len(model.Basename()):], ".gguf")
 				added = true
 			}
-			return dst, fmt.Errorf("%w; %s", err, msg)
+			return ln, fmt.Errorf("%w; %s", err, msg)
 		}
-		l.modelFile = dst
-		return dst, nil
+		if err = os.Symlink(dst, ln); err != nil {
+			return ln, err
+		}
+		l.modelFile = ln
+		return ln, nil
 	default:
-		return dst, fmt.Errorf("internal error: implement packaging type %s", k.PackagingType)
+		return ln, fmt.Errorf("internal error: implement packaging type %s", k.PackagingType)
 	}
 }
 
@@ -1072,7 +1078,7 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	zippath := filepath.Join(cache, zipname)
 	if _, err := os.Stat(zippath); err != nil {
 		slog.Info("llm", "retrieving", zipname)
-		if err := huggingface.DownloadFile(ctx, url+zipname, zippath, "", 0o644); err != nil {
+		if err := downloadFile(ctx, url+zipname, zippath, ""); err != nil {
 			return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
 		}
 	} else {
@@ -1113,4 +1119,32 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		}
 	}
 	return "", false, fmt.Errorf("failed to find %q in %q", files, zipname)
+}
+
+// downloadFile downloads a file optionally with a bearer token.
+//
+// This is a generic utility function. It retries 429 and 5xx automatically.
+//
+// It prints a progress bar if the file is at least 100kiB.
+func downloadFile(ctx context.Context, url, dst string, token string) error {
+	resp, err := huggingface.AuthRequest(ctx, http.DefaultClient, "GET", url, token, nil)
+	if err != nil {
+		return fmt.Errorf("failed to download %q: %w", dst, err)
+	}
+	defer resp.Body.Close()
+	// Only then create the file.
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o666)
+	if err != nil {
+		return fmt.Errorf("failed to download %q: %w", dst, err)
+	}
+	defer f.Close()
+
+	// Check if resp.ContentLength is small and skip output in this case.
+	if resp.ContentLength == 0 || resp.ContentLength >= 100*1024 {
+		bar := progressbar.DefaultBytes(resp.ContentLength, filepath.Base(dst))
+		_, err = io.Copy(io.MultiWriter(f, bar), resp.Body)
+	} else {
+		_, err = io.Copy(f, resp.Body)
+	}
+	return err
 }

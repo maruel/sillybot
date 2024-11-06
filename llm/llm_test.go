@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
-	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/llm/tools"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -171,7 +170,7 @@ func TestLLM(t *testing.T) {
 				t.Skip("skipping because -fa has to be enabled first")
 			}
 			start := time.Now()
-			modelFile := testModel(t, k.Source+huggingface.PackedFileRef(quant), systemPrompt)
+			modelFile := testModel(t, k.Source+PackedFileRef(quant), systemPrompt)
 			i, err := os.Stat(modelFile)
 			if err != nil {
 				t.Fatalf("%q: %s", modelFile, err)
@@ -194,7 +193,7 @@ func TestLLM(t *testing.T) {
 	})
 }
 
-func testModel(t *testing.T, model huggingface.PackedFileRef, systemPrompt string) string {
+func testModel(t *testing.T, model PackedFileRef, systemPrompt string) string {
 	l := loadModel(t, model)
 	if l.Encoding != nil {
 		t.Run("CustomEncoding", func(t *testing.T) {
@@ -429,7 +428,7 @@ func get_current_weather(t *testing.T, location, format string) string {
 
 //
 
-func loadModel(t *testing.T, model huggingface.PackedFileRef) *Session {
+func loadModel(t *testing.T, model PackedFileRef) *Session {
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)

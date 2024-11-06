@@ -6,9 +6,10 @@ require (
 	github.com/bwmarrin/discordgo v0.28.1
 	github.com/google/go-cmp v0.6.0
 	github.com/lmittmann/tint v1.0.5
-	github.com/maruel/huggingface v0.0.0-20241105193848-09c894c2ddea
+	github.com/maruel/huggingface v0.0.0-20241106125430-0d392a2c05d8
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.20
+	github.com/schollz/progressbar/v3 v3.17.0
 	github.com/slack-go/slack v0.15.0
 	golang.org/x/image v0.21.0
 	golang.org/x/sync v0.8.0
@@ -32,7 +33,6 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/schollz/progressbar/v3 v3.17.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.56.0 // indirect
 	go.opentelemetry.io/otel v1.31.0 // indirect
