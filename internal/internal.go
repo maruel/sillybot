@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"regexp"
@@ -52,19 +54,24 @@ func IsHostPort(s string) bool {
 	return ok
 }
 
-// JSONPos simplifies doing an HTTP POST in JSON.
+// JSONPost simplifies doing an HTTP POST in JSON.
 func JSONPost(ctx context.Context, url string, in, out interface{}) error {
 	resp, err := JSONPostRequest(ctx, url, in)
 	if err != nil {
 		return err
 	}
-	d := json.NewDecoder(resp.Body)
-	d.DisallowUnknownFields()
-	err = d.Decode(out)
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
 	var errs []error
-	if err != nil {
-		errs = append(errs, fmt.Errorf("failed to decode server response: %w", err))
+	if b, err := io.ReadAll(resp.Body); err != nil {
+		errs = append(errs, fmt.Errorf("failed to read server response: %w", err))
+	} else {
+		d := json.NewDecoder(bytes.NewReader(b))
+		d.DisallowUnknownFields()
+		err = d.Decode(out)
+		if err != nil {
+			slog.Error("internal", "url", url, "resp", string(b))
+			errs = append(errs, fmt.Errorf("failed to decode server response: %w", err))
+		}
 	}
 	if resp.StatusCode >= 400 {
 		errs = append(errs, &HTTPError{URL: url, StatusCode: resp.StatusCode, Status: resp.Status})

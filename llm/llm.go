@@ -424,6 +424,8 @@ func (l *Session) GetMetrics(ctx context.Context, m *Metrics) error {
 			m.RequestsProcessing = i
 		case "llamacpp:requests_deferred":
 			m.RequestedPending = i
+		case "llamacpp:n_decode_total":
+		case "llamacpp:n_busy_slots_per_decode":
 		default:
 			return fmt.Errorf("unknown metric %q", l)
 		}
@@ -569,7 +571,11 @@ func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, max
 		if !bytes.HasPrefix(line, []byte(prefix)) {
 			return reply, fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
 		}
-		d := json.NewDecoder(bytes.NewReader(line[len(prefix):]))
+		suffix := string(line[len(prefix):])
+		if suffix == "[DONE]" {
+			return reply, nil
+		}
+		d := json.NewDecoder(strings.NewReader(suffix))
 		d.DisallowUnknownFields()
 		msg := openAIChatCompletionsStreamResponse{}
 		if err = d.Decode(&msg); err != nil {
@@ -796,6 +802,7 @@ func (l *Session) ensureModel(ctx context.Context, model PackedFileRef, k KnownL
 			}
 			return ln, fmt.Errorf("%w; %s", err, msg)
 		}
+		// TODO: When I use os.Symlink(), llama-server crashes.
 		if err = os.Symlink(dst, ln); err != nil {
 			return ln, err
 		}
@@ -805,6 +812,23 @@ func (l *Session) ensureModel(ctx context.Context, model PackedFileRef, k KnownL
 		return ln, fmt.Errorf("internal error: implement packaging type %s", k.PackagingType)
 	}
 }
+
+/*
+func copyFile(src, dst string) error {
+	s, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	d, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	_, err = io.Copy(d, s)
+	return err
+}
+*/
 
 // processMsgs process the system prompt.
 func (l *Session) processMsgs(msgs []Message) []Message {
@@ -921,7 +945,9 @@ type llamaCPPCompletionResponse struct {
 		}
 	} `json:"completion_probabilities"`
 	// Undocumented:
+	HasNewLine      bool  `json:"has_new_line"`
 	IDSlot          int64 `json:"id_slot"`
+	Index           int64 `json:"index"`
 	TokensPredicted int64 `json:"tokens_predicted"`
 	Multimodal      bool  `json:"multimodal"`
 	// Error case:
@@ -1051,7 +1077,7 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	// Time to download!
 	// Do not just get the latest version because the odds of it breaking is just
 	// too high. This is best effort.
-	build := "b3450"
+	build := "b4038"
 	url := "https://github.com/ggerganov/llama.cpp/releases/download/" + build + "/"
 	zipname := ""
 	files := []string{filepath.Base(llamaserver)}
