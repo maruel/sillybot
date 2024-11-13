@@ -266,3 +266,9 @@ knownllms:
   - source: hf:Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/HEAD/qwen2.5-coder-7b-instruct-
     packagingtype: gguf
     upstream: hf:Qwen/Qwen2.5-Coder-7B-Instruct
+  - source: hf:Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/HEAD/qwen2.5-coder-14b-instruct-
+    packagingtype: gguf
+    upstream: hf:Qwen/Qwen2.5-Coder-14B-Instruct
+  - source: hf:Qwen/Qwen2.5-Coder-32B-Instruct-GGUF/HEAD/qwen2.5-coder-32b-instruct-
+    packagingtype: gguf
+    upstream: hf:Qwen/Qwen2.5-Coder-32B-Instruct
