@@ -131,6 +131,8 @@ func TestLLM(t *testing.T) {
 		if strings.HasPrefix(model, "meta-llama-3.1-8b") {
 			// They didn't upload Q2_L yet.
 			quant = "Q3_K_L"
+		} else if strings.HasPrefix(model, "llama-3.2-1b") {
+			quant = "IQ3_M"
 		} else if strings.HasPrefix(model, "mistral") {
 			// Use a higher quantization not because it fails on Q2_K but because
 			// TestMistralTool requires Q3_K_S and there's no point in downloading
@@ -428,6 +430,7 @@ func get_current_weather(t *testing.T, location, format string) string {
 
 //
 
+// loadModel returns the models in ../default_config.yml to ensure they are valid.
 func loadModel(t *testing.T, model PackedFileRef) *Session {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -449,7 +452,10 @@ func loadModel(t *testing.T, model PackedFileRef) *Session {
 
 func checkAnswer(t *testing.T, got string) {
 	// Work around various non-determinism.
-	if want := "ok chief"; !strings.Contains(strings.ToLower(got), want) {
+	processed := strings.ToLower(got)
+	// Accept ok, chief.
+	processed = strings.Replace(processed, ",", "", 1)
+	if want := "ok chief"; !strings.Contains(processed, want) {
 		if runtime.GOOS == "darwin" && os.Getenv("CI") == "true" && os.Getenv("GITHUB_ACTION") != "" {
 			t.Log("TODO: Figure out why macOS GitHub hosted runner return an empty string")
 		} else {
