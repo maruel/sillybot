@@ -152,7 +152,7 @@ func TestLLM(t *testing.T) {
 				quant = "Q3_K_S"
 			}
 		} else if strings.Contains(model, "qwen") {
-			if strings.Contains(model, "0_5b") {
+			if strings.Contains(model, "0_5b") || strings.Contains(model, "0.5b") {
 				// Fails on Q2_K.
 				quant = "Q3_K_M"
 			}
