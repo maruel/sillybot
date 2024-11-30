@@ -158,7 +158,7 @@ func mainImpl() error {
 		}
 	*/
 
-	feed, _, err := c.GetTimeline(ctx)
+	feed, _, err := c.GetTimeline(ctx, "", 5)
 	if err != nil {
 		return err
 	}
