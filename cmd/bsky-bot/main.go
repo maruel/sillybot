@@ -18,9 +18,11 @@ import (
 	"runtime/pprof"
 	"runtime/trace"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -171,7 +173,22 @@ func mainImpl() error {
 			return err
 		}
 	*/
-	return c.Listen(ctx, "")
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	ch := make(chan *bsky.FeedPost)
+	go func() {
+		defer wg.Done()
+		for p := range ch {
+			if ctx.Err() != nil {
+				continue
+			}
+			b, _ := json.Marshal(p)
+			slog.Warn("bsky", "mention", string(b))
+		}
+	}()
+	defer close(ch)
+	defer wg.Wait()
+	return c.Listen(ctx, "", ch)
 }
 
 func main() {

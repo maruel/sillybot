@@ -81,7 +81,7 @@ func (c *Client) GetTimeline(ctx context.Context, cursor string, limit int) ([]*
 
 }
 
-// SeachPosts searches for recent posts.
+// SearchPosts searches for recent posts.
 //
 // q is required. limit must be above 0 and 100 or lower.
 func (c *Client) SearchPosts(ctx context.Context, q string, limit int, cursor string) error {
@@ -111,7 +111,7 @@ func (c *Client) SearchPosts(ctx context.Context, q string, limit int, cursor st
 }
 
 // Listen listens to all posts in the feed until the context is canceled.
-func (c *Client) Listen(ctx context.Context, cursor string) error {
+func (c *Client) Listen(ctx context.Context, cursor string, ch chan<- *bsky.FeedPost) error {
 	u := "wss://bsky.network/xrpc/com.atproto.sync.subscribeRepos"
 	if cursor != "" {
 		u += "?cursor=" + url.QueryEscape(cursor)
@@ -121,50 +121,51 @@ func (c *Client) Listen(ctx context.Context, cursor string) error {
 		return fmt.Errorf("failed to listed: %w", err)
 	}
 	defer conn.Close()
-	// TODO: We only want events relevant to our own account!
-	return events.HandleRepoStream(ctx, conn, sequential.NewScheduler("stream", c.onListenEvent))
+	return events.HandleRepoStream(ctx, conn, sequential.NewScheduler("stream",
+		func(ctx context.Context, xev *events.XRPCStreamEvent) error {
+			// https://atproto.com/specs/event-stream
+			if xev.RepoCommit != nil {
+				return c.onListenEvent(ctx, xev.RepoCommit, ch)
+			}
+			return nil
+		}))
 }
 
-func (c *Client) onListenEvent(ctx context.Context, xev *events.XRPCStreamEvent) error {
-	// https://atproto.com/specs/event-stream
-	if xev.RepoCommit != nil {
-		evt := xev.RepoCommit
-		if evt.TooBig {
-			slog.Warn("bsky", "skipping too big events", evt.Seq)
-			return nil
-		}
-		r, err := repo.ReadRepoFromCar(ctx, bytes.NewReader(evt.Blocks))
-		if err != nil {
-			return fmt.Errorf("reading repo from car (seq: %d, len: %d): %w", evt.Seq, len(evt.Blocks), err)
-		}
-		for _, op := range evt.Ops {
-			switch ek := repomgr.EventKind(op.Action); ek {
-			case repomgr.EvtKindCreateRecord, repomgr.EvtKindUpdateRecord:
-				rc, rec, err := r.GetRecord(ctx, op.Path)
-				if err != nil {
-					slog.Error("bsky", "path", op.Path, "cid", *op.Cid, "seq", evt.Seq, "repo", evt.Repo, "err", err)
-					continue
-				}
-				if util.LexLink(rc) != *op.Cid {
-					return fmt.Errorf("mismatch in record and op cid: %s != %s", rc, *op.Cid)
-				}
-				if err := c.onListenRecord(ctx, evt.Seq, op.Path, evt.Repo, &rc, rec); err != nil {
-					return err
-				}
-			case repomgr.EvtKindDeleteRecord:
-				// Don't care.
+func (c *Client) onListenEvent(ctx context.Context, evt *atproto.SyncSubscribeRepos_Commit, ch chan<- *bsky.FeedPost) error {
+	if evt.TooBig {
+		slog.Warn("bsky", "skipping too big events", evt.Seq)
+		return nil
+	}
+	r, err := repo.ReadRepoFromCar(ctx, bytes.NewReader(evt.Blocks))
+	if err != nil {
+		return fmt.Errorf("reading repo from car (seq: %d, len: %d): %w", evt.Seq, len(evt.Blocks), err)
+	}
+	for _, op := range evt.Ops {
+		switch ek := repomgr.EventKind(op.Action); ek {
+		case repomgr.EvtKindCreateRecord, repomgr.EvtKindUpdateRecord:
+			rc, rec, err := r.GetRecord(ctx, op.Path)
+			if err != nil {
+				slog.Warn("bsky", "path", op.Path, "cid", *op.Cid, "seq", evt.Seq, "repo", evt.Repo, "err", err)
+				continue
 			}
+			if util.LexLink(rc) != *op.Cid {
+				return fmt.Errorf("mismatch in record and op cid: %s != %s", rc, *op.Cid)
+			}
+			if err := c.onListenRecord(ctx, evt.Seq, op.Path, evt.Repo, &rc, rec, ch); err != nil {
+				return err
+			}
+		case repomgr.EvtKindDeleteRecord:
+			// Don't care.
 		}
 	}
 	return nil
 }
 
-func (c *Client) onListenRecord(ctx context.Context, seq int64, path string, did string, rcid *cid.Cid, rec any) error {
+func (c *Client) onListenRecord(ctx context.Context, seq int64, path string, did string, rcid *cid.Cid, rec any, ch chan<- *bsky.FeedPost) error {
 	slog.Debug("bsky", "seq", seq, "path", path, "did", did, "rcid", rcid, "rec", rec)
 	switch e := rec.(type) {
 	case *bsky.FeedPost:
-		return c.onEventFeedPost(ctx, e)
-		// TODO.
+		return c.onEventFeedPost(ctx, e, ch)
 	case *bsky.ActorProfile, *bsky.FeedGenerator, *bsky.FeedLike, *bsky.FeedPostgate, *bsky.FeedRepost, *bsky.FeedThreadgate, *bsky.GraphBlock, *bsky.GraphFollow, *bsky.GraphList, *bsky.GraphListblock, *bsky.GraphListitem, *bsky.GraphStarterpack:
 	default:
 		slog.Error("bsky", "type", reflect.TypeOf(rec).String(), "record", rec)
@@ -172,23 +173,32 @@ func (c *Client) onListenRecord(ctx context.Context, seq int64, path string, did
 	return nil
 }
 
-func (c *Client) onEventFeedPost(ctx context.Context, e *bsky.FeedPost) error {
+func (c *Client) onEventFeedPost(ctx context.Context, p *bsky.FeedPost, ch chan<- *bsky.FeedPost) error {
 	// Look for a mention to us.
-	for _, f := range e.Facets {
-		for _, f2 := range f.Features {
-			if f2.RichtextFacet_Mention != nil {
-				if f2.RichtextFacet_Mention.Did == c.client.Auth.Did {
-					b, _ := json.Marshal(e)
-					slog.Warn("bsky", "mention", string(b))
-					break
-				}
-			}
+	if isMentioned(p, c.client.Auth.Did) {
+		select {
+		case ch <- p:
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 	return nil
 }
 
 //
+
+func isMentioned(p *bsky.FeedPost, did string) bool {
+	for _, f := range p.Facets {
+		for _, f2 := range f.Features {
+			if f2.RichtextFacet_Mention != nil {
+				if f2.RichtextFacet_Mention.Did == did {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
 
 // FacetType is one of the supported bluesky richtext style.
 type FacetType string
