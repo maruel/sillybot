@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -157,9 +158,19 @@ func mainImpl() error {
 		}
 	*/
 
-	if err = c.SearchPosts(ctx, c.client.Auth.Did); err != nil {
+	feed, _, err := c.GetTimeline(ctx)
+	if err != nil {
 		return err
 	}
+	for _, post := range feed {
+		b, _ := json.Marshal(post.Post)
+		slog.Info("bsky", "context", post.FeedContext, "post", string(b), "reason", post.Reason, "reply", post.Reply)
+	}
+	/*
+		if err = c.SearchPosts(ctx, c.client.Auth.Did); err != nil {
+			return err
+		}
+	*/
 	return c.Listen(ctx, "")
 }
 

@@ -68,17 +68,28 @@ func (c *Client) GetProfile(ctx context.Context, did string) (*bsky.ActorDefs_Pr
 	return bsky.ActorGetProfile(ctx, c.client, did)
 }
 
+func (c *Client) GetTimeline(ctx context.Context, cursor string, limit int) ([]*bsky.FeedDefs_FeedViewPost, string, error) {
+	d, err := bsky.FeedGetTimeline(ctx, c.client, "reverse-chronological", cursor, int64(limit))
+	if err != nil {
+		return nil, "", err
+	}
+	cur := ""
+	if d.Cursor != nil {
+		cur = *d.Cursor
+	}
+	return d.Feed, cur, nil
+
+}
+
 // SeachPosts searches for recent posts.
 //
-// author must be a valid did or an handle with @.
-func (c *Client) SearchPosts(ctx context.Context, author string) error {
-
-	cursor := ""
+// q is required. limit must be above 0 and 100 or lower.
+func (c *Client) SearchPosts(ctx context.Context, q string, limit int, cursor string) error {
+	// author must be a valid did or an handle with @.
+	author := ""
 	domain := ""
 	lang := ""
-	limit := int64(10)
 	mentions := ""
-	q := "Hello"
 	since := ""
 	sort := ""
 	var tag []string
@@ -86,7 +97,7 @@ func (c *Client) SearchPosts(ctx context.Context, author string) error {
 	url := ""
 	// What the heck API. Probably saner to inline.
 	// https://docs.bsky.app/docs/api/app-bsky-feed-search-posts
-	res, err := bsky.FeedSearchPosts(ctx, c.client, author, cursor, domain, lang, limit, mentions, q, since, sort, tag, until, url)
+	res, err := bsky.FeedSearchPosts(ctx, c.client, author, cursor, domain, lang, int64(limit), mentions, q, since, sort, tag, until, url)
 	if err != nil {
 		return err
 	}
@@ -137,9 +148,8 @@ func (c *Client) onListenEvent(ctx context.Context, xev *events.XRPCStreamEvent)
 				if util.LexLink(rc) != *op.Cid {
 					return fmt.Errorf("mismatch in record and op cid: %s != %s", rc, *op.Cid)
 				}
-				if err := c.onListenRecord(ctx, ek, evt.Seq, op.Path, evt.Repo, &rc, rec); err != nil {
-					slog.Error("bsky", "kind", ek, "err", err)
-					continue
+				if err := c.onListenRecord(ctx, evt.Seq, op.Path, evt.Repo, &rc, rec); err != nil {
+					return err
 				}
 			case repomgr.EvtKindDeleteRecord:
 				// Don't care.
@@ -149,14 +159,31 @@ func (c *Client) onListenEvent(ctx context.Context, xev *events.XRPCStreamEvent)
 	return nil
 }
 
-func (c *Client) onListenRecord(ctx context.Context, op repomgr.EventKind, seq int64, path string, did string, rcid *cid.Cid, rec any) error {
-	slog.Debug("bsky", "op", op, "seq", seq, "path", path, "did", did, "rcid", rcid, "rec", rec)
-	switch rec.(type) {
+func (c *Client) onListenRecord(ctx context.Context, seq int64, path string, did string, rcid *cid.Cid, rec any) error {
+	slog.Debug("bsky", "seq", seq, "path", path, "did", did, "rcid", rcid, "rec", rec)
+	switch e := rec.(type) {
 	case *bsky.FeedPost:
+		return c.onEventFeedPost(ctx, e)
 		// TODO.
 	case *bsky.ActorProfile, *bsky.FeedGenerator, *bsky.FeedLike, *bsky.FeedPostgate, *bsky.FeedRepost, *bsky.FeedThreadgate, *bsky.GraphBlock, *bsky.GraphFollow, *bsky.GraphList, *bsky.GraphListblock, *bsky.GraphListitem, *bsky.GraphStarterpack:
 	default:
 		slog.Error("bsky", "type", reflect.TypeOf(rec).String(), "record", rec)
+	}
+	return nil
+}
+
+func (c *Client) onEventFeedPost(ctx context.Context, e *bsky.FeedPost) error {
+	// Look for a mention to us.
+	for _, f := range e.Facets {
+		for _, f2 := range f.Features {
+			if f2.RichtextFacet_Mention != nil {
+				if f2.RichtextFacet_Mention.Did == c.client.Auth.Did {
+					b, _ := json.Marshal(e)
+					slog.Warn("bsky", "mention", string(b))
+					break
+				}
+			}
+		}
 	}
 	return nil
 }
