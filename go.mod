@@ -7,6 +7,7 @@ require (
 	github.com/bwmarrin/discordgo v0.28.1
 	github.com/google/go-cmp v0.6.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/ipfs/go-cid v0.4.1
 	github.com/lmittmann/tint v1.0.5
 	github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11
 	github.com/mattn/go-colorable v0.1.13
@@ -55,7 +56,6 @@ require (
 	github.com/ipfs/bbloom v0.0.4 // indirect
 	github.com/ipfs/go-block-format v0.2.0 // indirect
 	github.com/ipfs/go-blockservice v0.5.2 // indirect
-	github.com/ipfs/go-cid v0.4.1 // indirect
 	github.com/ipfs/go-datastore v0.6.0 // indirect
 	github.com/ipfs/go-ipfs-blockstore v1.3.1 // indirect
 	github.com/ipfs/go-ipfs-ds-help v1.1.1 // indirect
@@ -76,7 +76,7 @@ require (
 	github.com/ipld/go-ipld-prime v0.21.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
-	github.com/jackc/pgx/v5 v5.5.0 // indirect
+	github.com/jackc/pgx/v5 v5.5.4 // indirect
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/jbenet/goprocess v0.1.4 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
