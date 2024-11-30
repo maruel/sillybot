@@ -145,22 +145,22 @@ func mainImpl() error {
 		}
 		*password = strings.TrimSpace(string(b))
 	}
-	_, err := New(ctx, *handle, *password)
+	c, err := New(ctx, *handle, *password)
 	if err != nil {
 		return err
 	}
 	slog.Info("bsky", "state", "connected")
 
 	/*
-		p := &Post{Text: "Hello world!"}
-		_, _, err = c.Post(ctx, p)
-		if err != nil {
+		if _, _, err = c.Post(ctx, &Post{Text: "Hello world!"});err != nil {
 			return err
 		}
 	*/
 
-	<-ctx.Done()
-	return err
+	if err = c.SearchPosts(ctx, c.client.Auth.Did); err != nil {
+		return err
+	}
+	return c.Listen(ctx, "")
 }
 
 func main() {
