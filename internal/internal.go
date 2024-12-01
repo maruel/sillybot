@@ -15,8 +15,15 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
+	"runtime/debug"
 	"strconv"
+	"time"
+
+	"github.com/lmittmann/tint"
+	"github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
 )
 
 // General functions I didn't know where to put.
@@ -131,4 +138,61 @@ type HTTPError struct {
 
 func (h *HTTPError) Error() string {
 	return h.Status
+}
+
+func InitLog(programLevel *slog.LevelVar) {
+	logger := slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
+		Level:      programLevel,
+		TimeFormat: "15:04:05.000", // Like time.TimeOnly plus milliseconds.
+		NoColor:    !isatty.IsTerminal(os.Stderr.Fd()),
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			switch t := a.Value.Any().(type) {
+			case string:
+				if t == "" {
+					return slog.Attr{}
+				}
+			case bool:
+				if !t {
+					return slog.Attr{}
+				}
+			case uint64:
+				if t == 0 {
+					return slog.Attr{}
+				}
+			case int64:
+				if t == 0 {
+					return slog.Attr{}
+				}
+			case float64:
+				if t == 0 {
+					return slog.Attr{}
+				}
+			case time.Time:
+				if t.IsZero() {
+					return slog.Attr{}
+				}
+			case time.Duration:
+				if t == 0 {
+					return slog.Attr{}
+				}
+			}
+			return a
+		},
+	}))
+	slog.SetDefault(logger)
+}
+
+func Commit() string {
+	rev := ""
+	suffix := ""
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" {
+				rev = s.Value
+			} else if s.Key == "vcs.modified" && s.Value == "true" {
+				suffix = "-tainted"
+			}
+		}
+	}
+	return rev + suffix
 }

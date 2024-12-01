@@ -14,80 +14,27 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime/debug"
 	"runtime/pprof"
 	"runtime/trace"
 	"strings"
+	"sync"
 	"syscall"
-	"time"
 
-	"github.com/lmittmann/tint"
 	"github.com/maruel/sillybot"
+	"github.com/maruel/sillybot/internal"
 	"github.com/maruel/sillybot/llm"
-	"github.com/mattn/go-colorable"
-	"github.com/mattn/go-isatty"
 )
 
-func commit() string {
-	rev := ""
-	suffix := ""
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, s := range info.Settings {
-			if s.Key == "vcs.revision" {
-				rev = s.Value
-			} else if s.Key == "vcs.modified" && s.Value == "true" {
-				suffix = "-tainted"
-			}
-		}
-	}
-	return rev + suffix
-}
-
 func mainImpl() error {
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	defer stop()
-
 	programLevel := &slog.LevelVar{}
-	logger := slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
-		Level:      programLevel,
-		TimeFormat: "15:04:05.000", // Like time.TimeOnly plus milliseconds.
-		NoColor:    !isatty.IsTerminal(os.Stderr.Fd()),
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			switch t := a.Value.Any().(type) {
-			case string:
-				if t == "" {
-					return slog.Attr{}
-				}
-			case bool:
-				if !t {
-					return slog.Attr{}
-				}
-			case uint64:
-				if t == 0 {
-					return slog.Attr{}
-				}
-			case int64:
-				if t == 0 {
-					return slog.Attr{}
-				}
-			case float64:
-				if t == 0 {
-					return slog.Attr{}
-				}
-			case time.Time:
-				if t.IsZero() {
-					return slog.Attr{}
-				}
-			case time.Duration:
-				if t == 0 {
-					return slog.Attr{}
-				}
-			}
-			return a
-		},
-	}))
-	slog.SetDefault(logger)
+	internal.InitLog(programLevel)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		<-ctx.Done()
 		slog.Info("main", "message", "quitting")
 	}()
@@ -126,7 +73,7 @@ func mainImpl() error {
 		return errors.New("unexpected argument")
 	}
 	if *version {
-		fmt.Printf("discord-bot %s\n", commit())
+		fmt.Printf("discord-bot %s\n", internal.Commit())
 		return nil
 	}
 	if *tracefile != "" {

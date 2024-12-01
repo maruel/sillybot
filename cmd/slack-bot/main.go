@@ -14,45 +14,25 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime/debug"
 	"strings"
+	"sync"
 	"syscall"
-	"time"
 
-	"github.com/lmittmann/tint"
 	"github.com/maruel/sillybot"
+	"github.com/maruel/sillybot/internal"
 	"github.com/maruel/sillybot/llm"
-	"github.com/mattn/go-colorable"
-	"github.com/mattn/go-isatty"
 )
 
-func commit() string {
-	rev := ""
-	suffix := ""
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, s := range info.Settings {
-			if s.Key == "vcs.revision" {
-				rev = s.Value
-			} else if s.Key == "vcs.modified" && s.Value == "true" {
-				suffix = "-tainted"
-			}
-		}
-	}
-	return rev + suffix
-}
-
 func mainImpl() error {
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	defer stop()
-
 	programLevel := &slog.LevelVar{}
-	logger := slog.New(tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
-		Level:      programLevel,
-		TimeFormat: time.TimeOnly,
-		NoColor:    !isatty.IsTerminal(os.Stderr.Fd()),
-	}))
-	slog.SetDefault(logger)
+	internal.InitLog(programLevel)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		<-ctx.Done()
 		slog.Info("main", "message", "quitting")
 	}()
@@ -88,7 +68,7 @@ func mainImpl() error {
 		return errors.New("unexpected argument")
 	}
 	if *version {
-		fmt.Printf("discord-bot %s\n", commit())
+		fmt.Printf("discord-bot %s\n", internal.Commit())
 		return nil
 	}
 	if *verbose {
