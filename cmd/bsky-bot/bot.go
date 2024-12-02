@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
@@ -71,16 +70,18 @@ func (b *bskyBot) ProcessReplies(ctx context.Context) error {
 			if ctx.Err() != nil {
 				continue
 			}
-			b.processImgRequest(ctx, msg)
+			if err := b.processImgRequest(ctx, msg); err != nil {
+				slog.Error("bsky", "err", err)
+			}
 		}
 	}()
 	defer close(chProcess)
 
 	wg.Add(1)
-	chPost := make(chan *bsky.FeedPost)
+	chFirehose := make(chan FirehosePost)
 	go func() {
 		defer wg.Done()
-		for p := range chPost {
+		for p := range chFirehose {
 			// This loop processes every messages appearing on BlueSky. This is a lot. It cannot block.
 			if ctx.Err() == nil {
 				continue
@@ -99,23 +100,23 @@ func (b *bskyBot) ProcessReplies(ctx context.Context) error {
 			}
 		}
 	}()
-	defer close(chPost)
+	defer close(chFirehose)
 
-	return b.c.Listen(ctx, "", chPost)
+	return b.c.Listen(ctx, "", chFirehose)
 }
 
-func (b *bskyBot) processPost(p *bsky.FeedPost, ch chan<- intReq) string {
-	t, err := time.Parse("2006-01-02T15:04:05.999Z", p.CreatedAt)
+func (b *bskyBot) processPost(p FirehosePost, ch chan<- intReq) string {
+	t, err := time.Parse("2006-01-02T15:04:05.999Z", p.Post.CreatedAt)
 	if err != nil {
-		slog.Warn("bsky", "bad time", p.CreatedAt)
+		slog.Warn("bsky", "bad time", p.Post.CreatedAt)
 		return ""
 	}
 	if d := time.Since(t); d < 0 || d > time.Hour {
-		slog.Warn("bsky", "old time", p.CreatedAt)
+		slog.Warn("bsky", "old time", p.Post.CreatedAt)
 		return ""
 	}
 	// If p.Embed contains an image?
-	msg := intReq{description: p.Text, seed: 1, replyToCID: "", replyToURI: ""}
+	msg := intReq{description: p.Post.Text, seed: 1, replyToCID: p.CID, replyToURI: ""}
 	select {
 	case ch <- msg:
 		return ""
@@ -128,6 +129,9 @@ func (b *bskyBot) processPost(p *bsky.FeedPost, ch chan<- intReq) string {
 func (b *bskyBot) processImgRequest(ctx context.Context, msg intReq) error {
 	slog.Info("bsky", "msg", msg)
 	r := Post{Text: "Here's an image.", ReplyToCID: msg.replyToCID, ReplyToURI: msg.replyToURI}
+	if len(r.Text) > maxMessage {
+		r.Text = r.Text[:maxMessage-1] + "…"
+	}
 	if _, _, err := b.c.Post(ctx, &r); err != nil {
 		return err
 	}

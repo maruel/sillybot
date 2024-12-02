@@ -15,12 +15,14 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/events/schedulers/sequential"
+	"github.com/bluesky-social/indigo/events/schedulers/parallel"
 	"github.com/bluesky-social/indigo/lex/util"
 	"github.com/bluesky-social/indigo/repo"
 	"github.com/bluesky-social/indigo/repomgr"
@@ -31,7 +33,10 @@ import (
 
 // Client is the AT protocol client.
 type Client struct {
-	client *xrpc.Client
+	client    *xrpc.Client
+	count     atomic.Int64
+	mu        sync.Mutex
+	lastCount time.Time
 }
 
 // New returns a new blue sky client.
@@ -111,7 +116,7 @@ func (c *Client) SearchPosts(ctx context.Context, q string, limit int, cursor st
 }
 
 // Listen listens to all posts in the feed until the context is canceled.
-func (c *Client) Listen(ctx context.Context, cursor string, ch chan<- *bsky.FeedPost) error {
+func (c *Client) Listen(ctx context.Context, cursor string, ch chan<- FirehosePost) error {
 	u := "wss://bsky.network/xrpc/com.atproto.sync.subscribeRepos"
 	if cursor != "" {
 		u += "?cursor=" + url.QueryEscape(cursor)
@@ -121,7 +126,9 @@ func (c *Client) Listen(ctx context.Context, cursor string, ch chan<- *bsky.Feed
 		return fmt.Errorf("failed to listed: %w", err)
 	}
 	defer conn.Close()
-	return events.HandleRepoStream(ctx, conn, sequential.NewScheduler("stream",
+	c.count.Store(0)
+	c.lastCount = time.Now()
+	err = events.HandleRepoStream(ctx, conn, parallel.NewScheduler(8, 128, "stream",
 		func(ctx context.Context, xev *events.XRPCStreamEvent) error {
 			// https://atproto.com/specs/event-stream
 			if xev.RepoCommit != nil {
@@ -129,9 +136,14 @@ func (c *Client) Listen(ctx context.Context, cursor string, ch chan<- *bsky.Feed
 			}
 			return nil
 		}))
+	if ctx.Err() != nil {
+		// Ignore the websocket error "use of closed network connection" if the context was canceled.
+		err = nil
+	}
+	return err
 }
 
-func (c *Client) onListenEvent(ctx context.Context, evt *atproto.SyncSubscribeRepos_Commit, ch chan<- *bsky.FeedPost) error {
+func (c *Client) onListenEvent(ctx context.Context, evt *atproto.SyncSubscribeRepos_Commit, ch chan<- FirehosePost) error {
 	if evt.TooBig {
 		slog.Warn("bsky", "skipping too big events", evt.Seq)
 		return nil
@@ -141,11 +153,28 @@ func (c *Client) onListenEvent(ctx context.Context, evt *atproto.SyncSubscribeRe
 		return fmt.Errorf("reading repo from car (seq: %d, len: %d): %w", evt.Seq, len(evt.Blocks), err)
 	}
 	for _, op := range evt.Ops {
+		if count := c.count.Add(1); count%1000 == 0 {
+			now := time.Now()
+			c.mu.Lock()
+			shouldLog := now.Sub(c.lastCount) > 15*time.Second
+			if shouldLog {
+				c.lastCount = now
+			}
+			c.mu.Unlock()
+			if shouldLog {
+				slog.Info("bsky", "events", count)
+			}
+		}
 		switch ek := repomgr.EventKind(op.Action); ek {
 		case repomgr.EvtKindCreateRecord, repomgr.EvtKindUpdateRecord:
+			if !strings.HasPrefix(op.Path, "app.bsky.feed.post/") {
+				// Only decode posts. This saves processing power.
+				continue
+			}
 			rc, rec, err := r.GetRecord(ctx, op.Path)
 			if err != nil {
-				slog.Warn("bsky", "path", op.Path, "cid", *op.Cid, "seq", evt.Seq, "repo", evt.Repo, "err", err)
+				// This is the Go package that is missing definitions. This is safe to rignore.
+				slog.Error("bsky", "path", op.Path, "cid", *op.Cid, "seq", evt.Seq, "repo", evt.Repo, "err", err)
 				continue
 			}
 			if util.LexLink(rc) != *op.Cid {
@@ -161,11 +190,11 @@ func (c *Client) onListenEvent(ctx context.Context, evt *atproto.SyncSubscribeRe
 	return nil
 }
 
-func (c *Client) onListenRecord(ctx context.Context, seq int64, path string, did string, rcid *cid.Cid, rec any, ch chan<- *bsky.FeedPost) error {
-	slog.Debug("bsky", "seq", seq, "path", path, "did", did, "rcid", rcid, "rec", rec)
+func (c *Client) onListenRecord(ctx context.Context, seq int64, path string, did string, rcid *cid.Cid, rec any, ch chan<- FirehosePost) error {
+	//slog.Debug("bsky", "seq", seq, "path", path, "did", did, "rcid", rcid, "rec", rec)
 	switch e := rec.(type) {
 	case *bsky.FeedPost:
-		return c.onEventFeedPost(ctx, e, ch)
+		return c.onEventFeedPost(ctx, did, e, ch)
 	case *bsky.ActorProfile, *bsky.FeedGenerator, *bsky.FeedLike, *bsky.FeedPostgate, *bsky.FeedRepost, *bsky.FeedThreadgate, *bsky.GraphBlock, *bsky.GraphFollow, *bsky.GraphList, *bsky.GraphListblock, *bsky.GraphListitem, *bsky.GraphStarterpack:
 	default:
 		slog.Error("bsky", "type", reflect.TypeOf(rec).String(), "record", rec)
@@ -173,16 +202,21 @@ func (c *Client) onListenRecord(ctx context.Context, seq int64, path string, did
 	return nil
 }
 
-func (c *Client) onEventFeedPost(ctx context.Context, p *bsky.FeedPost, ch chan<- *bsky.FeedPost) error {
+func (c *Client) onEventFeedPost(ctx context.Context, did string, p *bsky.FeedPost, ch chan<- FirehosePost) error {
 	// Look for a mention to us.
 	if isMentioned(p, c.client.Auth.Did) {
 		select {
-		case ch <- p:
+		case ch <- FirehosePost{CID: did, Post: p}:
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
 	return nil
+}
+
+type FirehosePost struct {
+	CID  string
+	Post *bsky.FeedPost
 }
 
 //

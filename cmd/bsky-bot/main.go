@@ -38,9 +38,9 @@ func mainImpl() error {
 		slog.Info("main", "message", "quitting")
 	}()
 
-	wd, err := os.Getwd()
-	if err != nil {
-		return err
+	wd, err2 := os.Getwd()
+	if err2 != nil {
+		return err2
 	}
 
 	cfg := sillybot.Config{}
@@ -91,7 +91,7 @@ func mainImpl() error {
 	if *verbose {
 		programLevel.Set(slog.LevelDebug)
 	}
-	if err = cfg.LoadOrDefault(*config); err != nil {
+	if err := cfg.LoadOrDefault(*config); err != nil {
 		return err
 	}
 	if *handle == "" {
@@ -104,7 +104,7 @@ func mainImpl() error {
 		}
 		*password = strings.TrimSpace(string(b))
 	}
-	if err = os.MkdirAll(*cache, 0o755); err != nil {
+	if err := os.MkdirAll(*cache, 0o755); err != nil {
 		return err
 	}
 	l, ig, err := sillybot.LoadModels(ctx, *cache, &cfg)
