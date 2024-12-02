@@ -22,7 +22,7 @@ import (
 	"github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/events/schedulers/parallel"
+	"github.com/bluesky-social/indigo/events/schedulers/sequential"
 	"github.com/bluesky-social/indigo/lex/util"
 	"github.com/bluesky-social/indigo/repo"
 	"github.com/bluesky-social/indigo/repomgr"
@@ -128,14 +128,19 @@ func (c *Client) Listen(ctx context.Context, cursor string, ch chan<- FirehosePo
 	defer conn.Close()
 	c.count.Store(0)
 	c.lastCount = time.Now()
-	err = events.HandleRepoStream(ctx, conn, parallel.NewScheduler(8, 128, "stream",
-		func(ctx context.Context, xev *events.XRPCStreamEvent) error {
-			// https://atproto.com/specs/event-stream
-			if xev.RepoCommit != nil {
-				return c.onListenEvent(ctx, xev.RepoCommit, ch)
-			}
-			return nil
-		}))
+	fn := func(ctx context.Context, xev *events.XRPCStreamEvent) error {
+		// https://atproto.com/specs/event-stream
+		if xev.RepoCommit != nil {
+			return c.onListenEvent(ctx, xev.RepoCommit, ch)
+		}
+		return nil
+	}
+	// It looks like a single CPU can process it.
+	//sched := parallel.NewScheduler(8, 128, "stream", fn)
+	sched := sequential.NewScheduler("stream", fn)
+	// TODO: Switch to https://github.com/bluesky-social/jetstream, e.g.
+	// https://github.com/bluesky-social/jetstream/blob/main/cmd/client/main.go
+	err = events.HandleRepoStream(ctx, conn, sched)
 	if ctx.Err() != nil {
 		// Ignore the websocket error "use of closed network connection" if the context was canceled.
 		err = nil
@@ -180,7 +185,8 @@ func (c *Client) onListenEvent(ctx context.Context, evt *atproto.SyncSubscribeRe
 			if util.LexLink(rc) != *op.Cid {
 				return fmt.Errorf("mismatch in record and op cid: %s != %s", rc, *op.Cid)
 			}
-			if err := c.onListenRecord(ctx, evt.Seq, op.Path, evt.Repo, &rc, rec, ch); err != nil {
+			//slog.Debug("bsky", "seq", seq, "path", path, "did", did, "rcid", rcid, "rec", rec)
+			if err := c.onListenRecord(ctx, &rc, rec, ch); err != nil {
 				return err
 			}
 		case repomgr.EvtKindDeleteRecord:
@@ -190,11 +196,11 @@ func (c *Client) onListenEvent(ctx context.Context, evt *atproto.SyncSubscribeRe
 	return nil
 }
 
-func (c *Client) onListenRecord(ctx context.Context, seq int64, path string, did string, rcid *cid.Cid, rec any, ch chan<- FirehosePost) error {
-	//slog.Debug("bsky", "seq", seq, "path", path, "did", did, "rcid", rcid, "rec", rec)
+//go:inline
+func (c *Client) onListenRecord(ctx context.Context, rcid *cid.Cid, rec any, ch chan<- FirehosePost) error {
 	switch e := rec.(type) {
 	case *bsky.FeedPost:
-		return c.onEventFeedPost(ctx, did, e, ch)
+		return c.onEventFeedPost(ctx, rcid, e, ch)
 	case *bsky.ActorProfile, *bsky.FeedGenerator, *bsky.FeedLike, *bsky.FeedPostgate, *bsky.FeedRepost, *bsky.FeedThreadgate, *bsky.GraphBlock, *bsky.GraphFollow, *bsky.GraphList, *bsky.GraphListblock, *bsky.GraphListitem, *bsky.GraphStarterpack:
 	default:
 		slog.Error("bsky", "type", reflect.TypeOf(rec).String(), "record", rec)
@@ -202,11 +208,12 @@ func (c *Client) onListenRecord(ctx context.Context, seq int64, path string, did
 	return nil
 }
 
-func (c *Client) onEventFeedPost(ctx context.Context, did string, p *bsky.FeedPost, ch chan<- FirehosePost) error {
+//go:inline
+func (c *Client) onEventFeedPost(ctx context.Context, cid *cid.Cid, p *bsky.FeedPost, ch chan<- FirehosePost) error {
 	// Look for a mention to us.
 	if isMentioned(p, c.client.Auth.Did) {
 		select {
-		case ch <- FirehosePost{CID: did, Post: p}:
+		case ch <- FirehosePost{CID: cid, Post: p}:
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -215,7 +222,7 @@ func (c *Client) onEventFeedPost(ctx context.Context, did string, p *bsky.FeedPo
 }
 
 type FirehosePost struct {
-	CID  string
+	CID  *cid.Cid
 	Post *bsky.FeedPost
 }
 

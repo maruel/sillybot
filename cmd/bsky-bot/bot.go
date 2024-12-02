@@ -116,7 +116,7 @@ func (b *bskyBot) processPost(p FirehosePost, ch chan<- intReq) string {
 		return ""
 	}
 	// If p.Embed contains an image?
-	msg := intReq{description: p.Post.Text, seed: 1, replyToCID: p.CID, replyToURI: ""}
+	msg := intReq{description: p.Post.Text, seed: 1, replyToCID: p.CID.String(), replyToURI: ""}
 	select {
 	case ch <- msg:
 		return ""
