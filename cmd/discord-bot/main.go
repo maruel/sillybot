@@ -49,9 +49,9 @@ func mainImpl() error {
 	gcptoken := flag.String("gcp-token", "", "Google Cloud Token to enable web search; get one at https://cloud.google.com/docs/authentication/api-keys")
 	cxtoken := flag.String("cx-token", "", "Cx Token to enable web search")
 	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
-	verbose := flag.Bool("v", false, "Enable verbose logging")
 	config := flag.String("config", "config.yml", "Configuration file. If not present, it is automatically created.")
 	version := flag.Bool("version", false, "Print version then exit")
+	verbose := flag.Bool("v", false, "Enable verbose logging")
 	cpuprofile := flag.String("cpuprofile", "", "file to save trace to. A frequent name is cpu.pprof; you can analyze it with go tool pprof -http=:6060 cpu.pprof")
 	tracefile := flag.String("trace", "", "file to save trace to. A frequent name is trace.out; you can analyze it with go tool trace -http=:6060 trace.out")
 	flag.Usage = func() {

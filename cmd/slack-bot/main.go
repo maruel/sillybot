@@ -46,9 +46,9 @@ func mainImpl() error {
 	bottoken := flag.String("bot-token", "", "Bot Token; get one at https://api.slack.com/apps")
 	apptoken := flag.String("app-token", "", "App Token; get one at https://api.slack.com/apps")
 	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
-	verbose := flag.Bool("v", false, "Enable verbose logging")
 	config := flag.String("config", "config.yml", "Configuration file. If not present, it is automatically created.")
 	version := flag.Bool("version", false, "Print version then exit")
+	verbose := flag.Bool("v", false, "Enable verbose logging")
 	flag.Usage = func() {
 		o := flag.CommandLine.Output()
 		fmt.Fprintf(o, "Usage of %s:\n", os.Args[0])

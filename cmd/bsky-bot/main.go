@@ -7,20 +7,20 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/pprof"
 	"runtime/trace"
 	"strings"
 	"sync"
 	"syscall"
 
-	"github.com/bluesky-social/indigo/api/bsky"
+	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/internal"
 )
 
@@ -38,10 +38,18 @@ func mainImpl() error {
 		slog.Info("main", "message", "quitting")
 	}()
 
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	cfg := sillybot.Config{}
 	handle := flag.String("u", "", "BlueSky username/email/handle")
 	password := flag.String("p", "", "BlueSky password; defaults to the content of token_bsky_bot.txt if present")
-	verbose := flag.Bool("v", false, "Enable verbose logging")
+	cache := flag.String("cache", filepath.Join(wd, "cache"), "Directory where models, python virtualenv and logs are put in")
+	config := flag.String("config", "config.yml", "Configuration file. If not present, it is automatically created.")
 	version := flag.Bool("version", false, "Print version then exit")
+	verbose := flag.Bool("v", false, "Enable verbose logging")
 	cpuprofile := flag.String("cpuprofile", "", "file to save trace to. A frequent name is cpu.pprof; you can analyze it with go tool pprof -http=:6060 cpu.pprof")
 	tracefile := flag.String("trace", "", "file to save trace to. A frequent name is trace.out; you can analyze it with go tool trace -http=:6060 trace.out")
 	flag.Usage = func() {
@@ -83,7 +91,9 @@ func mainImpl() error {
 	if *verbose {
 		programLevel.Set(slog.LevelDebug)
 	}
-
+	if err = cfg.LoadOrDefault(*config); err != nil {
+		return err
+	}
 	if *handle == "" {
 		return errors.New("-u is required")
 	}
@@ -94,45 +104,26 @@ func mainImpl() error {
 		}
 		*password = strings.TrimSpace(string(b))
 	}
-	c, err := New(ctx, *handle, *password)
+	if err = os.MkdirAll(*cache, 0o755); err != nil {
+		return err
+	}
+	l, ig, err := sillybot.LoadModels(ctx, *cache, &cfg)
+	if l != nil {
+		defer l.Close()
+	}
+	if ig != nil {
+		defer ig.Close()
+	}
 	if err != nil {
 		return err
 	}
-	slog.Info("bsky", "state", "connected")
 
-	/*
-		if _, _, err = c.Post(ctx, &Post{Text: "Hello world!"});err != nil {
-			return err
-		}
-	*/
-
-	feed, _, err := c.GetTimeline(ctx, "", 5)
+	b, err := newBskyBot(ctx, *handle, *password, l, cfg.KnownLLMs, ig, cfg.Bot.Settings)
 	if err != nil {
 		return err
 	}
-	for _, post := range feed {
-		b, _ := json.Marshal(post.Post)
-		slog.Info("bsky", "context", post.FeedContext, "post", string(b), "reason", post.Reason, "reply", post.Reply)
-	}
-	/*
-		if err = c.SearchPosts(ctx, c.client.Auth.Did); err != nil {
-			return err
-		}
-	*/
-	wg.Add(1)
-	ch := make(chan *bsky.FeedPost)
-	go func() {
-		defer wg.Done()
-		for p := range ch {
-			if ctx.Err() != nil {
-				continue
-			}
-			b, _ := json.Marshal(p)
-			slog.Warn("bsky", "mention", string(b))
-		}
-	}()
-	defer close(ch)
-	return c.Listen(ctx, "", ch)
+	defer b.Close()
+	return b.ProcessReplies(ctx)
 }
 
 func main() {
