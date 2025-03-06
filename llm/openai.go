@@ -4,25 +4,7 @@
 
 package llm
 
-// Role is one of the LLM known roles.
-type Role string
-
-// LLM known roles.
-const (
-	System    Role = "system"
-	User      Role = "user"
-	Assistant Role = "assistant"
-	// Specific to Mistral models.
-	AvailableTools Role = "available_tools"
-	ToolCall       Role = "tool_call"
-	ToolCallResult Role = "tool_call_result"
-)
-
-// Message is a message to send to the LLM as part of the exchange.
-type Message struct {
-	Role    Role   `json:"role"`
-	Content string `json:"content"`
-}
+import "github.com/maruel/sillybot/llm/common"
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
 
@@ -35,12 +17,12 @@ type errorResponse struct {
 // openAIChatCompletionRequest is documented at
 // https://platform.openai.com/docs/api-reference/chat/create
 type openAIChatCompletionRequest struct {
-	Model       string    `json:"model"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Stream      bool      `json:"stream"`
-	Messages    []Message `json:"messages"`
-	Seed        int       `json:"seed,omitempty"`
-	Temperature float64   `json:"temperature,omitempty"`
+	Model       string           `json:"model"`
+	MaxTokens   int              `json:"max_tokens,omitempty"`
+	Stream      bool             `json:"stream"`
+	Messages    []common.Message `json:"messages"`
+	Seed        int              `json:"seed,omitempty"`
+	Temperature float64          `json:"temperature,omitempty"`
 }
 
 // openAIChatCompletionsResponse is documented at
@@ -60,9 +42,9 @@ type openAIChatCompletionsResponse struct {
 
 type openAIChoices struct {
 	// FinishReason is one of "stop", "length", "content_filter" or "tool_calls".
-	FinishReason string  `json:"finish_reason"`
-	Index        int     `json:"index"`
-	Message      Message `json:"message"`
+	FinishReason string         `json:"finish_reason"`
+	Index        int            `json:"index"`
+	Message      common.Message `json:"message"`
 }
 
 // openAIChatCompletionsStreamResponse is not documented?
@@ -84,7 +66,7 @@ type openAIStreamChoices struct {
 	// FinishReason is one of null, "stop", "length", "content_filter" or "tool_calls".
 	FinishReason string `json:"finish_reason"`
 	Index        int    `json:"index"`
-	//Message      Message `json:"message"`
+	//Message      common.Message `json:"message"`
 }
 
 type openAIStreamDelta struct {

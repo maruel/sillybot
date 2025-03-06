@@ -31,6 +31,7 @@ import (
 
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/internal"
+	"github.com/maruel/sillybot/llm/common"
 	"github.com/maruel/sillybot/py"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sys/cpu"
@@ -438,7 +439,7 @@ func (l *Session) GetMetrics(ctx context.Context, m *Metrics) error {
 // See PromptStreaming for the arguments values.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) Prompt(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64) (string, error) {
+func (l *Session) Prompt(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
 	r := trace.StartRegion(ctx, "llm.Prompt")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -485,7 +486,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []Message, maxtoks, seed int,
 // Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) PromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) error {
+func (l *Session) PromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) error {
 	r := trace.StartRegion(ctx, "llm.PromptStreaming")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -517,7 +518,7 @@ func (l *Session) waitForTerminated(done chan<- error) {
 	slog.Info("llm", "state", "terminated")
 }
 
-func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64) (string, error) {
+func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",
 		MaxTokens:   maxtoks,
@@ -535,7 +536,7 @@ func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []Message, maxt
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	start := time.Now()
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",
@@ -599,7 +600,7 @@ func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []Message, max
 	}
 }
 
-func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64) (string, error) {
+func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
 	data := llamaCPPCompletionRequest{Seed: int64(seed), Temperature: temperature, NPredict: int64(maxtoks)}
 	// Doc mentions it causes non-determinism even if a non-zero seed is
 	// specified. Disable if it becomes a problem.
@@ -616,7 +617,7 @@ func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []Message, ma
 	return strings.ReplaceAll(msg.Content, "\u2581", " "), nil
 }
 
-func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	start := time.Now()
 	data := llamaCPPCompletionRequest{
 		Stream:      true,
@@ -676,34 +677,34 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []Message, m
 	}
 }
 
-func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []Message) error {
+func (l *Session) initPrompt(data *llamaCPPCompletionRequest, msgs []common.Message) error {
 	// Do a quick validation. 1 == available_tools, 2 = system, 3 = rest
 	state := 0
 	data.Prompt = l.Encoding.BeginOfText
 	for i, m := range msgs {
 		switch m.Role {
-		case AvailableTools:
+		case common.AvailableTools:
 			if state != 0 || i != 0 {
 				return fmt.Errorf("unexpected available_tools message at index %d; state %d", i, state)
 			}
 			state = 1
 			data.Prompt += l.Encoding.ToolsAvailableTokenStart + m.Content + l.Encoding.ToolsAvailableTokenEnd
-		case System:
+		case common.System:
 			if state > 1 {
 				return fmt.Errorf("unexpected system message at index %d; state %d", i, state)
 			}
 			state = 2
 			data.Prompt += l.Encoding.SystemTokenStart + m.Content + l.Encoding.SystemTokenEnd
-		case User:
+		case common.User:
 			state = 3
 			data.Prompt += l.Encoding.UserTokenStart + m.Content + l.Encoding.UserTokenEnd
-		case Assistant:
+		case common.Assistant:
 			state = 3
 			data.Prompt += l.Encoding.AssistantTokenStart + m.Content + l.Encoding.AssistantTokenEnd
-		case ToolCall:
+		case common.ToolCall:
 			state = 3
 			data.Prompt += l.Encoding.ToolCallTokenStart + m.Content + l.Encoding.ToolCallTokenEnd
-		case ToolCallResult:
+		case common.ToolCallResult:
 			state = 3
 			data.Prompt += l.Encoding.ToolCallResultTokenStart + m.Content + l.Encoding.ToolCallResultTokenEnd
 		default:
@@ -831,8 +832,8 @@ func copyFile(src, dst string) error {
 */
 
 // processMsgs process the system prompt.
-func (l *Session) processMsgs(msgs []Message) []Message {
-	if len(msgs) == 0 || msgs[0].Role != System {
+func (l *Session) processMsgs(msgs []common.Message) []common.Message {
+	if len(msgs) == 0 || msgs[0].Role != common.System {
 		return msgs
 	}
 	t, err := template.New("").Parse(msgs[0].Content)
@@ -850,7 +851,7 @@ func (l *Session) processMsgs(msgs []Message) []Message {
 		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Content, "error", err)
 		return msgs
 	}
-	out := make([]Message, len(msgs))
+	out := make([]common.Message, len(msgs))
 	copy(out, msgs)
 	out[0].Content = b.String()
 	return out

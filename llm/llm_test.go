@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
+	"github.com/maruel/sillybot/llm/common"
 	"github.com/maruel/sillybot/llm/tools"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -220,7 +221,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	const prompt = "reply with \"ok chief\""
 	t.Run("Blocking", func(t *testing.T) {
 		t.Parallel()
-		msgs := []Message{{Role: System, Content: systemPrompt}, {Role: User, Content: prompt}}
+		msgs := []common.Message{{Role: common.System, Content: systemPrompt}, {Role: common.User, Content: prompt}}
 		got, err2 := l.Prompt(ctx, msgs, 10, 1, 0.0)
 		if err2 != nil {
 			t.Fatal(err2)
@@ -229,7 +230,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	})
 	t.Run("Streaming", func(t *testing.T) {
 		t.Parallel()
-		msgs := []Message{{Role: System, Content: systemPrompt}, {Role: User, Content: prompt}}
+		msgs := []common.Message{{Role: common.System, Content: systemPrompt}, {Role: common.User, Content: prompt}}
 		words := make(chan string, 10)
 		got := ""
 		wg := sync.WaitGroup{}
@@ -309,10 +310,10 @@ func TestMistralTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msgs := []Message{
-		{Role: AvailableTools, Content: string(toolsB)},
+	msgs := []common.Message{
+		{Role: common.AvailableTools, Content: string(toolsB)},
 		{
-			Role:    User,
+			Role:    common.User,
 			Content: `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`,
 		},
 	}
@@ -333,7 +334,7 @@ func TestMistralTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msgs = append(msgs, Message{Role: Assistant, Content: s})
+	msgs = append(msgs, common.Message{Role: common.Assistant, Content: s})
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
@@ -343,7 +344,7 @@ func TestMistralTool(t *testing.T) {
 	}
 
 	// Now do a calculation!
-	msgs = append(msgs, Message{Role: User, Content: "Give me the result of 43215 divided by 215."})
+	msgs = append(msgs, common.Message{Role: common.User, Content: "Give me the result of 43215 divided by 215."})
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
@@ -359,7 +360,7 @@ func TestMistralTool(t *testing.T) {
 	if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 100, 1, 0); err != nil {
 		t.Fatal(err)
 	}
-	msgs = append(msgs, Message{Role: Assistant, Content: s})
+	msgs = append(msgs, common.Message{Role: Assistant, Content: s})
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
@@ -368,7 +369,7 @@ func TestMistralTool(t *testing.T) {
 	}
 }
 
-func parseToolResponse(t *testing.T, got string, id int) []Message {
+func parseToolResponse(t *testing.T, got string, id int) []common.Message {
 	got = strings.TrimSpace(got)
 	var toolCalls []tools.MistralToolCall
 	//  Search for a tool call.
@@ -411,9 +412,9 @@ func parseToolResponse(t *testing.T, got string, id int) []Message {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return []Message{
-		{Role: ToolCall, Content: string(c)},
-		{Role: ToolCallResult, Content: string(r)},
+	return []common.Message{
+		{Role: common.ToolCall, Content: string(c)},
+		{Role: common.ToolCallResult, Content: string(r)},
 	}
 }
 

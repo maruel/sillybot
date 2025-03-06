@@ -13,6 +13,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/maruel/sillybot/llm/common"
 )
 
 // Conversation is a conversation with one user.
@@ -21,7 +23,7 @@ type Conversation struct {
 	Channel    string
 	Started    time.Time
 	LastUpdate time.Time
-	Messages   []Message
+	Messages   []common.Message
 
 	_ struct{}
 }
@@ -184,7 +186,7 @@ func (s *serializedConversation) to(c *Conversation) error {
 	c.Channel = s.Channel
 	c.Started = s.Started
 	c.LastUpdate = s.LastUpdate
-	c.Messages = make([]Message, len(s.Messages))
+	c.Messages = make([]common.Message, len(s.Messages))
 	for i := range s.Messages {
 		if err := s.Messages[i].to(&c.Messages[i]); err != nil {
 			return err
@@ -198,19 +200,19 @@ type serializedMessage struct {
 	Content string `json:"c,omitempty"`
 }
 
-func (s *serializedMessage) from(m *Message) error {
+func (s *serializedMessage) from(m *common.Message) error {
 	switch m.Role {
-	case System:
+	case common.System:
 		s.Role = 0
-	case User:
+	case common.User:
 		s.Role = 1
-	case Assistant:
+	case common.Assistant:
 		s.Role = 2
-	case AvailableTools:
+	case common.AvailableTools:
 		s.Role = 3
-	case ToolCall:
+	case common.ToolCall:
 		s.Role = 4
-	case ToolCallResult:
+	case common.ToolCallResult:
 		s.Role = 5
 	default:
 		return fmt.Errorf("unknown role %q", m.Role)
@@ -219,20 +221,20 @@ func (s *serializedMessage) from(m *Message) error {
 	return nil
 }
 
-func (s *serializedMessage) to(m *Message) error {
+func (s *serializedMessage) to(m *common.Message) error {
 	switch s.Role {
 	case 0:
-		m.Role = System
+		m.Role = common.System
 	case 1:
-		m.Role = User
+		m.Role = common.User
 	case 2:
-		m.Role = Assistant
+		m.Role = common.Assistant
 	case 3:
-		m.Role = AvailableTools
+		m.Role = common.AvailableTools
 	case 4:
-		m.Role = ToolCall
+		m.Role = common.ToolCall
 	case 5:
-		m.Role = ToolCallResult
+		m.Role = common.ToolCallResult
 	default:
 		return fmt.Errorf("unknown role %q", s.Role)
 	}
