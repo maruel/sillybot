@@ -9,8 +9,8 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/ipfs/go-cid v0.4.1
 	github.com/lmittmann/tint v1.0.5
-	github.com/maruel/genai v0.0.0-20250306171838-382c4906e60e
-	github.com/maruel/httpjson v0.0.0-20250306170113-71b2c90b6887
+	github.com/maruel/genai v0.0.0-20250306204414-0bbfaf8f84b8
+	github.com/maruel/httpjson v0.0.0-20250306200407-29ecfa207bd4
 	github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.20
@@ -29,6 +29,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.5.2 // indirect
 	github.com/DataDog/zstd v1.5.6 // indirect
 	github.com/RussellLuo/slidingwindow v0.0.0-20200528002341-535bb99d338b // indirect
+	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/carlmjohnson/versioninfo v0.22.5 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

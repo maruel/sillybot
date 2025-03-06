@@ -410,11 +410,11 @@ func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, maxtoks, see
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "blocking")
 		c := openai.Client{BaseURL: l.baseURL}
-		reply, err = c.PromptBlocking(ctx, msgs, maxtoks, seed, temperature)
+		reply, err = c.Completion(ctx, msgs, maxtoks, seed, temperature)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "blocking")
 		c := llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
-		reply, err = c.PromptBlocking(ctx, msgs, maxtoks, seed, temperature)
+		reply, err = c.Completion(ctx, msgs, maxtoks, seed, temperature)
 	}
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
@@ -459,11 +459,11 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genai.Message, max
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "streaming")
 		c := openai.Client{BaseURL: l.baseURL}
-		reply, err = c.PromptStreaming(ctx, msgs, maxtoks, seed, temperature, words)
+		reply, err = c.CompletionStream(ctx, msgs, maxtoks, seed, temperature, words)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "streaming")
 		c := llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
-		reply, err = c.PromptStreaming(ctx, msgs, maxtoks, seed, temperature, words)
+		reply, err = c.CompletionStream(ctx, msgs, maxtoks, seed, temperature, words)
 	}
 	if err != nil {
 		slog.Error("llm", "reply", reply, "error", err, "duration", time.Since(start).Round(time.Millisecond))
