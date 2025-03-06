@@ -21,12 +21,6 @@ import (
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
 
-type errorResponse struct {
-	Code    int
-	Message string
-	Type    string
-}
-
 // openAIChatCompletionRequest is documented at
 // https://platform.openai.com/docs/api-reference/chat/create
 type openAIChatCompletionRequest struct {

@@ -23,6 +23,7 @@ import (
 
 	"github.com/lmittmann/tint"
 	"github.com/maruel/sillybot/llm/common"
+	"github.com/maruel/sillybot/llm/llamacpp"
 	"github.com/maruel/sillybot/llm/tools"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -264,7 +265,7 @@ func TestMistralTool(t *testing.T) {
 	// - InstructTokenizerV3 in
 	//   https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/tokens/tokenizers/sentencepiece.py
 	// //py/mistral_test.py
-	l.Encoding = &PromptEncoding{
+	l.Encoding = &llamacpp.PromptEncoding{
 		BeginOfText:              "<s>",
 		SystemTokenStart:         "[INST]\u2581",
 		SystemTokenEnd:           " [/INST]",
@@ -321,7 +322,7 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl := len(msgs)
-	c := llamaCPPClient{baseURL: l.baseURL, Encoding: l.Encoding}
+	c := llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
 	s, err := c.PromptBlocking(ctx, msgs, 100, 1, 0)
 	if err != nil {
 		t.Fatal(err)

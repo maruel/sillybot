@@ -11,7 +11,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -31,6 +30,7 @@ import (
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/internal"
 	"github.com/maruel/sillybot/llm/common"
+	"github.com/maruel/sillybot/llm/llamacpp"
 	"github.com/maruel/sillybot/py"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sys/cpu"
@@ -80,7 +80,7 @@ type KnownLLM struct {
 	Upstream PackedRepoRef `yaml:"upstream"`
 	// PromptEncoding is only used when using llama-server in /completion mode.
 	// When not present, llama-server is used in OpenAI compatible API mode.
-	PromptEncoding *PromptEncoding `yaml:"prompt_encoding"`
+	PromptEncoding *llamacpp.PromptEncoding `yaml:"prompt_encoding"`
 
 	_ struct{}
 }
@@ -97,36 +97,10 @@ func (k *KnownLLM) Validate() error {
 		return fmt.Errorf("invalid upstream: %w", err)
 	}
 	if k.PromptEncoding != nil {
-		if err := k.PromptEncoding.validate(); err != nil {
+		if err := k.PromptEncoding.Validate(); err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-// PromptEncoding describes how to encode the prompt.
-type PromptEncoding struct {
-	// Prompt encoding.
-	BeginOfText              string `yaml:"begin_of_text"`
-	SystemTokenStart         string `yaml:"system_token_start"`
-	SystemTokenEnd           string `yaml:"system_token_end"`
-	UserTokenStart           string `yaml:"user_token_start"`
-	UserTokenEnd             string `yaml:"user_token_end"`
-	AssistantTokenStart      string `yaml:"assistant_token_start"`
-	AssistantTokenEnd        string `yaml:"assistant_token_end"`
-	ToolsAvailableTokenStart string `yaml:"tools_available_token_start"`
-	ToolsAvailableTokenEnd   string `yaml:"tools_available_token_end"`
-	ToolCallTokenStart       string `yaml:"tool_call_token_start"`
-	ToolCallTokenEnd         string `yaml:"tool_call_token_end"`
-	ToolCallResultTokenStart string `yaml:"tool_call_result_token_start"`
-	ToolCallResultTokenEnd   string `yaml:"tool_call_result_token_end"`
-
-	_ struct{}
-}
-
-// validate checks for obvious errors in the fields.
-func (p *PromptEncoding) validate() error {
-	// TODO: I lied. Please send a PR.
 	return nil
 }
 
@@ -137,7 +111,7 @@ func (p *PromptEncoding) validate() error {
 type Session struct {
 	HF       *huggingface.Client
 	Model    PackedFileRef
-	Encoding *PromptEncoding
+	Encoding *llamacpp.PromptEncoding
 	baseURL  string
 	backend  string
 
@@ -329,24 +303,8 @@ func (l *Session) Close() error {
 
 // GetHealth retrieves the heath of the server.
 func (l *Session) GetHealth(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", l.baseURL+"/health", nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to get health response: %w", err)
-	}
-	d := json.NewDecoder(resp.Body)
-	d.DisallowUnknownFields()
-	msg := llamaCPPHealthResponse{}
-	err = d.Decode(&msg)
-	_ = resp.Body.Close()
-	if err != nil {
-		return msg.Status, fmt.Errorf("failed to decode health response: %w", err)
-	}
-	return msg.Status, nil
+	c := llamacpp.Client{BaseURL: l.baseURL}
+	return c.GetHealth(ctx)
 }
 
 // TokenPerformance is the performance for the metrics
@@ -454,7 +412,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []common.Message, maxtoks, se
 		reply, err = c.PromptBlocking(ctx, msgs, maxtoks, seed, temperature)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "blocking")
-		c := llamaCPPClient{baseURL: l.baseURL, Encoding: l.Encoding}
+		c := llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
 		reply, err = c.PromptBlocking(ctx, msgs, maxtoks, seed, temperature)
 	}
 	if err != nil {
@@ -503,7 +461,7 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []common.Message, ma
 		reply, err = c.PromptStreaming(ctx, msgs, maxtoks, seed, temperature, words)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "streaming")
-		c := llamaCPPClient{baseURL: l.baseURL, Encoding: l.Encoding}
+		c := llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
 		reply, err = c.PromptStreaming(ctx, msgs, maxtoks, seed, temperature, words)
 	}
 	if err != nil {

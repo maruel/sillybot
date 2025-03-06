@@ -2,7 +2,7 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package llm
+package llamacpp
 
 import (
 	"bufio"
@@ -12,12 +12,19 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/maruel/sillybot/internal"
 	"github.com/maruel/sillybot/llm/common"
 )
+
+type errorResponse struct {
+	Code    int
+	Message string
+	Type    string
+}
 
 // llamaCPPHealthResponse is documented at
 // https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#api-endpoints
@@ -109,21 +116,47 @@ type llamaCPPCompletionResponse struct {
 	Error errorResponse `json:"error"`
 }
 
-type llamaCPPClient struct {
-	baseURL  string
+// PromptEncoding describes how to encode the prompt.
+type PromptEncoding struct {
+	// Prompt encoding.
+	BeginOfText              string `yaml:"begin_of_text"`
+	SystemTokenStart         string `yaml:"system_token_start"`
+	SystemTokenEnd           string `yaml:"system_token_end"`
+	UserTokenStart           string `yaml:"user_token_start"`
+	UserTokenEnd             string `yaml:"user_token_end"`
+	AssistantTokenStart      string `yaml:"assistant_token_start"`
+	AssistantTokenEnd        string `yaml:"assistant_token_end"`
+	ToolsAvailableTokenStart string `yaml:"tools_available_token_start"`
+	ToolsAvailableTokenEnd   string `yaml:"tools_available_token_end"`
+	ToolCallTokenStart       string `yaml:"tool_call_token_start"`
+	ToolCallTokenEnd         string `yaml:"tool_call_token_end"`
+	ToolCallResultTokenStart string `yaml:"tool_call_result_token_start"`
+	ToolCallResultTokenEnd   string `yaml:"tool_call_result_token_end"`
+
+	_ struct{}
+}
+
+// Validate checks for obvious errors in the fields.
+func (p *PromptEncoding) Validate() error {
+	// TODO: I lied. Please send a PR.
+	return nil
+}
+
+type Client struct {
+	BaseURL  string
 	Encoding *PromptEncoding
 }
 
-func (l *llamaCPPClient) PromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
+func (c *Client) PromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
 	data := llamaCPPCompletionRequest{Seed: int64(seed), Temperature: temperature, NPredict: int64(maxtoks)}
 	// Doc mentions it causes non-determinism even if a non-zero seed is
 	// specified. Disable if it becomes a problem.
 	data.CachePrompt = true
-	if err := l.initPrompt(&data, msgs); err != nil {
+	if err := c.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
 	msg := llamaCPPCompletionResponse{}
-	if err := internal.JSONPost(ctx, l.baseURL+"/completion", data, &msg); err != nil {
+	if err := internal.JSONPost(ctx, c.BaseURL+"/completion", data, &msg); err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
 	slog.Debug("llm", "prompt tok", msg.Timings.PromptN, "gen tok", msg.Timings.PredictedN, "prompt tok/ms", msg.Timings.PromptPerTokenMS, "gen tok/ms", msg.Timings.PredictedPerTokenMS)
@@ -131,7 +164,7 @@ func (l *llamaCPPClient) PromptBlocking(ctx context.Context, msgs []common.Messa
 	return strings.ReplaceAll(msg.Content, "\u2581", " "), nil
 }
 
-func (l *llamaCPPClient) PromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+func (c *Client) PromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	start := time.Now()
 	data := llamaCPPCompletionRequest{
 		Stream:      true,
@@ -142,10 +175,10 @@ func (l *llamaCPPClient) PromptStreaming(ctx context.Context, msgs []common.Mess
 	// Doc mentions it causes non-determinism even if a non-zero seed is
 	// specified. Disable if it becomes a problem.
 	data.CachePrompt = true
-	if err := l.initPrompt(&data, msgs); err != nil {
+	if err := c.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
-	resp, err := internal.JSONPostRequest(ctx, l.baseURL+"/completion", data)
+	resp, err := internal.JSONPostRequest(ctx, c.BaseURL+"/completion", data)
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
@@ -191,10 +224,31 @@ func (l *llamaCPPClient) PromptStreaming(ctx context.Context, msgs []common.Mess
 	}
 }
 
-func (l *llamaCPPClient) initPrompt(data *llamaCPPCompletionRequest, msgs []common.Message) error {
+func (c *Client) GetHealth(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+"/health", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get health response: %w", err)
+	}
+	d := json.NewDecoder(resp.Body)
+	d.DisallowUnknownFields()
+	msg := llamaCPPHealthResponse{}
+	err = d.Decode(&msg)
+	_ = resp.Body.Close()
+	if err != nil {
+		return msg.Status, fmt.Errorf("failed to decode health response: %w", err)
+	}
+	return msg.Status, nil
+}
+
+func (c *Client) initPrompt(data *llamaCPPCompletionRequest, msgs []common.Message) error {
 	// Do a quick validation. 1 == available_tools, 2 = system, 3 = rest
 	state := 0
-	data.Prompt = l.Encoding.BeginOfText
+	data.Prompt = c.Encoding.BeginOfText
 	for i, m := range msgs {
 		switch m.Role {
 		case common.AvailableTools:
@@ -202,25 +256,25 @@ func (l *llamaCPPClient) initPrompt(data *llamaCPPCompletionRequest, msgs []comm
 				return fmt.Errorf("unexpected available_tools message at index %d; state %d", i, state)
 			}
 			state = 1
-			data.Prompt += l.Encoding.ToolsAvailableTokenStart + m.Content + l.Encoding.ToolsAvailableTokenEnd
+			data.Prompt += c.Encoding.ToolsAvailableTokenStart + m.Content + c.Encoding.ToolsAvailableTokenEnd
 		case common.System:
 			if state > 1 {
 				return fmt.Errorf("unexpected system message at index %d; state %d", i, state)
 			}
 			state = 2
-			data.Prompt += l.Encoding.SystemTokenStart + m.Content + l.Encoding.SystemTokenEnd
+			data.Prompt += c.Encoding.SystemTokenStart + m.Content + c.Encoding.SystemTokenEnd
 		case common.User:
 			state = 3
-			data.Prompt += l.Encoding.UserTokenStart + m.Content + l.Encoding.UserTokenEnd
+			data.Prompt += c.Encoding.UserTokenStart + m.Content + c.Encoding.UserTokenEnd
 		case common.Assistant:
 			state = 3
-			data.Prompt += l.Encoding.AssistantTokenStart + m.Content + l.Encoding.AssistantTokenEnd
+			data.Prompt += c.Encoding.AssistantTokenStart + m.Content + c.Encoding.AssistantTokenEnd
 		case common.ToolCall:
 			state = 3
-			data.Prompt += l.Encoding.ToolCallTokenStart + m.Content + l.Encoding.ToolCallTokenEnd
+			data.Prompt += c.Encoding.ToolCallTokenStart + m.Content + c.Encoding.ToolCallTokenEnd
 		case common.ToolCallResult:
 			state = 3
-			data.Prompt += l.Encoding.ToolCallResultTokenStart + m.Content + l.Encoding.ToolCallResultTokenEnd
+			data.Prompt += c.Encoding.ToolCallResultTokenStart + m.Content + c.Encoding.ToolCallResultTokenEnd
 		default:
 			return fmt.Errorf("unexpected role %q", m.Role)
 		}
