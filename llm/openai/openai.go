@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/maruel/genai"
-	"github.com/maruel/sillybot/internal"
+	"github.com/maruel/httpjson"
 )
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
@@ -93,7 +93,7 @@ func (c *Client) PromptBlocking(ctx context.Context, msgs []genai.Message, maxto
 		Temperature: temperature,
 	}
 	msg := chatCompletionsResponse{}
-	if err := internal.JSONPost(ctx, c.BaseURL+"/v1/chat/completions", data, &msg); err != nil {
+	if err := httpjson.Default.Post(ctx, c.BaseURL+"/v1/chat/completions", data, &msg); err != nil {
 		return "", fmt.Errorf("failed to get llama server chat response: %w", err)
 	}
 	if len(msg.Choices) != 1 {
@@ -112,7 +112,7 @@ func (c *Client) PromptStreaming(ctx context.Context, msgs []genai.Message, maxt
 		Seed:        seed,
 		Temperature: temperature,
 	}
-	resp, err := internal.JSONPostRequest(ctx, c.BaseURL+"/v1/chat/completions", data)
+	resp, err := httpjson.Default.PostRequest(ctx, c.BaseURL+"/v1/chat/completions", data)
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}

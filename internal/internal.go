@@ -6,15 +6,8 @@
 package internal
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"regexp"
 	"runtime/debug"
@@ -59,85 +52,6 @@ func IsHostPort(s string) bool {
 		panic(err)
 	}
 	return ok
-}
-
-// JSONPost simplifies doing an HTTP POST in JSON.
-func JSONPost(ctx context.Context, url string, in, out interface{}) error {
-	resp, err := JSONPostRequest(ctx, url, in)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	var errs []error
-	if b, err := io.ReadAll(resp.Body); err != nil {
-		errs = append(errs, fmt.Errorf("failed to read server response: %w", err))
-	} else {
-		d := json.NewDecoder(bytes.NewReader(b))
-		d.DisallowUnknownFields()
-		err = d.Decode(out)
-		if err != nil {
-			slog.Error("internal", "url", url, "resp", string(b))
-			errs = append(errs, fmt.Errorf("failed to decode server response: %w", err))
-		}
-	}
-	if resp.StatusCode >= 400 {
-		errs = append(errs, &HTTPError{URL: url, StatusCode: resp.StatusCode, Status: resp.Status})
-	}
-	return errors.Join(errs...)
-}
-
-// JSONPostRequest simplifies doing an HTTP POST in JSON. It initiates
-// the requests and returns the response back.
-func JSONPostRequest(ctx context.Context, url string, in interface{}) (*http.Response, error) {
-	b := bytes.Buffer{}
-	e := json.NewEncoder(&b)
-	// OMG this took me a while to figure this out. This affects token encoding.
-	e.SetEscapeHTML(false)
-	if err := e.Encode(in); err != nil {
-		return nil, fmt.Errorf("internal error: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", url, &b)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return http.DefaultClient.Do(req)
-}
-
-// JSONGet does a HTTP GET and parses the returned JSON.
-func JSONGet(ctx context.Context, url string, out interface{}) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	d := json.NewDecoder(resp.Body)
-	d.DisallowUnknownFields()
-	err = d.Decode(out)
-	_ = resp.Body.Close()
-	var errs []error
-	if err != nil {
-		errs = append(errs, fmt.Errorf("failed to decode server response: %w", err))
-	}
-	if resp.StatusCode >= 400 {
-		errs = append(errs, &HTTPError{URL: url, StatusCode: resp.StatusCode, Status: resp.Status})
-	}
-	return errors.Join(errs...)
-}
-
-// HTTPError represents an HTTP request that returned an HTTP error.
-type HTTPError struct {
-	URL        string
-	StatusCode int
-	Status     string
-}
-
-func (h *HTTPError) Error() string {
-	return h.Status
 }
 
 func InitLog(programLevel *slog.LevelVar) {

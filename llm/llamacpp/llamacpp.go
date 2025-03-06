@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/maruel/genai"
-	"github.com/maruel/sillybot/internal"
+	"github.com/maruel/httpjson"
 )
 
 type errorResponse struct {
@@ -156,7 +156,7 @@ func (c *Client) PromptBlocking(ctx context.Context, msgs []genai.Message, maxto
 		return "", err
 	}
 	msg := completionResponse{}
-	if err := internal.JSONPost(ctx, c.BaseURL+"/completion", data, &msg); err != nil {
+	if err := httpjson.Default.Post(ctx, c.BaseURL+"/completion", data, &msg); err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
 	slog.Debug("llm", "prompt tok", msg.Timings.PromptN, "gen tok", msg.Timings.PredictedN, "prompt tok/ms", msg.Timings.PromptPerTokenMS, "gen tok/ms", msg.Timings.PredictedPerTokenMS)
@@ -178,7 +178,7 @@ func (c *Client) PromptStreaming(ctx context.Context, msgs []genai.Message, maxt
 	if err := c.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
-	resp, err := internal.JSONPostRequest(ctx, c.BaseURL+"/completion", data)
+	resp, err := httpjson.Default.PostRequest(ctx, c.BaseURL+"/completion", data)
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
