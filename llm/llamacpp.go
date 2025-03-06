@@ -109,7 +109,12 @@ type llamaCPPCompletionResponse struct {
 	Error errorResponse `json:"error"`
 }
 
-func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
+type llamaCPPClient struct {
+	baseURL  string
+	Encoding *PromptEncoding
+}
+
+func (l *llamaCPPClient) PromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
 	data := llamaCPPCompletionRequest{Seed: int64(seed), Temperature: temperature, NPredict: int64(maxtoks)}
 	// Doc mentions it causes non-determinism even if a non-zero seed is
 	// specified. Disable if it becomes a problem.
@@ -126,7 +131,7 @@ func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []common.Mess
 	return strings.ReplaceAll(msg.Content, "\u2581", " "), nil
 }
 
-func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+func (l *llamaCPPClient) PromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	start := time.Now()
 	data := llamaCPPCompletionRequest{
 		Stream:      true,
@@ -184,4 +189,41 @@ func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []common.Mes
 			return reply, nil
 		}
 	}
+}
+
+func (l *llamaCPPClient) initPrompt(data *llamaCPPCompletionRequest, msgs []common.Message) error {
+	// Do a quick validation. 1 == available_tools, 2 = system, 3 = rest
+	state := 0
+	data.Prompt = l.Encoding.BeginOfText
+	for i, m := range msgs {
+		switch m.Role {
+		case common.AvailableTools:
+			if state != 0 || i != 0 {
+				return fmt.Errorf("unexpected available_tools message at index %d; state %d", i, state)
+			}
+			state = 1
+			data.Prompt += l.Encoding.ToolsAvailableTokenStart + m.Content + l.Encoding.ToolsAvailableTokenEnd
+		case common.System:
+			if state > 1 {
+				return fmt.Errorf("unexpected system message at index %d; state %d", i, state)
+			}
+			state = 2
+			data.Prompt += l.Encoding.SystemTokenStart + m.Content + l.Encoding.SystemTokenEnd
+		case common.User:
+			state = 3
+			data.Prompt += l.Encoding.UserTokenStart + m.Content + l.Encoding.UserTokenEnd
+		case common.Assistant:
+			state = 3
+			data.Prompt += l.Encoding.AssistantTokenStart + m.Content + l.Encoding.AssistantTokenEnd
+		case common.ToolCall:
+			state = 3
+			data.Prompt += l.Encoding.ToolCallTokenStart + m.Content + l.Encoding.ToolCallTokenEnd
+		case common.ToolCallResult:
+			state = 3
+			data.Prompt += l.Encoding.ToolCallResultTokenStart + m.Content + l.Encoding.ToolCallResultTokenEnd
+		default:
+			return fmt.Errorf("unexpected role %q", m.Role)
+		}
+	}
+	return nil
 }

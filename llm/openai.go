@@ -86,7 +86,11 @@ type openAIStreamDelta struct {
 	Content string `json:"content"`
 }
 
-func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
+type openAIClient struct {
+	baseURL string
+}
+
+func (l *openAIClient) PromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",
 		MaxTokens:   maxtoks,
@@ -104,7 +108,7 @@ func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []common.Messag
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+func (l *openAIClient) PromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	start := time.Now()
 	data := openAIChatCompletionRequest{
 		Model:       "ignored",

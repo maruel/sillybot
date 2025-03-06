@@ -321,7 +321,8 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl := len(msgs)
-	s, err := l.llamaCPPPromptBlocking(ctx, msgs, 100, 1, 0)
+	c := llamaCPPClient{baseURL: l.baseURL, Encoding: l.Encoding}
+	s, err := c.PromptBlocking(ctx, msgs, 100, 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +331,7 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	s, err = l.llamaCPPPromptBlocking(ctx, msgs, 100, 1, 0)
+	s, err = c.PromptBlocking(ctx, msgs, 100, 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +350,7 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 100, 1, 0); err != nil {
+	if s, err = c.PromptBlocking(ctx, msgs, 100, 1, 0); err != nil {
 		t.Fatal(err)
 	}
 	msgs = append(msgs, parseToolResponse(t, s, 1)...)
@@ -357,7 +358,7 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 100, 1, 0); err != nil {
+	if s, err = c.PromptBlocking(ctx, msgs, 100, 1, 0); err != nil {
 		t.Fatal(err)
 	}
 	msgs = append(msgs, common.Message{Role: common.Assistant, Content: s})
