@@ -4,6 +4,21 @@
 
 package llm
 
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/maruel/sillybot/internal"
+	"github.com/maruel/sillybot/llm/common"
+)
+
 // llamaCPPHealthResponse is documented at
 // https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#api-endpoints
 type llamaCPPHealthResponse struct {
@@ -92,4 +107,81 @@ type llamaCPPCompletionResponse struct {
 	Multimodal      bool  `json:"multimodal"`
 	// Error case:
 	Error errorResponse `json:"error"`
+}
+
+func (l *Session) llamaCPPPromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
+	data := llamaCPPCompletionRequest{Seed: int64(seed), Temperature: temperature, NPredict: int64(maxtoks)}
+	// Doc mentions it causes non-determinism even if a non-zero seed is
+	// specified. Disable if it becomes a problem.
+	data.CachePrompt = true
+	if err := l.initPrompt(&data, msgs); err != nil {
+		return "", err
+	}
+	msg := llamaCPPCompletionResponse{}
+	if err := internal.JSONPost(ctx, l.baseURL+"/completion", data, &msg); err != nil {
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
+	}
+	slog.Debug("llm", "prompt tok", msg.Timings.PromptN, "gen tok", msg.Timings.PredictedN, "prompt tok/ms", msg.Timings.PromptPerTokenMS, "gen tok/ms", msg.Timings.PredictedPerTokenMS)
+	// Mistral Nemo really likes "▁".
+	return strings.ReplaceAll(msg.Content, "\u2581", " "), nil
+}
+
+func (l *Session) llamaCPPPromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+	start := time.Now()
+	data := llamaCPPCompletionRequest{
+		Stream:      true,
+		Seed:        int64(seed),
+		Temperature: temperature,
+		NPredict:    int64(maxtoks),
+	}
+	// Doc mentions it causes non-determinism even if a non-zero seed is
+	// specified. Disable if it becomes a problem.
+	data.CachePrompt = true
+	if err := l.initPrompt(&data, msgs); err != nil {
+		return "", err
+	}
+	resp, err := internal.JSONPostRequest(ctx, l.baseURL+"/completion", data)
+	if err != nil {
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
+	}
+	defer resp.Body.Close()
+	r := bufio.NewReader(resp.Body)
+	reply := ""
+	for {
+		line, err := r.ReadBytes('\n')
+		line = bytes.TrimSpace(line)
+		if err == io.EOF {
+			err = nil
+			if len(line) == 0 {
+				return reply, nil
+			}
+		}
+		if err != nil {
+			return reply, fmt.Errorf("failed to get llama server response: %w", err)
+		}
+		if len(line) == 0 {
+			continue
+		}
+		const prefix = "data: "
+		if !bytes.HasPrefix(line, []byte(prefix)) {
+			return reply, fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
+		}
+		d := json.NewDecoder(bytes.NewReader(line[len(prefix):]))
+		d.DisallowUnknownFields()
+		msg := llamaCPPCompletionResponse{}
+		if err = d.Decode(&msg); err != nil {
+			return reply, fmt.Errorf("failed to decode llama server response %q: %w", string(line), err)
+		}
+		word := msg.Content
+		slog.Debug("llm", "word", word, "stop", msg.Stop, "prompt tok", msg.Timings.PromptN, "gen tok", msg.Timings.PredictedN, "prompt tok/ms", msg.Timings.PromptPerTokenMS, "gen tok/ms", msg.Timings.PredictedPerTokenMS, "duration", time.Since(start).Round(time.Millisecond))
+		if word != "" {
+			// Mistral Nemo really likes "▁".
+			word = strings.ReplaceAll(msg.Content, "\u2581", " ")
+			words <- word
+			reply += word
+		}
+		if msg.Stop {
+			return reply, nil
+		}
+	}
 }

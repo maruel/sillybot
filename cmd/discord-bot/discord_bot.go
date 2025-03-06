@@ -29,6 +29,7 @@ import (
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
+	"github.com/maruel/sillybot/llm/common"
 	"github.com/maruel/sillybot/llm/tools"
 	"google.golang.org/api/customsearch/v1"
 	"google.golang.org/api/option"
@@ -51,7 +52,7 @@ type discordBot struct {
 	ig        *imagegen.Session
 	settings  sillybot.Settings
 	memDir    string
-	toolsMsg  llm.Message
+	toolsMsg  common.Message
 	chat      chan msgReq
 	image     chan intReq
 	gcptoken  string
@@ -61,7 +62,7 @@ type discordBot struct {
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
 func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
-	toolsMsg := llm.Message{}
+	toolsMsg := common.Message{}
 	if l.Encoding != nil && strings.Contains(strings.ToLower(string(l.Model)), "mistral") {
 		slog.Info("discord", "message", "tools are enabled", "encoding", l.Encoding)
 		// HACK: Also an hack.
@@ -92,8 +93,8 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 		if err != nil {
 			return nil, err
 		}
-		toolsMsg = llm.Message{
-			Role:    llm.AvailableTools,
+		toolsMsg = common.Message{
+			Role:    common.AvailableTools,
 			Content: string(b),
 		}
 	}
@@ -505,7 +506,7 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	}
 	reply := "I don't know you. I can't wait to start our discussion so I can get to know you better!"
 	c := d.getMemory(event.ChannelID)
-	if len(c.Messages) >= 1 && c.Messages[len(c.Messages)-1].Role != llm.System {
+	if len(c.Messages) >= 1 && c.Messages[len(c.Messages)-1].Role != common.System {
 		reply = "The memory of our past conversations just got zapped."
 	}
 	c.Messages = nil
@@ -513,7 +514,7 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	// Either update, remove or add, depending.
 	if (opts.SystemPrompt == "") != (d.settings.PromptSystem == "") {
 		if opts.SystemPrompt != "" {
-			c.Messages = append(c.Messages, llm.Message{Role: llm.System, Content: opts.SystemPrompt})
+			c.Messages = append(c.Messages, common.Message{Role: common.System, Content: opts.SystemPrompt})
 		} else if len(c.Messages) != 0 {
 			c.Messages = c.Messages[:len(c.Messages)-1]
 		}
@@ -750,10 +751,10 @@ func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 	c := d.mem.Get("", channelID)
 	if len(c.Messages) == 0 {
 		if d.toolsMsg.Content != "" {
-			c.Messages = []llm.Message{d.toolsMsg}
+			c.Messages = []common.Message{d.toolsMsg}
 		}
 		if d.settings.PromptSystem != "" {
-			c.Messages = append(c.Messages, llm.Message{Role: llm.System, Content: d.settings.PromptSystem})
+			c.Messages = append(c.Messages, common.Message{Role: common.System, Content: d.settings.PromptSystem})
 		}
 	}
 	return c
@@ -772,7 +773,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 // then process it. This function exists for testing.
 func (d *discordBot) handlePromptBlocking(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
+	c.Messages = append(c.Messages, common.Message{Role: common.User, Content: req.msg})
 	replyToID := req.replyToID
 	for {
 		// 32768
@@ -784,7 +785,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 			return
 		}
 		// Remember our own answer.
-		c.Messages = append(c.Messages, llm.Message{Role: llm.Assistant, Content: reply})
+		c.Messages = append(c.Messages, common.Message{Role: common.Assistant, Content: reply})
 		gotToolCall := false
 		for reply != "" {
 			if d.l.Encoding != nil && !gotToolCall {
@@ -831,7 +832,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 // handlePromptStreaming request a reply from the LLM and streams replies back.
 func (d *discordBot) handlePromptStreaming(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, llm.Message{Role: llm.User, Content: req.msg})
+	c.Messages = append(c.Messages, common.Message{Role: common.User, Content: req.msg})
 	wg := sync.WaitGroup{}
 	for {
 		ctx, cancel := context.WithCancel(d.ctx)
@@ -898,7 +899,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 								}
 							}
 							// Remember our own answer.
-							c.Messages = append(c.Messages, llm.Message{Role: llm.Assistant, Content: text})
+							c.Messages = append(c.Messages, common.Message{Role: common.Assistant, Content: text})
 						}
 						t.Stop()
 						wg.Done()
@@ -1038,7 +1039,7 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 		// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/protocol/instruct/validator.py
 		callid := 0
 		for _, c := range c.Messages {
-			if c.Role == llm.ToolCall {
+			if c.Role == common.ToolCall {
 				callid++
 			}
 		}
@@ -1052,8 +1053,8 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 		// We want to ignore the rest of the reply and send a new query.
 		// TODO: Inject CallID instead of pending[:i]. We need to determine if
 		// Mistral prefers to receive its own content as-is or reformatted?
-		c.Messages = append(c.Messages, llm.Message{Role: llm.ToolCall, Content: line})
-		c.Messages = append(c.Messages, llm.Message{Role: llm.ToolCallResult, Content: string(b)})
+		c.Messages = append(c.Messages, common.Message{Role: common.ToolCall, Content: line})
+		c.Messages = append(c.Messages, common.Message{Role: common.ToolCallResult, Content: string(b)})
 		// TODO: We should probably cancel the context and start over, there's no
 		// point in receiving more data.
 		return name
@@ -1225,7 +1226,7 @@ func (d *discordBot) handleImage(req intReq) {
 				options := [3]string{}
 				j := 0
 				for ; j < len(options); j++ {
-					msgs := []llm.Message{{Role: llm.System, Content: d.settings.PromptLabels}, {Role: llm.User, Content: req.description}}
+					msgs := []common.Message{{Role: common.System, Content: d.settings.PromptLabels}, {Role: common.User, Content: req.description}}
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*i + 4*j
@@ -1263,9 +1264,9 @@ func (d *discordBot) handleImage(req intReq) {
 			imagePrompt := req.imagePrompt
 			if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
 				// Image: use the LLM to generate the image prompt based on the description.
-				msgs := []llm.Message{
-					{Role: llm.System, Content: d.settings.PromptImage},
-					{Role: llm.User, Content: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent},
+				msgs := []common.Message{
+					{Role: common.System, Content: d.settings.PromptImage},
+					{Role: common.User, Content: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent},
 				}
 				if imagePrompt, u.err = d.l.Prompt(ctx, msgs, 125, seed, 1.0); u.err != nil {
 					u.err = fmt.Errorf("failed to enhance image generation prompt: %w", u.err)

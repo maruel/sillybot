@@ -360,7 +360,7 @@ func TestMistralTool(t *testing.T) {
 	if s, err = l.llamaCPPPromptBlocking(ctx, msgs, 100, 1, 0); err != nil {
 		t.Fatal(err)
 	}
-	msgs = append(msgs, common.Message{Role: Assistant, Content: s})
+	msgs = append(msgs, common.Message{Role: common.Assistant, Content: s})
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}

@@ -4,7 +4,20 @@
 
 package llm
 
-import "github.com/maruel/sillybot/llm/common"
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/maruel/sillybot/internal"
+	"github.com/maruel/sillybot/llm/common"
+)
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
 
@@ -71,4 +84,86 @@ type openAIStreamChoices struct {
 
 type openAIStreamDelta struct {
 	Content string `json:"content"`
+}
+
+func (l *Session) openAIPromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
+	data := openAIChatCompletionRequest{
+		Model:       "ignored",
+		MaxTokens:   maxtoks,
+		Messages:    msgs,
+		Seed:        seed,
+		Temperature: temperature,
+	}
+	msg := openAIChatCompletionsResponse{}
+	if err := internal.JSONPost(ctx, l.baseURL+"/v1/chat/completions", data, &msg); err != nil {
+		return "", fmt.Errorf("failed to get llama server chat response: %w", err)
+	}
+	if len(msg.Choices) != 1 {
+		return "", fmt.Errorf("llama server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
+	}
+	return msg.Choices[0].Message.Content, nil
+}
+
+func (l *Session) openAIPromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+	start := time.Now()
+	data := openAIChatCompletionRequest{
+		Model:       "ignored",
+		Messages:    msgs,
+		MaxTokens:   maxtoks,
+		Stream:      true,
+		Seed:        seed,
+		Temperature: temperature,
+	}
+	resp, err := internal.JSONPostRequest(ctx, l.baseURL+"/v1/chat/completions", data)
+	if err != nil {
+		return "", fmt.Errorf("failed to get llama server response: %w", err)
+	}
+	defer resp.Body.Close()
+	r := bufio.NewReader(resp.Body)
+	reply := ""
+	for {
+		line, err := r.ReadBytes('\n')
+		line = bytes.TrimSpace(line)
+		if err == io.EOF {
+			err = nil
+			if len(line) == 0 {
+				return reply, nil
+			}
+		}
+		if err != nil {
+			return reply, fmt.Errorf("failed to get llama server response: %w", err)
+		}
+		if len(line) == 0 {
+			continue
+		}
+		const prefix = "data: "
+		if !bytes.HasPrefix(line, []byte(prefix)) {
+			return reply, fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
+		}
+		suffix := string(line[len(prefix):])
+		if suffix == "[DONE]" {
+			return reply, nil
+		}
+		d := json.NewDecoder(strings.NewReader(suffix))
+		d.DisallowUnknownFields()
+		msg := openAIChatCompletionsStreamResponse{}
+		if err = d.Decode(&msg); err != nil {
+			return reply, fmt.Errorf("failed to decode llama server response %q: %w", string(line), err)
+		}
+		if len(msg.Choices) != 1 {
+			return reply, fmt.Errorf("llama server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
+		}
+		word := msg.Choices[0].Delta.Content
+		slog.Debug("llm", "word", word, "duration", time.Since(start).Round(time.Millisecond))
+		// TODO: Remove.
+		switch word {
+		// Llama-3, Gemma-2, Phi-3
+		case "<|eot_id|>", "<end_of_turn>", "<|end|>", "<|endoftext|>":
+			return reply, nil
+		case "":
+		default:
+			words <- word
+			reply += word
+		}
+	}
 }
