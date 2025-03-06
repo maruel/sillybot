@@ -31,6 +31,7 @@ import (
 	"github.com/maruel/sillybot/internal"
 	"github.com/maruel/sillybot/llm/common"
 	"github.com/maruel/sillybot/llm/llamacpp"
+	"github.com/maruel/sillybot/llm/openai"
 	"github.com/maruel/sillybot/py"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sys/cpu"
@@ -408,7 +409,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []common.Message, maxtoks, se
 	var err error
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "blocking")
-		c := openAIClient{baseURL: l.baseURL}
+		c := openai.Client{BaseURL: l.baseURL}
 		reply, err = c.PromptBlocking(ctx, msgs, maxtoks, seed, temperature)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "blocking")
@@ -457,7 +458,7 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []common.Message, ma
 	var err error
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "streaming")
-		c := openAIClient{baseURL: l.baseURL}
+		c := openai.Client{BaseURL: l.baseURL}
 		reply, err = c.PromptStreaming(ctx, msgs, maxtoks, seed, temperature, words)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "streaming")

@@ -2,7 +2,7 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
-package llm
+package openai
 
 import (
 	"bufio"
@@ -21,9 +21,9 @@ import (
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
 
-// openAIChatCompletionRequest is documented at
+// chatCompletionRequest is documented at
 // https://platform.openai.com/docs/api-reference/chat/create
-type openAIChatCompletionRequest struct {
+type chatCompletionRequest struct {
 	Model       string           `json:"model"`
 	MaxTokens   int              `json:"max_tokens,omitempty"`
 	Stream      bool             `json:"stream"`
@@ -32,10 +32,31 @@ type openAIChatCompletionRequest struct {
 	Temperature float64          `json:"temperature,omitempty"`
 }
 
-// openAIChatCompletionsResponse is documented at
+// chatCompletionsResponse is documented at
 // https://platform.openai.com/docs/api-reference/chat/object
-type openAIChatCompletionsResponse struct {
-	Choices []openAIChoices `json:"choices"`
+type chatCompletionsResponse struct {
+	Choices []choices `json:"choices"`
+	Created int64     `json:"created"`
+	ID      string    `json:"id"`
+	Model   string    `json:"model"`
+	Object  string    `json:"object"`
+	Usage   struct {
+		CompletionTokens int64 `json:"completion_tokens"`
+		PromptTokens     int64 `json:"prompt_tokens"`
+		TotalTokens      int64 `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+type choices struct {
+	// FinishReason is one of "stop", "length", "content_filter" or "tool_calls".
+	FinishReason string         `json:"finish_reason"`
+	Index        int            `json:"index"`
+	Message      common.Message `json:"message"`
+}
+
+// chatCompletionsStreamResponse is not documented?
+type chatCompletionsStreamResponse struct {
+	Choices []streamChoices `json:"choices"`
 	Created int64           `json:"created"`
 	ID      string          `json:"id"`
 	Model   string          `json:"model"`
@@ -47,28 +68,7 @@ type openAIChatCompletionsResponse struct {
 	} `json:"usage"`
 }
 
-type openAIChoices struct {
-	// FinishReason is one of "stop", "length", "content_filter" or "tool_calls".
-	FinishReason string         `json:"finish_reason"`
-	Index        int            `json:"index"`
-	Message      common.Message `json:"message"`
-}
-
-// openAIChatCompletionsStreamResponse is not documented?
-type openAIChatCompletionsStreamResponse struct {
-	Choices []openAIStreamChoices `json:"choices"`
-	Created int64                 `json:"created"`
-	ID      string                `json:"id"`
-	Model   string                `json:"model"`
-	Object  string                `json:"object"`
-	Usage   struct {
-		CompletionTokens int64 `json:"completion_tokens"`
-		PromptTokens     int64 `json:"prompt_tokens"`
-		TotalTokens      int64 `json:"total_tokens"`
-	} `json:"usage"`
-}
-
-type openAIStreamChoices struct {
+type streamChoices struct {
 	Delta openAIStreamDelta `json:"delta"`
 	// FinishReason is one of null, "stop", "length", "content_filter" or "tool_calls".
 	FinishReason string `json:"finish_reason"`
@@ -80,20 +80,20 @@ type openAIStreamDelta struct {
 	Content string `json:"content"`
 }
 
-type openAIClient struct {
-	baseURL string
+type Client struct {
+	BaseURL string
 }
 
-func (l *openAIClient) PromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
-	data := openAIChatCompletionRequest{
+func (c *Client) PromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
+	data := chatCompletionRequest{
 		Model:       "ignored",
 		MaxTokens:   maxtoks,
 		Messages:    msgs,
 		Seed:        seed,
 		Temperature: temperature,
 	}
-	msg := openAIChatCompletionsResponse{}
-	if err := internal.JSONPost(ctx, l.baseURL+"/v1/chat/completions", data, &msg); err != nil {
+	msg := chatCompletionsResponse{}
+	if err := internal.JSONPost(ctx, c.BaseURL+"/v1/chat/completions", data, &msg); err != nil {
 		return "", fmt.Errorf("failed to get llama server chat response: %w", err)
 	}
 	if len(msg.Choices) != 1 {
@@ -102,9 +102,9 @@ func (l *openAIClient) PromptBlocking(ctx context.Context, msgs []common.Message
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (l *openAIClient) PromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+func (c *Client) PromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	start := time.Now()
-	data := openAIChatCompletionRequest{
+	data := chatCompletionRequest{
 		Model:       "ignored",
 		Messages:    msgs,
 		MaxTokens:   maxtoks,
@@ -112,7 +112,7 @@ func (l *openAIClient) PromptStreaming(ctx context.Context, msgs []common.Messag
 		Seed:        seed,
 		Temperature: temperature,
 	}
-	resp, err := internal.JSONPostRequest(ctx, l.baseURL+"/v1/chat/completions", data)
+	resp, err := internal.JSONPostRequest(ctx, c.BaseURL+"/v1/chat/completions", data)
 	if err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
@@ -144,7 +144,7 @@ func (l *openAIClient) PromptStreaming(ctx context.Context, msgs []common.Messag
 		}
 		d := json.NewDecoder(strings.NewReader(suffix))
 		d.DisallowUnknownFields()
-		msg := openAIChatCompletionsStreamResponse{}
+		msg := chatCompletionsStreamResponse{}
 		if err = d.Decode(&msg); err != nil {
 			return reply, fmt.Errorf("failed to decode llama server response %q: %w", string(line), err)
 		}

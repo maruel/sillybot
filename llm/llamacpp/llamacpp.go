@@ -26,17 +26,17 @@ type errorResponse struct {
 	Type    string
 }
 
-// llamaCPPHealthResponse is documented at
+// healthResponse is documented at
 // https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#api-endpoints
-type llamaCPPHealthResponse struct {
+type healthResponse struct {
 	Status          string
 	SlotsIdle       int `json:"slots_idle"`
 	SlotsProcessing int `json:"slots_processing"`
 }
 
-// llamaCPPCompletionRequest is documented at
+// completionRequest is documented at
 // https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#api-endpoints
-type llamaCPPCompletionRequest struct {
+type completionRequest struct {
 	SystemPrompt     string      `json:"system_prompt,omitempty"`
 	Prompt           string      `json:"prompt"`
 	Grammar          string      `json:"grammar,omitempty"`
@@ -73,9 +73,9 @@ type llamaCPPCompletionRequest struct {
 	// samplers     []string
 }
 
-// llamaCPPCompletionResponse is documented at
+// completionResponse is documented at
 // https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md#result-json
-type llamaCPPCompletionResponse struct {
+type completionResponse struct {
 	Content            string      `json:"content"`
 	Stop               bool        `json:"stop"`
 	GenerationSettings interface{} `json:"generation_settings"`
@@ -148,14 +148,14 @@ type Client struct {
 }
 
 func (c *Client) PromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
-	data := llamaCPPCompletionRequest{Seed: int64(seed), Temperature: temperature, NPredict: int64(maxtoks)}
+	data := completionRequest{Seed: int64(seed), Temperature: temperature, NPredict: int64(maxtoks)}
 	// Doc mentions it causes non-determinism even if a non-zero seed is
 	// specified. Disable if it becomes a problem.
 	data.CachePrompt = true
 	if err := c.initPrompt(&data, msgs); err != nil {
 		return "", err
 	}
-	msg := llamaCPPCompletionResponse{}
+	msg := completionResponse{}
 	if err := internal.JSONPost(ctx, c.BaseURL+"/completion", data, &msg); err != nil {
 		return "", fmt.Errorf("failed to get llama server response: %w", err)
 	}
@@ -166,7 +166,7 @@ func (c *Client) PromptBlocking(ctx context.Context, msgs []common.Message, maxt
 
 func (c *Client) PromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	start := time.Now()
-	data := llamaCPPCompletionRequest{
+	data := completionRequest{
 		Stream:      true,
 		Seed:        int64(seed),
 		Temperature: temperature,
@@ -206,7 +206,7 @@ func (c *Client) PromptStreaming(ctx context.Context, msgs []common.Message, max
 		}
 		d := json.NewDecoder(bytes.NewReader(line[len(prefix):]))
 		d.DisallowUnknownFields()
-		msg := llamaCPPCompletionResponse{}
+		msg := completionResponse{}
 		if err = d.Decode(&msg); err != nil {
 			return reply, fmt.Errorf("failed to decode llama server response %q: %w", string(line), err)
 		}
@@ -236,7 +236,7 @@ func (c *Client) GetHealth(ctx context.Context) (string, error) {
 	}
 	d := json.NewDecoder(resp.Body)
 	d.DisallowUnknownFields()
-	msg := llamaCPPHealthResponse{}
+	msg := healthResponse{}
 	err = d.Decode(&msg)
 	_ = resp.Body.Close()
 	if err != nil {
@@ -245,7 +245,7 @@ func (c *Client) GetHealth(ctx context.Context) (string, error) {
 	return msg.Status, nil
 }
 
-func (c *Client) initPrompt(data *llamaCPPCompletionRequest, msgs []common.Message) error {
+func (c *Client) initPrompt(data *completionRequest, msgs []common.Message) error {
 	// Do a quick validation. 1 == available_tools, 2 = system, 3 = rest
 	state := 0
 	data.Prompt = c.Encoding.BeginOfText
