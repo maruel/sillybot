@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maruel/genai"
 	"github.com/maruel/sillybot/internal"
-	"github.com/maruel/sillybot/llm/common"
 )
 
 // Messages. https://platform.openai.com/docs/api-reference/making-requests
@@ -24,12 +24,12 @@ import (
 // chatCompletionRequest is documented at
 // https://platform.openai.com/docs/api-reference/chat/create
 type chatCompletionRequest struct {
-	Model       string           `json:"model"`
-	MaxTokens   int              `json:"max_tokens,omitempty"`
-	Stream      bool             `json:"stream"`
-	Messages    []common.Message `json:"messages"`
-	Seed        int              `json:"seed,omitempty"`
-	Temperature float64          `json:"temperature,omitempty"`
+	Model       string          `json:"model"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Stream      bool            `json:"stream"`
+	Messages    []genai.Message `json:"messages"`
+	Seed        int             `json:"seed,omitempty"`
+	Temperature float64         `json:"temperature,omitempty"`
 }
 
 // chatCompletionsResponse is documented at
@@ -49,9 +49,9 @@ type chatCompletionsResponse struct {
 
 type choices struct {
 	// FinishReason is one of "stop", "length", "content_filter" or "tool_calls".
-	FinishReason string         `json:"finish_reason"`
-	Index        int            `json:"index"`
-	Message      common.Message `json:"message"`
+	FinishReason string        `json:"finish_reason"`
+	Index        int           `json:"index"`
+	Message      genai.Message `json:"message"`
 }
 
 // chatCompletionsStreamResponse is not documented?
@@ -73,7 +73,7 @@ type streamChoices struct {
 	// FinishReason is one of null, "stop", "length", "content_filter" or "tool_calls".
 	FinishReason string `json:"finish_reason"`
 	Index        int    `json:"index"`
-	//Message      common.Message `json:"message"`
+	//Message      genai.Message `json:"message"`
 }
 
 type openAIStreamDelta struct {
@@ -84,7 +84,7 @@ type Client struct {
 	BaseURL string
 }
 
-func (c *Client) PromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
+func (c *Client) PromptBlocking(ctx context.Context, msgs []genai.Message, maxtoks, seed int, temperature float64) (string, error) {
 	data := chatCompletionRequest{
 		Model:       "ignored",
 		MaxTokens:   maxtoks,
@@ -102,7 +102,7 @@ func (c *Client) PromptBlocking(ctx context.Context, msgs []common.Message, maxt
 	return msg.Choices[0].Message.Content, nil
 }
 
-func (c *Client) PromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+func (c *Client) PromptStreaming(ctx context.Context, msgs []genai.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	start := time.Now()
 	data := chatCompletionRequest{
 		Model:       "ignored",

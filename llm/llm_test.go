@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
-	"github.com/maruel/sillybot/llm/common"
+	"github.com/maruel/genai"
 	"github.com/maruel/sillybot/llm/llamacpp"
 	"github.com/maruel/sillybot/llm/tools"
 	"github.com/mattn/go-colorable"
@@ -222,7 +222,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	const prompt = "reply with \"ok chief\""
 	t.Run("Blocking", func(t *testing.T) {
 		t.Parallel()
-		msgs := []common.Message{{Role: common.System, Content: systemPrompt}, {Role: common.User, Content: prompt}}
+		msgs := []genai.Message{{Role: genai.System, Content: systemPrompt}, {Role: genai.User, Content: prompt}}
 		got, err2 := l.Prompt(ctx, msgs, 10, 1, 0.0)
 		if err2 != nil {
 			t.Fatal(err2)
@@ -231,7 +231,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	})
 	t.Run("Streaming", func(t *testing.T) {
 		t.Parallel()
-		msgs := []common.Message{{Role: common.System, Content: systemPrompt}, {Role: common.User, Content: prompt}}
+		msgs := []genai.Message{{Role: genai.System, Content: systemPrompt}, {Role: genai.User, Content: prompt}}
 		words := make(chan string, 10)
 		got := ""
 		wg := sync.WaitGroup{}
@@ -311,10 +311,10 @@ func TestMistralTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msgs := []common.Message{
-		{Role: common.AvailableTools, Content: string(toolsB)},
+	msgs := []genai.Message{
+		{Role: genai.AvailableTools, Content: string(toolsB)},
 		{
-			Role:    common.User,
+			Role:    genai.User,
 			Content: `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`,
 		},
 	}
@@ -336,7 +336,7 @@ func TestMistralTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msgs = append(msgs, common.Message{Role: common.Assistant, Content: s})
+	msgs = append(msgs, genai.Message{Role: genai.Assistant, Content: s})
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
@@ -346,7 +346,7 @@ func TestMistralTool(t *testing.T) {
 	}
 
 	// Now do a calculation!
-	msgs = append(msgs, common.Message{Role: common.User, Content: "Give me the result of 43215 divided by 215."})
+	msgs = append(msgs, genai.Message{Role: genai.User, Content: "Give me the result of 43215 divided by 215."})
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
@@ -362,7 +362,7 @@ func TestMistralTool(t *testing.T) {
 	if s, err = c.PromptBlocking(ctx, msgs, 100, 1, 0); err != nil {
 		t.Fatal(err)
 	}
-	msgs = append(msgs, common.Message{Role: common.Assistant, Content: s})
+	msgs = append(msgs, genai.Message{Role: genai.Assistant, Content: s})
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
@@ -371,7 +371,7 @@ func TestMistralTool(t *testing.T) {
 	}
 }
 
-func parseToolResponse(t *testing.T, got string, id int) []common.Message {
+func parseToolResponse(t *testing.T, got string, id int) []genai.Message {
 	got = strings.TrimSpace(got)
 	var toolCalls []tools.MistralToolCall
 	//  Search for a tool call.
@@ -414,9 +414,9 @@ func parseToolResponse(t *testing.T, got string, id int) []common.Message {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return []common.Message{
-		{Role: common.ToolCall, Content: string(c)},
-		{Role: common.ToolCallResult, Content: string(r)},
+	return []genai.Message{
+		{Role: genai.ToolCall, Content: string(c)},
+		{Role: genai.ToolCallResult, Content: string(r)},
 	}
 }
 

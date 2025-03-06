@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maruel/sillybot/llm/common"
+	"github.com/maruel/genai"
 )
 
 // Conversation is a conversation with one user.
@@ -23,7 +23,7 @@ type Conversation struct {
 	Channel    string
 	Started    time.Time
 	LastUpdate time.Time
-	Messages   []common.Message
+	Messages   []genai.Message
 
 	_ struct{}
 }
@@ -186,7 +186,7 @@ func (s *serializedConversation) to(c *Conversation) error {
 	c.Channel = s.Channel
 	c.Started = s.Started
 	c.LastUpdate = s.LastUpdate
-	c.Messages = make([]common.Message, len(s.Messages))
+	c.Messages = make([]genai.Message, len(s.Messages))
 	for i := range s.Messages {
 		if err := s.Messages[i].to(&c.Messages[i]); err != nil {
 			return err
@@ -200,19 +200,19 @@ type serializedMessage struct {
 	Content string `json:"c,omitempty"`
 }
 
-func (s *serializedMessage) from(m *common.Message) error {
+func (s *serializedMessage) from(m *genai.Message) error {
 	switch m.Role {
-	case common.System:
+	case genai.System:
 		s.Role = 0
-	case common.User:
+	case genai.User:
 		s.Role = 1
-	case common.Assistant:
+	case genai.Assistant:
 		s.Role = 2
-	case common.AvailableTools:
+	case genai.AvailableTools:
 		s.Role = 3
-	case common.ToolCall:
+	case genai.ToolCall:
 		s.Role = 4
-	case common.ToolCallResult:
+	case genai.ToolCallResult:
 		s.Role = 5
 	default:
 		return fmt.Errorf("unknown role %q", m.Role)
@@ -221,20 +221,20 @@ func (s *serializedMessage) from(m *common.Message) error {
 	return nil
 }
 
-func (s *serializedMessage) to(m *common.Message) error {
+func (s *serializedMessage) to(m *genai.Message) error {
 	switch s.Role {
 	case 0:
-		m.Role = common.System
+		m.Role = genai.System
 	case 1:
-		m.Role = common.User
+		m.Role = genai.User
 	case 2:
-		m.Role = common.Assistant
+		m.Role = genai.Assistant
 	case 3:
-		m.Role = common.AvailableTools
+		m.Role = genai.AvailableTools
 	case 4:
-		m.Role = common.ToolCall
+		m.Role = genai.ToolCall
 	case 5:
-		m.Role = common.ToolCallResult
+		m.Role = genai.ToolCallResult
 	default:
 		return fmt.Errorf("unknown role %q", s.Role)
 	}

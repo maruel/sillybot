@@ -1,6 +1,6 @@
 module github.com/maruel/sillybot
 
-go 1.23.3
+go 1.24.1
 
 require (
 	github.com/bluesky-social/indigo v0.0.0-20241129200536-de950cc402b7
@@ -9,6 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/ipfs/go-cid v0.4.1
 	github.com/lmittmann/tint v1.0.5
+	github.com/maruel/genai v0.0.0-20250306155726-0158d7d70da3
 	github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.20

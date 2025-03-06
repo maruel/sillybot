@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maruel/genai"
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
-	"github.com/maruel/sillybot/llm/common"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
@@ -300,13 +300,13 @@ func (s *slackBot) onAppMention(ctx context.Context, req msgReq) {
 func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	c := s.mem.Get(req.userid, req.channel)
 	if len(c.Messages) == 0 {
-		c.Messages = []common.Message{{Role: common.System, Content: s.settings.PromptSystem}}
+		c.Messages = []genai.Message{{Role: genai.System, Content: s.settings.PromptSystem}}
 	}
 	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false), slack.MsgOptionTS(req.ts))
 	if err != nil {
 		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
-	c.Messages = append(c.Messages, common.Message{Role: common.User, Content: req.msg})
+	c.Messages = append(c.Messages, genai.Message{Role: genai.User, Content: req.msg})
 	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -327,7 +327,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 						}
 					}
 					// Remember our own answer.
-					c.Messages = append(c.Messages, common.Message{Role: common.Assistant, Content: text})
+					c.Messages = append(c.Messages, genai.Message{Role: genai.Assistant, Content: text})
 					t.Stop()
 					wg.Done()
 					return
@@ -365,9 +365,9 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	req.mu.Unlock()
 	// Use the LLM to improve the prompt!
 	if s.l != nil {
-		msgs := []common.Message{
-			{Role: common.System, Content: s.settings.PromptImage},
-			{Role: common.User, Content: req.msg},
+		msgs := []genai.Message{
+			{Role: genai.System, Content: s.settings.PromptImage},
+			{Role: genai.User, Content: req.msg},
 		}
 
 		// Intentionally limit the number of tokens, otherwise it's Stable

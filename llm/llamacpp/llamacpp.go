@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maruel/genai"
 	"github.com/maruel/sillybot/internal"
-	"github.com/maruel/sillybot/llm/common"
 )
 
 type errorResponse struct {
@@ -147,7 +147,7 @@ type Client struct {
 	Encoding *PromptEncoding
 }
 
-func (c *Client) PromptBlocking(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64) (string, error) {
+func (c *Client) PromptBlocking(ctx context.Context, msgs []genai.Message, maxtoks, seed int, temperature float64) (string, error) {
 	data := completionRequest{Seed: int64(seed), Temperature: temperature, NPredict: int64(maxtoks)}
 	// Doc mentions it causes non-determinism even if a non-zero seed is
 	// specified. Disable if it becomes a problem.
@@ -164,7 +164,7 @@ func (c *Client) PromptBlocking(ctx context.Context, msgs []common.Message, maxt
 	return strings.ReplaceAll(msg.Content, "\u2581", " "), nil
 }
 
-func (c *Client) PromptStreaming(ctx context.Context, msgs []common.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
+func (c *Client) PromptStreaming(ctx context.Context, msgs []genai.Message, maxtoks, seed int, temperature float64, words chan<- string) (string, error) {
 	start := time.Now()
 	data := completionRequest{
 		Stream:      true,
@@ -245,34 +245,34 @@ func (c *Client) GetHealth(ctx context.Context) (string, error) {
 	return msg.Status, nil
 }
 
-func (c *Client) initPrompt(data *completionRequest, msgs []common.Message) error {
+func (c *Client) initPrompt(data *completionRequest, msgs []genai.Message) error {
 	// Do a quick validation. 1 == available_tools, 2 = system, 3 = rest
 	state := 0
 	data.Prompt = c.Encoding.BeginOfText
 	for i, m := range msgs {
 		switch m.Role {
-		case common.AvailableTools:
+		case genai.AvailableTools:
 			if state != 0 || i != 0 {
 				return fmt.Errorf("unexpected available_tools message at index %d; state %d", i, state)
 			}
 			state = 1
 			data.Prompt += c.Encoding.ToolsAvailableTokenStart + m.Content + c.Encoding.ToolsAvailableTokenEnd
-		case common.System:
+		case genai.System:
 			if state > 1 {
 				return fmt.Errorf("unexpected system message at index %d; state %d", i, state)
 			}
 			state = 2
 			data.Prompt += c.Encoding.SystemTokenStart + m.Content + c.Encoding.SystemTokenEnd
-		case common.User:
+		case genai.User:
 			state = 3
 			data.Prompt += c.Encoding.UserTokenStart + m.Content + c.Encoding.UserTokenEnd
-		case common.Assistant:
+		case genai.Assistant:
 			state = 3
 			data.Prompt += c.Encoding.AssistantTokenStart + m.Content + c.Encoding.AssistantTokenEnd
-		case common.ToolCall:
+		case genai.ToolCall:
 			state = 3
 			data.Prompt += c.Encoding.ToolCallTokenStart + m.Content + c.Encoding.ToolCallTokenEnd
-		case common.ToolCallResult:
+		case genai.ToolCallResult:
 			state = 3
 			data.Prompt += c.Encoding.ToolCallResultTokenStart + m.Content + c.Encoding.ToolCallResultTokenEnd
 		default:
