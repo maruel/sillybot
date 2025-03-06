@@ -28,10 +28,10 @@ import (
 	"time"
 
 	"github.com/maruel/genai"
+	"github.com/maruel/genai/llamacpp"
+	"github.com/maruel/genai/openai"
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/internal"
-	"github.com/maruel/sillybot/llm/llamacpp"
-	"github.com/maruel/sillybot/llm/openai"
 	"github.com/maruel/sillybot/py"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sys/cpu"

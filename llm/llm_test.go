@@ -23,7 +23,7 @@ import (
 
 	"github.com/lmittmann/tint"
 	"github.com/maruel/genai"
-	"github.com/maruel/sillybot/llm/llamacpp"
+	"github.com/maruel/genai/llamacpp"
 	"github.com/maruel/sillybot/llm/tools"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"

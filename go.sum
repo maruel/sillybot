@@ -266,12 +266,10 @@ github.com/libp2p/go-netroute v0.2.1 h1:V8kVrpD8GK0Riv15/7VN6RbUQ3URNZVosw7H2v9t
 github.com/libp2p/go-netroute v0.2.1/go.mod h1:hraioZr0fhBjG0ZRXJJ6Zj2IVEVNx6tDTFQfSmcq7mQ=
 github.com/lmittmann/tint v1.0.5 h1:NQclAutOfYsqs2F1Lenue6OoWCajs5wJcP3DfWVpePw=
 github.com/lmittmann/tint v1.0.5/go.mod h1:HIS3gSy7qNwGCj+5oRjAutErFBl4BzdQP6cJZ0NfMwE=
-github.com/maruel/genai v0.0.0-20250306155726-0158d7d70da3 h1:xB2Hk5cHFbupOWTZjnIF815T0mKrHpt3LH/CNzR+ZNU=
-github.com/maruel/genai v0.0.0-20250306155726-0158d7d70da3/go.mod h1:/bnzNDX8xqTZ4kK5a/B45ARAYOXNcKSVxnfEIMDk+cw=
-github.com/maruel/httpjson v0.0.0-20250306164706-47e4ba360524 h1:iDAwBiWlLvA5sY5a7tGEsM94+Vi+t+Sgp6mRMKzhU5w=
-github.com/maruel/httpjson v0.0.0-20250306164706-47e4ba360524/go.mod h1:Rbue+VwOe1TC6doGXddW8EWg2fW4Je6RhCo7iPuNpTo=
-github.com/maruel/httpjson v0.0.0-20250306165433-abe5870e471d h1:ZJvc+RW+MSUxpPKlTqaAH9lz4rceAuH+3B/KweLiouU=
-github.com/maruel/httpjson v0.0.0-20250306165433-abe5870e471d/go.mod h1:Rbue+VwOe1TC6doGXddW8EWg2fW4Je6RhCo7iPuNpTo=
+github.com/maruel/genai v0.0.0-20250306171838-382c4906e60e h1:spImRrmR3cUdN8ZgeeHKdHhrPJx1V85wdTpOIGcBvPk=
+github.com/maruel/genai v0.0.0-20250306171838-382c4906e60e/go.mod h1:KmEDDWijU2fvw/7vQtGYeQ3OaiTYvN1JQnSGpblia2w=
+github.com/maruel/httpjson v0.0.0-20250306170113-71b2c90b6887 h1:jmIyzBpdNZSsh+TGXreJfUtzBeDz6uCUpki2AYEQDbg=
+github.com/maruel/httpjson v0.0.0-20250306170113-71b2c90b6887/go.mod h1:Rbue+VwOe1TC6doGXddW8EWg2fW4Je6RhCo7iPuNpTo=
 github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11 h1:igpEi1kYmnbLPZ9/QdkQm2Mx0Gx7Gz7V+ixTZwH7aOo=
 github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11/go.mod h1:wb55pRkjkGkuH+vmOae+iXxXfYmEAbWqRCAqptlTaZE=
 github.com/maruel/safetensors v1.2.0 h1:6XFN1cXOaJwt7jBepgO7zxiLDtTorAm3EQj6sHkhpdI=
