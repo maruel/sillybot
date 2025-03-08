@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maruel/genai"
+	"github.com/maruel/genai/genaiapi"
 )
 
 // Conversation is a conversation with one user.
@@ -23,7 +23,7 @@ type Conversation struct {
 	Channel    string
 	Started    time.Time
 	LastUpdate time.Time
-	Messages   []genai.Message
+	Messages   []genaiapi.Message
 
 	_ struct{}
 }
@@ -186,7 +186,7 @@ func (s *serializedConversation) to(c *Conversation) error {
 	c.Channel = s.Channel
 	c.Started = s.Started
 	c.LastUpdate = s.LastUpdate
-	c.Messages = make([]genai.Message, len(s.Messages))
+	c.Messages = make([]genaiapi.Message, len(s.Messages))
 	for i := range s.Messages {
 		if err := s.Messages[i].to(&c.Messages[i]); err != nil {
 			return err
@@ -200,19 +200,19 @@ type serializedMessage struct {
 	Content string `json:"c,omitempty"`
 }
 
-func (s *serializedMessage) from(m *genai.Message) error {
+func (s *serializedMessage) from(m *genaiapi.Message) error {
 	switch m.Role {
-	case genai.System:
+	case genaiapi.System:
 		s.Role = 0
-	case genai.User:
+	case genaiapi.User:
 		s.Role = 1
-	case genai.Assistant:
+	case genaiapi.Assistant:
 		s.Role = 2
-	case genai.AvailableTools:
+	case genaiapi.AvailableTools:
 		s.Role = 3
-	case genai.ToolCall:
+	case genaiapi.ToolCall:
 		s.Role = 4
-	case genai.ToolCallResult:
+	case genaiapi.ToolCallResult:
 		s.Role = 5
 	default:
 		return fmt.Errorf("unknown role %q", m.Role)
@@ -221,20 +221,20 @@ func (s *serializedMessage) from(m *genai.Message) error {
 	return nil
 }
 
-func (s *serializedMessage) to(m *genai.Message) error {
+func (s *serializedMessage) to(m *genaiapi.Message) error {
 	switch s.Role {
 	case 0:
-		m.Role = genai.System
+		m.Role = genaiapi.System
 	case 1:
-		m.Role = genai.User
+		m.Role = genaiapi.User
 	case 2:
-		m.Role = genai.Assistant
+		m.Role = genaiapi.Assistant
 	case 3:
-		m.Role = genai.AvailableTools
+		m.Role = genaiapi.AvailableTools
 	case 4:
-		m.Role = genai.ToolCall
+		m.Role = genaiapi.ToolCall
 	case 5:
-		m.Role = genai.ToolCallResult
+		m.Role = genaiapi.ToolCallResult
 	default:
 		return fmt.Errorf("unknown role %q", s.Role)
 	}

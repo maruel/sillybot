@@ -27,7 +27,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/maruel/genai"
+	"github.com/maruel/genai/genaiapi"
 	"github.com/maruel/genai/llamacpp"
 	"github.com/maruel/genai/openai"
 	"github.com/maruel/huggingface"
@@ -397,7 +397,7 @@ func (l *Session) GetMetrics(ctx context.Context, m *Metrics) error {
 // See PromptStreaming for the arguments values.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, maxtoks, seed int, temperature float64) (string, error) {
+func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, maxtoks, seed int, temperature float64) (string, error) {
 	r := trace.StartRegion(ctx, "llm.Prompt")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -446,7 +446,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, maxtoks, see
 // Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) PromptStreaming(ctx context.Context, msgs []genai.Message, maxtoks, seed int, temperature float64, words chan<- string) error {
+func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, maxtoks, seed int, temperature float64, words chan<- string) error {
 	r := trace.StartRegion(ctx, "llm.PromptStreaming")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -598,8 +598,8 @@ func copyFile(src, dst string) error {
 */
 
 // processMsgs process the system prompt.
-func (l *Session) processMsgs(msgs []genai.Message) []genai.Message {
-	if len(msgs) == 0 || msgs[0].Role != genai.System {
+func (l *Session) processMsgs(msgs []genaiapi.Message) []genaiapi.Message {
+	if len(msgs) == 0 || msgs[0].Role != genaiapi.System {
 		return msgs
 	}
 	t, err := template.New("").Parse(msgs[0].Content)
@@ -617,7 +617,7 @@ func (l *Session) processMsgs(msgs []genai.Message) []genai.Message {
 		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Content, "error", err)
 		return msgs
 	}
-	out := make([]genai.Message, len(msgs))
+	out := make([]genaiapi.Message, len(msgs))
 	copy(out, msgs)
 	out[0].Content = b.String()
 	return out

@@ -78,7 +78,9 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 		r := struct {
 			Status string
 		}{}
-		if err := httpjson.Default.Get(ctx, ig.baseURL+"/health", nil, &r); err == nil && r.Status == "ok" {
+		c := httpjson.DefaultClient
+		c.Compress = ""
+		if err := c.Get(ctx, ig.baseURL+"/health", nil, &r); err == nil && r.Status == "ok" {
 			break
 		}
 		select {
@@ -118,7 +120,9 @@ func (ig *Session) GenImage(ctx context.Context, prompt string, seed int) (*imag
 	r := struct {
 		Image []byte `json:"image"`
 	}{}
-	if err := httpjson.Default.Post(ctx, ig.baseURL+"/api/generate", nil, data, &r); err != nil {
+	c := httpjson.DefaultClient
+	c.Compress = ""
+	if err := c.Post(ctx, ig.baseURL+"/api/generate", nil, data, &r); err != nil {
 		slog.Error("ig", "prompt", prompt, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return nil, fmt.Errorf("failed to create image request: %w", err)
 	}

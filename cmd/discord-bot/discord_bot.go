@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/maruel/genai"
+	"github.com/maruel/genai/genaiapi"
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
@@ -52,7 +52,7 @@ type discordBot struct {
 	ig        *imagegen.Session
 	settings  sillybot.Settings
 	memDir    string
-	toolsMsg  genai.Message
+	toolsMsg  genaiapi.Message
 	chat      chan msgReq
 	image     chan intReq
 	gcptoken  string
@@ -62,7 +62,7 @@ type discordBot struct {
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
 func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
-	toolsMsg := genai.Message{}
+	toolsMsg := genaiapi.Message{}
 	if l.Encoding != nil && strings.Contains(strings.ToLower(string(l.Model)), "mistral") {
 		slog.Info("discord", "message", "tools are enabled", "encoding", l.Encoding)
 		// HACK: Also an hack.
@@ -93,8 +93,8 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 		if err != nil {
 			return nil, err
 		}
-		toolsMsg = genai.Message{
-			Role:    genai.AvailableTools,
+		toolsMsg = genaiapi.Message{
+			Role:    genaiapi.AvailableTools,
 			Content: string(b),
 		}
 	}
@@ -119,7 +119,7 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 	if verbose {
 		dg.LogLevel = discordgo.LogInformational
 		// It's very verbose.
-		//dg.LogLevel = discordgo.LogDebug
+		// dg.LogLevel = discordgo.LogDebug
 	}
 	// We want to receive as few messages as possible.
 	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentDirectMessages
@@ -175,7 +175,7 @@ func (d *discordBot) Close() error {
 // It's the very first message. At this point, guilds are not yet available.
 // See https://discord.com/developers/docs/topics/gateway-events#ready
 func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
-	//slog.Debug("discord", "event", "ready", "session", dg, "event", r)
+	// slog.Debug("discord", "event", "ready", "session", dg, "event", r)
 	slog.Info("discord", "event", "ready", "user", r.User.String())
 
 	// TODO: Get list of DMs and tell users "I'm back up!"
@@ -335,7 +335,7 @@ func (d *discordBot) onReady(dg *discordgo.Session, r *discordgo.Ready) {
 //
 // https://discord.com/developers/docs/topics/gateway-events#guild-create
 func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.GuildCreate) {
-	//slog.Debug("discord", "event", "guildCreate", "event", event.Guild)
+	// slog.Debug("discord", "event", "guildCreate", "event", event.Guild)
 	slog.Info("discord", "event", "guildCreate", "name", event.Guild.Name)
 	if event.Guild.Unavailable {
 		return
@@ -383,7 +383,7 @@ func (d *discordBot) onGuildCreate(dg *discordgo.Session, event *discordgo.Guild
 //
 // See https://discord.com/developers/docs/topics/gateway-events#message-create
 func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.MessageCreate) {
-	//slog.Debug("discord", "event", "messageCreate", "message", m.Message, "state", dg.State)
+	// slog.Debug("discord", "event", "messageCreate", "message", m.Message, "state", dg.State)
 	botid := dg.State.User.ID
 	if m.Author.ID == botid || m.Pinned {
 		return
@@ -506,7 +506,7 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	}
 	reply := "I don't know you. I can't wait to start our discussion so I can get to know you better!"
 	c := d.getMemory(event.ChannelID)
-	if len(c.Messages) >= 1 && c.Messages[len(c.Messages)-1].Role != genai.System {
+	if len(c.Messages) >= 1 && c.Messages[len(c.Messages)-1].Role != genaiapi.System {
 		reply = "The memory of our past conversations just got zapped."
 	}
 	c.Messages = nil
@@ -514,7 +514,7 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	// Either update, remove or add, depending.
 	if (opts.SystemPrompt == "") != (d.settings.PromptSystem == "") {
 		if opts.SystemPrompt != "" {
-			c.Messages = append(c.Messages, genai.Message{Role: genai.System, Content: opts.SystemPrompt})
+			c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.System, Content: opts.SystemPrompt})
 		} else if len(c.Messages) != 0 {
 			c.Messages = c.Messages[:len(c.Messages)-1]
 		}
@@ -734,7 +734,7 @@ func (d *discordBot) toolWebSearch(ctx context.Context, query string) (*customse
 	if err != nil {
 		return nil, err
 	}
-	//return s.Cse.List().Cx(d.cxtoken).Context(ctx).Q(query).Num(5).Do()
+	// return s.Cse.List().Cx(d.cxtoken).Context(ctx).Q(query).Num(5).Do()
 	return s.Cse.List().Cx(d.cxtoken).Q(query).Do()
 	// TODO: Doesn't seem to work at the moment. :(
 	// Note that the free quota is minimal:
@@ -751,10 +751,10 @@ func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 	c := d.mem.Get("", channelID)
 	if len(c.Messages) == 0 {
 		if d.toolsMsg.Content != "" {
-			c.Messages = []genai.Message{d.toolsMsg}
+			c.Messages = []genaiapi.Message{d.toolsMsg}
 		}
 		if d.settings.PromptSystem != "" {
-			c.Messages = append(c.Messages, genai.Message{Role: genai.System, Content: d.settings.PromptSystem})
+			c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.System, Content: d.settings.PromptSystem})
 		}
 	}
 	return c
@@ -773,7 +773,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 // then process it. This function exists for testing.
 func (d *discordBot) handlePromptBlocking(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, genai.Message{Role: genai.User, Content: req.msg})
+	c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.User, Content: req.msg})
 	replyToID := req.replyToID
 	for {
 		// 32768
@@ -785,7 +785,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 			return
 		}
 		// Remember our own answer.
-		c.Messages = append(c.Messages, genai.Message{Role: genai.Assistant, Content: reply})
+		c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.Assistant, Content: reply})
 		gotToolCall := false
 		for reply != "" {
 			if d.l.Encoding != nil && !gotToolCall {
@@ -832,7 +832,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 // handlePromptStreaming request a reply from the LLM and streams replies back.
 func (d *discordBot) handlePromptStreaming(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, genai.Message{Role: genai.User, Content: req.msg})
+	c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.User, Content: req.msg})
 	wg := sync.WaitGroup{}
 	for {
 		ctx, cancel := context.WithCancel(d.ctx)
@@ -852,7 +852,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 			for {
 				select {
 				case w, ok := <-words:
-					//slog.Debug("discord", "w", w, "ok", ok)
+					// slog.Debug("discord", "w", w, "ok", ok)
 					if !ok {
 						if d.l.Encoding != nil && !gotToolCall {
 							if called := d.handleMistralToolCall(pending, c); called != "" {
@@ -899,7 +899,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 								}
 							}
 							// Remember our own answer.
-							c.Messages = append(c.Messages, genai.Message{Role: genai.Assistant, Content: text})
+							c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.Assistant, Content: text})
 						}
 						t.Stop()
 						wg.Done()
@@ -987,7 +987,7 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 			continue
 		}
 		if err := json.Unmarshal([]byte(line), &calls); err != nil {
-			//slog.Debug("discord", "message", "line is not tool call", "line", line)
+			// slog.Debug("discord", "message", "line is not tool call", "line", line)
 			continue
 		}
 		if len(calls) != 1 {
@@ -1039,7 +1039,7 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 		// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/protocol/instruct/validator.py
 		callid := 0
 		for _, c := range c.Messages {
-			if c.Role == genai.ToolCall {
+			if c.Role == genaiapi.ToolCall {
 				callid++
 			}
 		}
@@ -1053,8 +1053,8 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 		// We want to ignore the rest of the reply and send a new query.
 		// TODO: Inject CallID instead of pending[:i]. We need to determine if
 		// Mistral prefers to receive its own content as-is or reformatted?
-		c.Messages = append(c.Messages, genai.Message{Role: genai.ToolCall, Content: line})
-		c.Messages = append(c.Messages, genai.Message{Role: genai.ToolCallResult, Content: string(b)})
+		c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.ToolCall, Content: line})
+		c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.ToolCallResult, Content: string(b)})
 		// TODO: We should probably cancel the context and start over, there's no
 		// point in receiving more data.
 		return name
@@ -1226,7 +1226,7 @@ func (d *discordBot) handleImage(req intReq) {
 				options := [3]string{}
 				j := 0
 				for ; j < len(options); j++ {
-					msgs := []genai.Message{{Role: genai.System, Content: d.settings.PromptLabels}, {Role: genai.User, Content: req.description}}
+					msgs := []genaiapi.Message{{Role: genaiapi.System, Content: d.settings.PromptLabels}, {Role: genaiapi.User, Content: req.description}}
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*i + 4*j
@@ -1264,9 +1264,9 @@ func (d *discordBot) handleImage(req intReq) {
 			imagePrompt := req.imagePrompt
 			if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
 				// Image: use the LLM to generate the image prompt based on the description.
-				msgs := []genai.Message{
-					{Role: genai.System, Content: d.settings.PromptImage},
-					{Role: genai.User, Content: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent},
+				msgs := []genaiapi.Message{
+					{Role: genaiapi.System, Content: d.settings.PromptImage},
+					{Role: genaiapi.User, Content: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent},
 				}
 				if imagePrompt, u.err = d.l.Prompt(ctx, msgs, 125, seed, 1.0); u.err != nil {
 					u.err = fmt.Errorf("failed to enhance image generation prompt: %w", u.err)
