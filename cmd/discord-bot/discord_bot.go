@@ -637,7 +637,7 @@ func (d *discordBot) onImage(event *discordgo.InteractionCreate, data discordgo.
 		// meme_manual
 		LabelsContent string `json:"labels_content"`
 		// meme_auto, meme_manual, image_auto, image_manual
-		Seed int `json:"seed"`
+		Seed int64 `json:"seed"`
 	}{}
 	if err := optionsToStruct(data.Options, &opts); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed decoding command options", "error", err)
@@ -1203,7 +1203,7 @@ func (d *discordBot) handleImage(req intReq) {
 			seed := req.seed
 			if seed != 0 {
 				// Increment by one for each loop.
-				seed = seed + i
+				seed = seed + int64(i)
 			} else {
 				// Never pass seed 0, instead select a random seed ourself so the user
 				// can still recreate the output. Generate a number between 1 and
@@ -1216,9 +1216,9 @@ func (d *discordBot) handleImage(req intReq) {
 					return
 				}
 				// We never want 0.
-				seed = int(i.Int64()) + 1
+				seed = i.Int64() + 1
 			}
-			u.content += "*Image #" + strconv.Itoa(i+1) + "*: *Seed*: " + strconv.Itoa(seed) + "\n"
+			u.content += "*Image #" + strconv.Itoa(i+1) + "*: *Seed*: " + strconv.FormatInt(seed, 10) + "\n"
 
 			// Labels: use the LLM to generate the labels based on the description.a
 			labelsContent := req.labelsContent
@@ -1229,7 +1229,7 @@ func (d *discordBot) handleImage(req intReq) {
 					msgs := []genaiapi.Message{{Role: genaiapi.System, Content: d.settings.PromptLabels}, {Role: genaiapi.User, Content: req.description}}
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
-					imgseed := seed + 4*i + 4*j
+					imgseed := seed + 4*int64(i) + 4*int64(j)
 					newLabels, err := d.l.Prompt(ctx, msgs, 70, imgseed, 1.0)
 					if err != nil {
 						u.err = fmt.Errorf("failed to enhance labels: %w", err)
@@ -1242,7 +1242,7 @@ func (d *discordBot) handleImage(req intReq) {
 						// Select this one.
 						labelsContent = newLabels
 						if i != 0 || j != 0 {
-							u.content += "*Seed (label)*: " + strconv.Itoa(imgseed) + "\n"
+							u.content += "*Seed (label)*: " + strconv.FormatInt(imgseed, 10) + "\n"
 						}
 						break
 					}
@@ -1456,7 +1456,7 @@ type intReq struct {
 	description   string
 	imagePrompt   string
 	labelsContent string
-	seed          int
+	seed          int64
 	cmdName       string
 	// Only there for ID and Token.
 	int *discordgo.Interaction

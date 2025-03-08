@@ -39,7 +39,7 @@ type Session struct {
 	done    <-chan error
 	cancel  func() error
 
-	steps int
+	steps int64
 }
 
 // New initializes a new image generation server.
@@ -106,7 +106,7 @@ func (ig *Session) Close() error {
 // GenImage returns an image based on the prompt.
 //
 // Use a non-zero seed to get deterministic output (without strong guarantees).
-func (ig *Session) GenImage(ctx context.Context, prompt string, seed int) (*image.NRGBA, error) {
+func (ig *Session) GenImage(ctx context.Context, prompt string, seed int64) (*image.NRGBA, error) {
 	start := time.Now()
 	slog.Info("ig", "prompt", prompt)
 	// If you feel this API is subpar, I hear you. If you got this far to read
@@ -114,8 +114,8 @@ func (ig *Session) GenImage(ctx context.Context, prompt string, seed int) (*imag
 	// image_gen.py. ❤
 	data := struct {
 		Message string `json:"message"`
-		Steps   int    `json:"steps"`
-		Seed    int    `json:"seed"`
+		Steps   int64  `json:"steps"`
+		Seed    int64  `json:"seed"`
 	}{Message: prompt, Steps: ig.steps, Seed: seed}
 	r := struct {
 		Image []byte `json:"image"`
