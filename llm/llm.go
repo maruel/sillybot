@@ -180,6 +180,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			}
 			cmd := mangleForLlamafile(isLlamafile, llamasrv, "--version")
 			c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+			c.Dir = cache
 			d, err := c.CombinedOutput()
 			if err != nil {
 				return nil, fmt.Errorf("failed to get llm version: %w\n%s", err, string(d))
@@ -259,10 +260,10 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		slog.Info("llm", "state", "loading")
 		l.backend = "remote"
 	}
-	if l.Encoding != nil {
-		l.cp = &llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
-	} else {
+	if l.backend == "python" {
 		l.cp = &openai.Client{BaseURL: l.baseURL}
+	} else {
+		l.cp = &llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
 	}
 
 	for ctx.Err() == nil {
@@ -315,89 +316,11 @@ func (l *Session) GetHealth(ctx context.Context) (string, error) {
 	return c.GetHealth(ctx)
 }
 
-// TokenPerformance is the performance for the metrics
-type TokenPerformance struct {
-	Count    int
-	Duration time.Duration
-}
-
-// Rate is the number of token per second.
-func (t *TokenPerformance) Rate() float64 {
-	if t.Duration == 0 {
-		return 0
-	}
-	return float64(t.Count) / (float64(t.Duration) / float64(time.Second))
-}
-
-// Metrics represents the metrics for the LLM server.
-type Metrics struct {
-	Prompt             TokenPerformance
-	Generated          TokenPerformance
-	KVCacheUsage       float64
-	KVCacheTokens      int
-	RequestsProcessing int
-	RequestedPending   int
-}
-
 // GetMetrics retrieves the performance statistics from the server.
-func (l *Session) GetMetrics(ctx context.Context, m *Metrics) error {
+func (l *Session) GetMetrics(ctx context.Context, m *llamacpp.Metrics) error {
 	// TODO: Generalize.
-	req, err := http.NewRequestWithContext(ctx, "GET", l.baseURL+"/metrics", nil)
-	if err != nil {
-		return fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to get metrics response: %w", err)
-	}
-	b, err := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if err != nil {
-		return fmt.Errorf("failed to get metrics response: %w", err)
-	}
-	// We hardcode things here since we know which server we are talking to. See
-	// the commit history if you want the generic prometheus style data.
-	for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
-		if strings.HasPrefix(l, "#") {
-			continue
-		}
-		parts := strings.Split(l, " ")
-		if len(parts) != 2 {
-			return fmt.Errorf("failed to parse line %q: %w", l, err)
-		}
-		// Search for these strings in
-		// https://github.com/ggerganov/llama.cpp/blob/master/examples/server/server.cpp
-		f, err := strconv.ParseFloat(parts[1], 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse line %q: %w", l, err)
-		}
-		i, _ := strconv.Atoi(parts[1])
-		switch parts[0] {
-		case "llamacpp:prompt_tokens_total":
-			m.Prompt.Count = i
-		case "llamacpp:prompt_seconds_total":
-			m.Prompt.Duration = time.Duration(f*1000) * time.Millisecond
-		case "llamacpp:tokens_predicted_total":
-			m.Generated.Count = i
-		case "llamacpp:tokens_predicted_seconds_total":
-			m.Generated.Duration = time.Duration(f*1000) * time.Millisecond
-		case "llamacpp:prompt_tokens_seconds", "llamacpp:predicted_tokens_seconds":
-			// Ignore.
-		case "llamacpp:kv_cache_usage_ratio":
-			m.KVCacheUsage = f
-		case "llamacpp:kv_cache_tokens":
-			m.KVCacheTokens = i
-		case "llamacpp:requests_processing":
-			m.RequestsProcessing = i
-		case "llamacpp:requests_deferred":
-			m.RequestedPending = i
-		case "llamacpp:n_decode_total":
-		case "llamacpp:n_busy_slots_per_decode":
-		default:
-			return fmt.Errorf("unknown metric %q", l)
-		}
-	}
-	return nil
+	c := llamacpp.Client{BaseURL: l.baseURL}
+	return c.GetMetrics(ctx, m)
 }
 
 // Prompt prompts the LLM and returns the reply.
@@ -417,10 +340,10 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts any)
 	var err error
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "blocking")
-		reply, err = l.cp.Completion(ctx, msgs, &opts)
+		reply, err = l.cp.Completion(ctx, msgs, opts)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "blocking")
-		reply, err = l.cp.Completion(ctx, msgs, &opts)
+		reply, err = l.cp.Completion(ctx, msgs, opts)
 	}
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
@@ -464,10 +387,10 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, 
 	var err error
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "streaming")
-		reply, err = l.cp.CompletionStream(ctx, msgs, &opts, words)
+		reply, err = l.cp.CompletionStream(ctx, msgs, opts, words)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "streaming")
-		reply, err = l.cp.CompletionStream(ctx, msgs, &opts, words)
+		reply, err = l.cp.CompletionStream(ctx, msgs, opts, words)
 	}
 	if err != nil {
 		slog.Error("llm", "reply", reply, "error", err, "duration", time.Since(start).Round(time.Millisecond))
@@ -671,7 +594,7 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	// Time to download!
 	// Do not just get the latest version because the odds of it breaking is just
 	// too high. This is best effort.
-	build := "b4038"
+	build := "b4856"
 	url := "https://github.com/ggerganov/llama.cpp/releases/download/" + build + "/"
 	zipname := ""
 	files := []string{filepath.Base(llamaserver)}
@@ -681,6 +604,7 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		files = append(files, "ggml-metal.metal")
 	case "linux":
 		zipname = "llama-" + build + "-bin-ubuntu-x64.zip"
+		files = append(files, "libllama.so", "libggml.so", "libggml-base.so", "libggml-cpu.so", "libggml-rpc.so")
 	case "windows":
 		_, err := exec.Command("nvcc", "--version").CombinedOutput()
 		if err == nil {

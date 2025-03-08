@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/ipfs/go-cid v0.4.1
 	github.com/lmittmann/tint v1.0.5
-	github.com/maruel/genai v0.0.0-20250308172008-874bbda381be
+	github.com/maruel/genai v0.0.0-20250308201725-cd722149f764
 	github.com/maruel/httpjson v0.0.0-20250308153423-d73fcd966e61
 	github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11
 	github.com/mattn/go-colorable v0.1.13
@@ -134,3 +134,5 @@ require (
 	gorm.io/gorm v1.25.12 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
+
+// replace github.com/maruel/genai => ../genai

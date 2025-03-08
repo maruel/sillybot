@@ -26,6 +26,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/maruel/genai/genaiapi"
+	"github.com/maruel/genai/llamacpp"
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
@@ -609,7 +610,7 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 }
 
 func (d *discordBot) onMetrics(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
-	m := llm.Metrics{}
+	m := llamacpp.Metrics{}
 	if err := d.l.GetMetrics(d.ctx, &m); err != nil {
 		if err = d.interactionRespond(event.Interaction, "Internal error: "+err.Error()); err != nil {
 			slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)

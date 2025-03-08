@@ -34,6 +34,14 @@ def get_generator(seed):
   return torch.Generator().manual_seed(seed)
 
 
+def load_llama_3_2_3b():
+    return transformers.pipeline(
+            "text-generation",
+            model="meta-llama/Llama-3.2-3B-Instruct",
+            torch_dtype=torch.bfloat16,
+            device_map="auto")
+
+
 def load_phi_3_mini():
   """Returns Phi-3 medium."""
   # https://huggingface.co/microsoft/Phi-3-mini-4k-instruct
@@ -95,11 +103,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
       if self.path == "/health":
         self.on_health()
       else:
-        self.send_error(404)
+        self.reply_json({"error": {
+            "type": "unknown path",
+            "message": self.path,
+           }}, status=400)
     except Exception as e:
-      self.send_error(500)
+      self.reply_json({"error": {
+          "type": "exception",
+            "message": str(e),
+           }}, status=500)
       print(str(e), file=sys.stderr)
-      sys.exit(1)
 
   def do_POST(self):
     try:
@@ -109,14 +122,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
       elif self.path == "/api/quit":
         self.on_quit()
       else:
-        self.send_error(404)
+        self.reply_json({"error": {
+            "type": "unknown path",
+            "message": self.path,
+            }}, status=400)
     except Exception as e:
-      self.send_error(500)
+      self.reply_json({"error": {
+          "type": "exception",
+            "message": str(e),
+           }}, status=500)
       print(str(e), file=sys.stderr)
-      sys.exit(1)
 
-  def reply_json(self, data):
-    self.send_response(200)
+  def reply_json(self, data, status=200):
+    self.send_response(status)
     self.send_header("Content-Type", "application/json")
     self.end_headers()
     self.wfile.write(json.dumps(data).encode("ascii"))
@@ -132,7 +150,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
     start = time.time()
     content_length = int(self.headers['Content-Length'])
     post_data = self.rfile.read(content_length)
-    data = json.loads(post_data)
+    try:
+        data = json.loads(post_data.decode("utf-8"))
+    except json.JSONDecodeError as e:
+        self.reply_json({"error": {
+            "type": "decode_error",
+            "message": str(e),
+            }}, status=400)
+        return
     # TODO: Structured format and verifications.
     stream = data.get("stream", False)
     prompt = data["messages"]
@@ -188,7 +213,8 @@ def main():
     huggingface_hub.login(token=args.token)
   if DEVICE == "cuda":
     torch.backends.cuda.matmul.allow_tf32 = True
-  Handler._pipe = load_phi_3_mini()
+  Handler._pipe = load_llama_3_2_3b()
+  #Handler._pipe = load_phi_3_mini()
   #Handler._pipe = load_mistral_nemo()
   logging.info("Model loaded using %s", DEVICE)
   httpd = http.server.HTTPServer((args.host, args.port), Handler)

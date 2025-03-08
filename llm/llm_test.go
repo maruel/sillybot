@@ -154,7 +154,7 @@ func TestLLM(t *testing.T) {
 				quant = "Q3_K_S"
 			}
 		} else if strings.Contains(model, "qwen") {
-			if strings.Contains(model, "0_5b") || strings.Contains(model, "0.5b") {
+			if strings.Contains(model, "0.5b") || strings.Contains(model, "1.5b") {
 				// Fails on Q2_K.
 				quant = "Q3_K_M"
 			}
@@ -199,16 +199,8 @@ func TestLLM(t *testing.T) {
 
 func testModel(t *testing.T, model PackedFileRef, systemPrompt string) string {
 	l := loadModel(t, model)
-	if l.Encoding != nil {
-		t.Run("CustomEncoding", func(t *testing.T) {
-			testModelInner(t, l, systemPrompt)
-		})
-	}
-	l.Encoding = nil
-	t.Run("OpenAI", func(t *testing.T) {
-		testModelInner(t, l, systemPrompt)
-	})
-	m := Metrics{}
+	testModelInner(t, l, systemPrompt)
+	m := llamacpp.Metrics{}
 	if err := l.GetMetrics(context.Background(), &m); err != nil {
 		t.Fatal(err)
 	}
@@ -465,6 +457,7 @@ func checkAnswer(t *testing.T, got string) {
 		if runtime.GOOS == "darwin" && os.Getenv("CI") == "true" && os.Getenv("GITHUB_ACTION") != "" {
 			t.Log("TODO: Figure out why macOS GitHub hosted runner return an empty string")
 		} else {
+			t.Helper()
 			t.Fatalf("expected %q, got %q", want, got)
 		}
 	}
