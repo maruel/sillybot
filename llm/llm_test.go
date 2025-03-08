@@ -223,7 +223,8 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	t.Run("Blocking", func(t *testing.T) {
 		t.Parallel()
 		msgs := []genaiapi.Message{{Role: genaiapi.System, Content: systemPrompt}, {Role: genaiapi.User, Content: prompt}}
-		got, err2 := l.Prompt(ctx, msgs, 10, 1, 0.0)
+		opts := genaiapi.CompletionOptions{MaxTokens: 10, Seed: 1}
+		got, err2 := l.Prompt(ctx, msgs, &opts)
 		if err2 != nil {
 			t.Fatal(err2)
 		}
@@ -242,7 +243,8 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 			}
 			wg.Done()
 		}()
-		err2 := l.PromptStreaming(ctx, msgs, 10, 1, 0.0, words)
+		opts := genaiapi.CompletionOptions{MaxTokens: 10, Seed: 1}
+		err2 := l.PromptStreaming(ctx, msgs, &opts, words)
 		close(words)
 		wg.Wait()
 		if err2 != nil {

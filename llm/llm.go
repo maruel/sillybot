@@ -397,7 +397,7 @@ func (l *Session) GetMetrics(ctx context.Context, m *Metrics) error {
 // See PromptStreaming for the arguments values.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, maxtoks, seed int64, temperature float64) (string, error) {
+func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts any) (string, error) {
 	r := trace.StartRegion(ctx, "llm.Prompt")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -407,7 +407,6 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, maxtoks, 
 	msgs = l.processMsgs(msgs)
 	reply := ""
 	var err error
-	opts := genaiapi.CompletionOptions{MaxTokens: maxtoks, Seed: seed, Temperature: temperature}
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "blocking")
 		c := openai.Client{BaseURL: l.baseURL}
@@ -447,7 +446,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, maxtoks, 
 // Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, maxtoks, seed int64, temperature float64, words chan<- string) error {
+func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, opts any, words chan<- string) error {
 	r := trace.StartRegion(ctx, "llm.PromptStreaming")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -457,7 +456,6 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, 
 	msgs = l.processMsgs(msgs)
 	reply := ""
 	var err error
-	opts := genaiapi.CompletionOptions{MaxTokens: maxtoks, Seed: seed, Temperature: temperature}
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "streaming")
 		c := openai.Client{BaseURL: l.baseURL}

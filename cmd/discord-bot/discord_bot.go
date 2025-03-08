@@ -699,7 +699,8 @@ func (d *discordBot) chatRoutine() {
 		c := d.getMemory("")
 		c.Messages = nil
 		c = d.getMemory("")
-		if _, err := d.l.Prompt(d.ctx, c.Messages, 100, 0, 1.0); err != nil {
+		opts := genaiapi.CompletionOptions{MaxTokens: 100, Temperature: 1.0}
+		if _, err := d.l.Prompt(d.ctx, c.Messages, &opts); err != nil {
 			slog.Error("discord", "error", err)
 		}
 	}
@@ -777,7 +778,8 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 	replyToID := req.replyToID
 	for {
 		// 32768
-		reply, err := d.l.Prompt(d.ctx, c.Messages, 0, 0, 1.0)
+		opts := genaiapi.CompletionOptions{Temperature: 1.0}
+		reply, err := d.l.Prompt(d.ctx, c.Messages, &opts)
 		if err != nil {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
 				slog.Error("discord", "message", "failed posting message", "error", err)
@@ -947,9 +949,9 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 				}
 			}
 		}()
-		// We're chatting, we don't want too much content.
-		// 32768
-		err := d.l.PromptStreaming(ctx, c.Messages, 0, 0, 1.0, words)
+		// We're chatting, we don't want too much content?
+		opts := genaiapi.CompletionOptions{Temperature: 1.0}
+		err := d.l.PromptStreaming(ctx, c.Messages, &opts, words)
 		close(words)
 		wg.Wait()
 		cancel()
@@ -1230,7 +1232,8 @@ func (d *discordBot) handleImage(req intReq) {
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*int64(i) + 4*int64(j)
-					newLabels, err := d.l.Prompt(ctx, msgs, 70, imgseed, 1.0)
+					opts := genaiapi.CompletionOptions{MaxTokens: 70, Seed: imgseed, Temperature: 1.0}
+					newLabels, err := d.l.Prompt(ctx, msgs, &opts)
 					if err != nil {
 						u.err = fmt.Errorf("failed to enhance labels: %w", err)
 						updates <- u
@@ -1268,7 +1271,8 @@ func (d *discordBot) handleImage(req intReq) {
 					{Role: genaiapi.System, Content: d.settings.PromptImage},
 					{Role: genaiapi.User, Content: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent},
 				}
-				if imagePrompt, u.err = d.l.Prompt(ctx, msgs, 125, seed, 1.0); u.err != nil {
+				opts := genaiapi.CompletionOptions{MaxTokens: 125, Seed: seed, Temperature: 1.0}
+				if imagePrompt, u.err = d.l.Prompt(ctx, msgs, &opts); u.err != nil {
 					u.err = fmt.Errorf("failed to enhance image generation prompt: %w", u.err)
 					updates <- u
 					return
