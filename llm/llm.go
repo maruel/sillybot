@@ -115,6 +115,7 @@ type Session struct {
 	Encoding *llamacpp.PromptEncoding
 	baseURL  string
 	backend  string
+	cp       genaiapi.CompletionProvider
 
 	cache     string
 	modelFile string
@@ -258,6 +259,11 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		slog.Info("llm", "state", "loading")
 		l.backend = "remote"
 	}
+	if l.Encoding != nil {
+		l.cp = &llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
+	} else {
+		l.cp = &openai.Client{BaseURL: l.baseURL}
+	}
 
 	for ctx.Err() == nil {
 		if status, _ := l.GetHealth(ctx); status == "ok" {
@@ -304,6 +310,7 @@ func (l *Session) Close() error {
 
 // GetHealth retrieves the heath of the server.
 func (l *Session) GetHealth(ctx context.Context) (string, error) {
+	// TODO: Generalize.
 	c := llamacpp.Client{BaseURL: l.baseURL}
 	return c.GetHealth(ctx)
 }
@@ -334,6 +341,7 @@ type Metrics struct {
 
 // GetMetrics retrieves the performance statistics from the server.
 func (l *Session) GetMetrics(ctx context.Context, m *Metrics) error {
+	// TODO: Generalize.
 	req, err := http.NewRequestWithContext(ctx, "GET", l.baseURL+"/metrics", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP request: %w", err)
@@ -409,12 +417,10 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts any)
 	var err error
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "blocking")
-		c := openai.Client{BaseURL: l.baseURL}
-		reply, err = c.Completion(ctx, msgs, &opts)
+		reply, err = l.cp.Completion(ctx, msgs, &opts)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "blocking")
-		c := llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
-		reply, err = c.Completion(ctx, msgs, &opts)
+		reply, err = l.cp.Completion(ctx, msgs, &opts)
 	}
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
@@ -458,12 +464,10 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, 
 	var err error
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "streaming")
-		c := openai.Client{BaseURL: l.baseURL}
-		reply, err = c.CompletionStream(ctx, msgs, &opts, words)
+		reply, err = l.cp.CompletionStream(ctx, msgs, &opts, words)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "streaming")
-		c := llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
-		reply, err = c.CompletionStream(ctx, msgs, &opts, words)
+		reply, err = l.cp.CompletionStream(ctx, msgs, &opts, words)
 	}
 	if err != nil {
 		slog.Error("llm", "reply", reply, "error", err, "duration", time.Since(start).Round(time.Millisecond))
