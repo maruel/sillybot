@@ -196,7 +196,6 @@ func (c *Client) onListenEvent(ctx context.Context, evt *atproto.SyncSubscribeRe
 	return nil
 }
 
-//go:inline
 func (c *Client) onListenRecord(ctx context.Context, rcid *cid.Cid, rec any, ch chan<- FirehosePost) error {
 	switch e := rec.(type) {
 	case *bsky.FeedPost:
@@ -208,7 +207,6 @@ func (c *Client) onListenRecord(ctx context.Context, rcid *cid.Cid, rec any, ch 
 	return nil
 }
 
-//go:inline
 func (c *Client) onEventFeedPost(ctx context.Context, cid *cid.Cid, p *bsky.FeedPost, ch chan<- FirehosePost) error {
 	// Look for a mention to us.
 	if isMentioned(p, c.client.Auth.Did) {

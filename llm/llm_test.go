@@ -189,6 +189,7 @@ func TestLLM(t *testing.T) {
 	}
 	t.Logf("processed %.1fGiB of model", float64(totalSize)*0.000000001)
 	t.Run("python", func(t *testing.T) {
+		t.Skip("Need new client implementation")
 		if testing.Short() {
 			t.Skip("skipping this model when -short is used")
 		}

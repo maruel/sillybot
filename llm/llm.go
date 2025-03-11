@@ -261,7 +261,8 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		l.backend = "remote"
 	}
 	if l.backend == "python" {
-		l.cp = &openai.Client{BaseURL: l.baseURL}
+		// TODO: Create a new provider BaseURL: l.baseURL
+		l.cp = &openai.Client{}
 	} else {
 		l.cp = &llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
 	}
@@ -383,20 +384,19 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, 
 	}
 	start := time.Now()
 	msgs = l.processMsgs(msgs)
-	reply := ""
 	var err error
 	if l.Encoding == nil {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "streaming")
-		reply, err = l.cp.CompletionStream(ctx, msgs, opts, words)
+		err = l.cp.CompletionStream(ctx, msgs, opts, words)
 	} else {
 		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "streaming")
-		reply, err = l.cp.CompletionStream(ctx, msgs, opts, words)
+		err = l.cp.CompletionStream(ctx, msgs, opts, words)
 	}
 	if err != nil {
-		slog.Error("llm", "reply", reply, "error", err, "duration", time.Since(start).Round(time.Millisecond))
+		slog.Error("llm", "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return err
 	}
-	slog.Info("llm", "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
+	slog.Info("llm", "duration", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
@@ -597,14 +597,14 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	build := "b4856"
 	url := "https://github.com/ggerganov/llama.cpp/releases/download/" + build + "/"
 	zipname := ""
-	files := []string{filepath.Base(llamaserver)}
+	wantedFiles := []string{filepath.Base(llamaserver)}
 	switch runtime.GOOS {
 	case "darwin":
 		zipname = "llama-" + build + "-bin-macos-arm64.zip"
-		files = append(files, "ggml-metal.metal")
+		wantedFiles = append(wantedFiles, "*.dylib", "*.metal")
 	case "linux":
 		zipname = "llama-" + build + "-bin-ubuntu-x64.zip"
-		files = append(files, "libllama.so", "libggml.so", "libggml-base.so", "libggml-cpu.so", "libggml-rpc.so")
+		wantedFiles = append(wantedFiles, "*.so")
 	case "windows":
 		_, err := exec.Command("nvcc", "--version").CombinedOutput()
 		if err == nil {
@@ -617,7 +617,7 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		} else {
 			zipname = "llama-" + build + "-bin-win-avx-x64.zip"
 		}
-		files = append(files, "ggml.dll", "llama.dll")
+		wantedFiles = append(wantedFiles, "ggml.dll", "llama.dll")
 	}
 	zippath := filepath.Join(cache, zipname)
 	if _, err := os.Stat(zippath); err != nil {
@@ -636,13 +636,13 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	for _, f := range z.File {
 		// Files are under build/bin/
 		n := filepath.Base(f.Name)
-		for i, desired := range files {
-			if n == desired {
+		for _, desired := range wantedFiles {
+			if ok, _ := filepath.Match(desired, n); ok {
 				src, err := f.Open()
 				if err != nil {
 					return "", false, err
 				}
-				dst, err := os.OpenFile(filepath.Join(cache, desired), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
+				dst, err := os.OpenFile(filepath.Join(cache, n), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
 				if err == nil {
 					_, err = io.CopyN(dst, src, int64(f.UncompressedSize64))
 				}
@@ -653,16 +653,12 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 					err = err2
 				}
 				if err != nil {
-					return "", false, fmt.Errorf("failed to write %q: %w", desired, err)
-				}
-				copy(files[i:], files[i+1:])
-				if files = files[:len(files)-1]; len(files) == 0 {
-					return llamaserver, false, err
+					return "", false, fmt.Errorf("failed to write %q: %w", n, err)
 				}
 			}
 		}
 	}
-	return "", false, fmt.Errorf("failed to find %q in %q", files, zipname)
+	return llamaserver, false, err
 }
 
 // downloadFile downloads a file optionally with a bearer token.
