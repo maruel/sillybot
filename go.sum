@@ -268,8 +268,8 @@ github.com/libp2p/go-netroute v0.2.1 h1:V8kVrpD8GK0Riv15/7VN6RbUQ3URNZVosw7H2v9t
 github.com/libp2p/go-netroute v0.2.1/go.mod h1:hraioZr0fhBjG0ZRXJJ6Zj2IVEVNx6tDTFQfSmcq7mQ=
 github.com/lmittmann/tint v1.0.5 h1:NQclAutOfYsqs2F1Lenue6OoWCajs5wJcP3DfWVpePw=
 github.com/lmittmann/tint v1.0.5/go.mod h1:HIS3gSy7qNwGCj+5oRjAutErFBl4BzdQP6cJZ0NfMwE=
-github.com/maruel/genai v0.0.0-20250310235622-5de67203d07e h1:me5SVSbqHv4nievsk1EpXdRvEXQkmWYszo7AfQNyEIo=
-github.com/maruel/genai v0.0.0-20250310235622-5de67203d07e/go.mod h1:KMlzfs+drEaX+a4JBO3vtNXCUDAPPB04J6OhRXQKEOc=
+github.com/maruel/genai v0.0.0-20250311153907-6b116d26ec03 h1:pMAux3e6S9lFyhdbmxzbrm7M/D2+je6d+Fv7Z44H3Ro=
+github.com/maruel/genai v0.0.0-20250311153907-6b116d26ec03/go.mod h1:KMlzfs+drEaX+a4JBO3vtNXCUDAPPB04J6OhRXQKEOc=
 github.com/maruel/httpjson v0.0.0-20250309152437-7a06a5bd21aa h1:zucicC16dspIWQnLNm4x3bK2cdeBvaYxzlT3f3sv3kA=
 github.com/maruel/httpjson v0.0.0-20250309152437-7a06a5bd21aa/go.mod h1:XHQeUdJCj7XG+p9Ov3sMg00tLd6HZQdZhvzvpIzfnTA=
 github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11 h1:igpEi1kYmnbLPZ9/QdkQm2Mx0Gx7Gz7V+ixTZwH7aOo=

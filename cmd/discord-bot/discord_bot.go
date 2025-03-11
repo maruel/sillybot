@@ -96,6 +96,7 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 		}
 		toolsMsg = genaiapi.Message{
 			Role:    genaiapi.AvailableTools,
+			Type:    genaiapi.Text,
 			Content: string(b),
 		}
 	}
@@ -515,7 +516,11 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	// Either update, remove or add, depending.
 	if (opts.SystemPrompt == "") != (d.settings.PromptSystem == "") {
 		if opts.SystemPrompt != "" {
-			c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.System, Content: opts.SystemPrompt})
+			c.Messages = append(c.Messages, genaiapi.Message{
+				Role:    genaiapi.System,
+				Type:    genaiapi.Text,
+				Content: opts.SystemPrompt,
+			})
 		} else if len(c.Messages) != 0 {
 			c.Messages = c.Messages[:len(c.Messages)-1]
 		}
@@ -756,7 +761,11 @@ func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 			c.Messages = []genaiapi.Message{d.toolsMsg}
 		}
 		if d.settings.PromptSystem != "" {
-			c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.System, Content: d.settings.PromptSystem})
+			c.Messages = append(c.Messages, genaiapi.Message{
+				Role:    genaiapi.System,
+				Type:    genaiapi.Text,
+				Content: d.settings.PromptSystem,
+			})
 		}
 	}
 	return c
@@ -775,7 +784,11 @@ func (d *discordBot) handlePrompt(req msgReq) {
 // then process it. This function exists for testing.
 func (d *discordBot) handlePromptBlocking(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.User, Content: req.msg})
+	c.Messages = append(c.Messages, genaiapi.Message{
+		Role:    genaiapi.User,
+		Type:    genaiapi.Text,
+		Content: req.msg,
+	})
 	replyToID := req.replyToID
 	for {
 		// 32768
@@ -788,7 +801,11 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 			return
 		}
 		// Remember our own answer.
-		c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.Assistant, Content: reply})
+		c.Messages = append(c.Messages, genaiapi.Message{
+			Role:    genaiapi.Assistant,
+			Type:    genaiapi.Text,
+			Content: reply,
+		})
 		gotToolCall := false
 		for reply != "" {
 			if d.l.Encoding != nil && !gotToolCall {
@@ -835,7 +852,11 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 // handlePromptStreaming request a reply from the LLM and streams replies back.
 func (d *discordBot) handlePromptStreaming(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.User, Content: req.msg})
+	c.Messages = append(c.Messages, genaiapi.Message{
+		Role:    genaiapi.User,
+		Type:    genaiapi.Text,
+		Content: req.msg,
+	})
 	wg := sync.WaitGroup{}
 	for {
 		ctx, cancel := context.WithCancel(d.ctx)
@@ -902,7 +923,11 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 								}
 							}
 							// Remember our own answer.
-							c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.Assistant, Content: text})
+							c.Messages = append(c.Messages, genaiapi.Message{
+								Role:    genaiapi.Assistant,
+								Type:    genaiapi.Text,
+								Content: text,
+							})
 						}
 						t.Stop()
 						wg.Done()
@@ -1056,8 +1081,17 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 		// We want to ignore the rest of the reply and send a new query.
 		// TODO: Inject CallID instead of pending[:i]. We need to determine if
 		// Mistral prefers to receive its own content as-is or reformatted?
-		c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.ToolCall, Content: line})
-		c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.ToolCallResult, Content: string(b)})
+		c.Messages = append(c.Messages,
+			genaiapi.Message{
+				Role:    genaiapi.ToolCall,
+				Type:    genaiapi.Text,
+				Content: line,
+			},
+			genaiapi.Message{
+				Role:    genaiapi.ToolCallResult,
+				Type:    genaiapi.Text,
+				Content: string(b),
+			})
 		// TODO: We should probably cancel the context and start over, there's no
 		// point in receiving more data.
 		return name
@@ -1229,7 +1263,18 @@ func (d *discordBot) handleImage(req intReq) {
 				options := [3]string{}
 				j := 0
 				for ; j < len(options); j++ {
-					msgs := []genaiapi.Message{{Role: genaiapi.System, Content: d.settings.PromptLabels}, {Role: genaiapi.User, Content: req.description}}
+					msgs := []genaiapi.Message{
+						{
+							Role:    genaiapi.System,
+							Type:    genaiapi.Text,
+							Content: d.settings.PromptLabels,
+						},
+						{
+							Role:    genaiapi.User,
+							Type:    genaiapi.Text,
+							Content: req.description,
+						},
+					}
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*int64(i) + 4*int64(j)
@@ -1269,8 +1314,16 @@ func (d *discordBot) handleImage(req intReq) {
 			if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
 				// Image: use the LLM to generate the image prompt based on the description.
 				msgs := []genaiapi.Message{
-					{Role: genaiapi.System, Content: d.settings.PromptImage},
-					{Role: genaiapi.User, Content: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent},
+					{
+						Role:    genaiapi.System,
+						Type:    genaiapi.Text,
+						Content: d.settings.PromptImage,
+					},
+					{
+						Role:    genaiapi.User,
+						Type:    genaiapi.Text,
+						Content: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent,
+					},
 				}
 				opts := genaiapi.CompletionOptions{MaxTokens: 125, Seed: seed, Temperature: 1.0}
 				if imagePrompt, u.err = d.l.Prompt(ctx, msgs, &opts); u.err != nil {

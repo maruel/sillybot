@@ -300,13 +300,23 @@ func (s *slackBot) onAppMention(ctx context.Context, req msgReq) {
 func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	c := s.mem.Get(req.userid, req.channel)
 	if len(c.Messages) == 0 {
-		c.Messages = []genaiapi.Message{{Role: genaiapi.System, Content: s.settings.PromptSystem}}
+		c.Messages = []genaiapi.Message{
+			{
+				Role:    genaiapi.System,
+				Type:    genaiapi.Text,
+				Content: s.settings.PromptSystem,
+			},
+		}
 	}
 	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false), slack.MsgOptionTS(req.ts))
 	if err != nil {
 		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
-	c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.User, Content: req.msg})
+	c.Messages = append(c.Messages, genaiapi.Message{
+		Role:    genaiapi.User,
+		Type:    genaiapi.Text,
+		Content: req.msg,
+	})
 	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -327,7 +337,11 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 						}
 					}
 					// Remember our own answer.
-					c.Messages = append(c.Messages, genaiapi.Message{Role: genaiapi.Assistant, Content: text})
+					c.Messages = append(c.Messages, genaiapi.Message{
+						Role:    genaiapi.Assistant,
+						Type:    genaiapi.Text,
+						Content: text,
+					})
 					t.Stop()
 					wg.Done()
 					return
@@ -367,8 +381,16 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	// Use the LLM to improve the prompt!
 	if s.l != nil {
 		msgs := []genaiapi.Message{
-			{Role: genaiapi.System, Content: s.settings.PromptImage},
-			{Role: genaiapi.User, Content: req.msg},
+			{
+				Role:    genaiapi.System,
+				Type:    genaiapi.Text,
+				Content: s.settings.PromptImage,
+			},
+			{
+				Role:    genaiapi.User,
+				Type:    genaiapi.Text,
+				Content: req.msg,
+			},
 		}
 
 		// Intentionally limit the number of tokens, otherwise it's Stable
