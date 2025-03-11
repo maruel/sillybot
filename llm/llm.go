@@ -529,9 +529,9 @@ func (l *Session) processMsgs(msgs []genaiapi.Message) []genaiapi.Message {
 	if len(msgs) == 0 || msgs[0].Role != genaiapi.System {
 		return msgs
 	}
-	t, err := template.New("").Parse(msgs[0].Content)
+	t, err := template.New("").Parse(msgs[0].Text)
 	if err != nil {
-		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Content, "error", err)
+		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Text, "error", err)
 		return msgs
 	}
 
@@ -541,12 +541,12 @@ func (l *Session) processMsgs(msgs []genaiapi.Message) []genaiapi.Message {
 	}
 	b := bytes.Buffer{}
 	if err = t.Execute(&b, keys); err != nil {
-		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Content, "error", err)
+		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Text, "error", err)
 		return msgs
 	}
 	out := make([]genaiapi.Message, len(msgs))
 	copy(out, msgs)
-	out[0].Content = b.String()
+	out[0].Text = b.String()
 	return out
 }
 

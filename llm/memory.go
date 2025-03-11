@@ -220,7 +220,7 @@ func (s *serializedMessage) from(m *genaiapi.Message) error {
 	if m.Type != genaiapi.Text {
 		return fmt.Errorf("unsupported message type %q", m.Type)
 	}
-	s.Content = m.Content
+	s.Content = m.Text
 	return nil
 }
 
@@ -242,6 +242,6 @@ func (s *serializedMessage) to(m *genaiapi.Message) error {
 		return fmt.Errorf("unknown role %q", s.Role)
 	}
 	m.Type = genaiapi.Text
-	m.Content = s.Content
+	m.Text = s.Content
 	return nil
 }

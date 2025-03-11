@@ -95,9 +95,9 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 			return nil, err
 		}
 		toolsMsg = genaiapi.Message{
-			Role:    genaiapi.AvailableTools,
-			Type:    genaiapi.Text,
-			Content: string(b),
+			Role: genaiapi.AvailableTools,
+			Type: genaiapi.Text,
+			Text: string(b),
 		}
 	}
 
@@ -517,15 +517,15 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	if (opts.SystemPrompt == "") != (d.settings.PromptSystem == "") {
 		if opts.SystemPrompt != "" {
 			c.Messages = append(c.Messages, genaiapi.Message{
-				Role:    genaiapi.System,
-				Type:    genaiapi.Text,
-				Content: opts.SystemPrompt,
+				Role: genaiapi.System,
+				Type: genaiapi.Text,
+				Text: opts.SystemPrompt,
 			})
 		} else if len(c.Messages) != 0 {
 			c.Messages = c.Messages[:len(c.Messages)-1]
 		}
 	} else if opts.SystemPrompt != "" {
-		c.Messages[len(c.Messages)-1].Content = opts.SystemPrompt
+		c.Messages[len(c.Messages)-1].Text = opts.SystemPrompt
 	}
 
 	reply += "\n*System prompt*: " + escapeMarkdown(opts.SystemPrompt)
@@ -757,14 +757,14 @@ func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 	// TODO: Send a warning or forget when one of Model, Prompt, Tools changed.
 	c := d.mem.Get("", channelID)
 	if len(c.Messages) == 0 {
-		if d.toolsMsg.Content != "" {
+		if d.toolsMsg.Text != "" {
 			c.Messages = []genaiapi.Message{d.toolsMsg}
 		}
 		if d.settings.PromptSystem != "" {
 			c.Messages = append(c.Messages, genaiapi.Message{
-				Role:    genaiapi.System,
-				Type:    genaiapi.Text,
-				Content: d.settings.PromptSystem,
+				Role: genaiapi.System,
+				Type: genaiapi.Text,
+				Text: d.settings.PromptSystem,
 			})
 		}
 	}
@@ -785,9 +785,9 @@ func (d *discordBot) handlePrompt(req msgReq) {
 func (d *discordBot) handlePromptBlocking(req msgReq) {
 	c := d.getMemory(req.channelID)
 	c.Messages = append(c.Messages, genaiapi.Message{
-		Role:    genaiapi.User,
-		Type:    genaiapi.Text,
-		Content: req.msg,
+		Role: genaiapi.User,
+		Type: genaiapi.Text,
+		Text: req.msg,
 	})
 	replyToID := req.replyToID
 	for {
@@ -802,9 +802,9 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 		}
 		// Remember our own answer.
 		c.Messages = append(c.Messages, genaiapi.Message{
-			Role:    genaiapi.Assistant,
-			Type:    genaiapi.Text,
-			Content: reply,
+			Role: genaiapi.Assistant,
+			Type: genaiapi.Text,
+			Text: reply,
 		})
 		gotToolCall := false
 		for reply != "" {
@@ -853,9 +853,9 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 func (d *discordBot) handlePromptStreaming(req msgReq) {
 	c := d.getMemory(req.channelID)
 	c.Messages = append(c.Messages, genaiapi.Message{
-		Role:    genaiapi.User,
-		Type:    genaiapi.Text,
-		Content: req.msg,
+		Role: genaiapi.User,
+		Type: genaiapi.Text,
+		Text: req.msg,
 	})
 	wg := sync.WaitGroup{}
 	for {
@@ -924,9 +924,9 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 							}
 							// Remember our own answer.
 							c.Messages = append(c.Messages, genaiapi.Message{
-								Role:    genaiapi.Assistant,
-								Type:    genaiapi.Text,
-								Content: text,
+								Role: genaiapi.Assistant,
+								Type: genaiapi.Text,
+								Text: text,
 							})
 						}
 						t.Stop()
@@ -1083,14 +1083,14 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 		// Mistral prefers to receive its own content as-is or reformatted?
 		c.Messages = append(c.Messages,
 			genaiapi.Message{
-				Role:    genaiapi.ToolCall,
-				Type:    genaiapi.Text,
-				Content: line,
+				Role: genaiapi.ToolCall,
+				Type: genaiapi.Text,
+				Text: line,
 			},
 			genaiapi.Message{
-				Role:    genaiapi.ToolCallResult,
-				Type:    genaiapi.Text,
-				Content: string(b),
+				Role: genaiapi.ToolCallResult,
+				Type: genaiapi.Text,
+				Text: string(b),
 			})
 		// TODO: We should probably cancel the context and start over, there's no
 		// point in receiving more data.
@@ -1265,14 +1265,14 @@ func (d *discordBot) handleImage(req intReq) {
 				for ; j < len(options); j++ {
 					msgs := []genaiapi.Message{
 						{
-							Role:    genaiapi.System,
-							Type:    genaiapi.Text,
-							Content: d.settings.PromptLabels,
+							Role: genaiapi.System,
+							Type: genaiapi.Text,
+							Text: d.settings.PromptLabels,
 						},
 						{
-							Role:    genaiapi.User,
-							Type:    genaiapi.Text,
-							Content: req.description,
+							Role: genaiapi.User,
+							Type: genaiapi.Text,
+							Text: req.description,
 						},
 					}
 					// Intentionally limit the number of tokens, otherwise it's Stable
@@ -1315,14 +1315,14 @@ func (d *discordBot) handleImage(req intReq) {
 				// Image: use the LLM to generate the image prompt based on the description.
 				msgs := []genaiapi.Message{
 					{
-						Role:    genaiapi.System,
-						Type:    genaiapi.Text,
-						Content: d.settings.PromptImage,
+						Role: genaiapi.System,
+						Type: genaiapi.Text,
+						Text: d.settings.PromptImage,
 					},
 					{
-						Role:    genaiapi.User,
-						Type:    genaiapi.Text,
-						Content: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent,
+						Role: genaiapi.User,
+						Type: genaiapi.Text,
+						Text: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent,
 					},
 				}
 				opts := genaiapi.CompletionOptions{MaxTokens: 125, Seed: seed, Temperature: 1.0}

@@ -302,9 +302,9 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	if len(c.Messages) == 0 {
 		c.Messages = []genaiapi.Message{
 			{
-				Role:    genaiapi.System,
-				Type:    genaiapi.Text,
-				Content: s.settings.PromptSystem,
+				Role: genaiapi.System,
+				Type: genaiapi.Text,
+				Text: s.settings.PromptSystem,
 			},
 		}
 	}
@@ -313,9 +313,9 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
 	c.Messages = append(c.Messages, genaiapi.Message{
-		Role:    genaiapi.User,
-		Type:    genaiapi.Text,
-		Content: req.msg,
+		Role: genaiapi.User,
+		Type: genaiapi.Text,
+		Text: req.msg,
 	})
 	words := make(chan string, 10)
 	wg := sync.WaitGroup{}
@@ -338,9 +338,9 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 					}
 					// Remember our own answer.
 					c.Messages = append(c.Messages, genaiapi.Message{
-						Role:    genaiapi.Assistant,
-						Type:    genaiapi.Text,
-						Content: text,
+						Role: genaiapi.Assistant,
+						Type: genaiapi.Text,
+						Text: text,
 					})
 					t.Stop()
 					wg.Done()
@@ -382,14 +382,14 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	if s.l != nil {
 		msgs := []genaiapi.Message{
 			{
-				Role:    genaiapi.System,
-				Type:    genaiapi.Text,
-				Content: s.settings.PromptImage,
+				Role: genaiapi.System,
+				Type: genaiapi.Text,
+				Text: s.settings.PromptImage,
 			},
 			{
-				Role:    genaiapi.User,
-				Type:    genaiapi.Text,
-				Content: req.msg,
+				Role: genaiapi.User,
+				Type: genaiapi.Text,
+				Text: req.msg,
 			},
 		}
 

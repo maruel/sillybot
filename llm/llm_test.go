@@ -217,14 +217,14 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 		t.Parallel()
 		msgs := []genaiapi.Message{
 			{
-				Role:    genaiapi.System,
-				Type:    genaiapi.Text,
-				Content: systemPrompt,
+				Role: genaiapi.System,
+				Type: genaiapi.Text,
+				Text: systemPrompt,
 			},
 			{
-				Role:    genaiapi.User,
-				Type:    genaiapi.Text,
-				Content: prompt,
+				Role: genaiapi.User,
+				Type: genaiapi.Text,
+				Text: prompt,
 			},
 		}
 		opts := genaiapi.CompletionOptions{MaxTokens: 10, Seed: 1}
@@ -238,14 +238,14 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 		t.Parallel()
 		msgs := []genaiapi.Message{
 			{
-				Role:    genaiapi.System,
-				Type:    genaiapi.Text,
-				Content: systemPrompt,
+				Role: genaiapi.System,
+				Type: genaiapi.Text,
+				Text: systemPrompt,
 			},
 			{
-				Role:    genaiapi.User,
-				Type:    genaiapi.Text,
-				Content: prompt,
+				Role: genaiapi.User,
+				Type: genaiapi.Text,
+				Text: prompt,
 			},
 		}
 		words := make(chan string, 10)
@@ -330,14 +330,14 @@ func TestMistralTool(t *testing.T) {
 	}
 	msgs := []genaiapi.Message{
 		{
-			Role:    genaiapi.AvailableTools,
-			Type:    genaiapi.Text,
-			Content: string(toolsB),
+			Role: genaiapi.AvailableTools,
+			Type: genaiapi.Text,
+			Text: string(toolsB),
 		},
 		{
-			Role:    genaiapi.User,
-			Type:    genaiapi.Text,
-			Content: `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`,
+			Role: genaiapi.User,
+			Type: genaiapi.Text,
+			Text: `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`,
 		},
 	}
 	for _, m := range msgs {
@@ -360,9 +360,9 @@ func TestMistralTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	msgs = append(msgs, genaiapi.Message{
-		Role:    genaiapi.Assistant,
-		Type:    genaiapi.Text,
-		Content: s,
+		Role: genaiapi.Assistant,
+		Type: genaiapi.Text,
+		Text: s,
 	})
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
@@ -374,9 +374,9 @@ func TestMistralTool(t *testing.T) {
 
 	// Now do a calculation!
 	msgs = append(msgs, genaiapi.Message{
-		Role:    genaiapi.User,
-		Type:    genaiapi.Text,
-		Content: "Give me the result of 43215 divided by 215.",
+		Role: genaiapi.User,
+		Type: genaiapi.Text,
+		Text: "Give me the result of 43215 divided by 215.",
 	})
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
@@ -394,9 +394,9 @@ func TestMistralTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	msgs = append(msgs, genaiapi.Message{
-		Role:    genaiapi.Assistant,
-		Type:    genaiapi.Text,
-		Content: s,
+		Role: genaiapi.Assistant,
+		Type: genaiapi.Text,
+		Text: s,
 	})
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
@@ -451,14 +451,14 @@ func parseToolResponse(t *testing.T, got string, id int) []genaiapi.Message {
 	}
 	return []genaiapi.Message{
 		{
-			Role:    genaiapi.ToolCall,
-			Type:    genaiapi.Text,
-			Content: string(c),
+			Role: genaiapi.ToolCall,
+			Type: genaiapi.Text,
+			Text: string(c),
 		},
 		{
-			Role:    genaiapi.ToolCallResult,
-			Type:    genaiapi.Text,
-			Content: string(r),
+			Role: genaiapi.ToolCallResult,
+			Type: genaiapi.Text,
+			Text: string(r),
 		},
 	}
 }
