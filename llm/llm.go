@@ -296,7 +296,7 @@ func (l *Session) Close() error {
 	err := <-l.done
 	var er *exec.ExitError
 	if errors.As(err, &er) {
-		s, ok := er.ProcessState.Sys().(syscall.WaitStatus)
+		s, ok := er.Sys().(syscall.WaitStatus)
 		if ok && s.Signaled() {
 			// It was simply killed.
 			err = nil
@@ -638,22 +638,22 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 		n := filepath.Base(f.Name)
 		for _, desired := range wantedFiles {
 			if ok, _ := filepath.Match(desired, n); ok {
-				src, err := f.Open()
-				if err != nil {
-					return "", false, err
+				src, err2 := f.Open()
+				if err2 != nil {
+					return "", false, err2
 				}
-				dst, err := os.OpenFile(filepath.Join(cache, n), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
-				if err == nil {
-					_, err = io.CopyN(dst, src, int64(f.UncompressedSize64))
+				dst, err2 := os.OpenFile(filepath.Join(cache, n), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
+				if err2 == nil {
+					_, err2 = io.CopyN(dst, src, int64(f.UncompressedSize64))
 				}
-				if err2 := src.Close(); err == nil {
-					err = err2
+				if err3 := src.Close(); err2 == nil {
+					err2 = err3
 				}
-				if err2 := dst.Close(); err == nil {
-					err = err2
+				if err3 := dst.Close(); err2 == nil {
+					err2 = err3
 				}
-				if err != nil {
-					return "", false, fmt.Errorf("failed to write %q: %w", n, err)
+				if err2 != nil {
+					return "", false, fmt.Errorf("failed to write %q: %w", n, err2)
 				}
 			}
 		}
