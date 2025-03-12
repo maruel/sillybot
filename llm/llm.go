@@ -337,19 +337,13 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts any)
 	}
 	start := time.Now()
 	msgs = l.processMsgs(msgs)
-	reply := ""
-	var err error
-	if l.Encoding == nil {
-		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "blocking")
-		reply, err = l.cp.Completion(ctx, msgs, opts)
-	} else {
-		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "blocking")
-		reply, err = l.cp.Completion(ctx, msgs, opts)
-	}
+	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "blocking")
+	msg, err := l.cp.Completion(ctx, msgs, opts)
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
-		return reply, err
+		return "", err
 	}
+	reply := msg.Text
 	// TODO: Remove all these.
 	// Llama-3
 	reply = strings.TrimSuffix(reply, "<|eot_id|>")
@@ -384,14 +378,8 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, 
 	}
 	start := time.Now()
 	msgs = l.processMsgs(msgs)
-	var err error
-	if l.Encoding == nil {
-		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "openai", "type", "streaming")
-		err = l.cp.CompletionStream(ctx, msgs, opts, words)
-	} else {
-		slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "api", "llama.cpp", "type", "streaming")
-		err = l.cp.CompletionStream(ctx, msgs, opts, words)
-	}
+	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "streaming")
+	err := l.cp.CompletionStream(ctx, msgs, opts, words)
 	if err != nil {
 		slog.Error("llm", "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return err

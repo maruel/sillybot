@@ -346,19 +346,21 @@ func TestMistralTool(t *testing.T) {
 	msgsl := len(msgs)
 	c := llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
 	opts := genaiapi.CompletionOptions{MaxTokens: 100, Seed: 1}
-	s, err := c.Completion(ctx, msgs, &opts)
+	msg, err := c.Completion(ctx, msgs, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
+	s := msg.Text
 	msgs = append(msgs, parseToolResponse(t, s, 0)...)
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	s, err = c.Completion(ctx, msgs, &opts)
+	msg, err = c.Completion(ctx, msgs, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
+	s = msg.Text
 	msgs = append(msgs, genaiapi.Message{
 		Role: genaiapi.Assistant,
 		Type: genaiapi.Text,
@@ -382,17 +384,19 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	if s, err = c.Completion(ctx, msgs, &opts); err != nil {
+	if msg, err = c.Completion(ctx, msgs, &opts); err != nil {
 		t.Fatal(err)
 	}
+	s = msg.Text
 	msgs = append(msgs, parseToolResponse(t, s, 1)...)
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	if s, err = c.Completion(ctx, msgs, &opts); err != nil {
+	if msg, err = c.Completion(ctx, msgs, &opts); err != nil {
 		t.Fatal(err)
 	}
+	s = msg.Text
 	msgs = append(msgs, genaiapi.Message{
 		Role: genaiapi.Assistant,
 		Type: genaiapi.Text,
