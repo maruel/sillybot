@@ -26,9 +26,9 @@ import (
 
 	"github.com/maruel/genai/genaiapi"
 	"github.com/maruel/genai/llamacpp"
+	"github.com/maruel/genai/llamacpp/llamacppsrv"
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/internal"
-	"github.com/maruel/sillybot/llm/llamacppsrv"
 	"github.com/maruel/sillybot/py"
 )
 
@@ -196,7 +196,12 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			//if isLlamafile {
 			//	cmd := mangleForLlamafile(isLlamafile, append(args, "--nobrowser")...)
 			//}
-			srv, err := llamacppsrv.NewServer(ctx, llamasrv, modelFile, cache, port, 0, args)
+			f, err := os.Create(filepath.Join(cache, "llm.log"))
+			if err != nil {
+				return nil, err
+			}
+			srv, err := llamacppsrv.NewServer(ctx, llamasrv, modelFile, f, port, 0, args)
+			_ = f.Close()
 			if err != nil {
 				return nil, err
 			}
