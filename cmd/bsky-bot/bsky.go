@@ -83,7 +83,6 @@ func (c *Client) GetTimeline(ctx context.Context, cursor string, limit int) ([]*
 		cur = *d.Cursor
 	}
 	return d.Feed, cur, nil
-
 }
 
 // SearchPosts searches for recent posts.
@@ -136,11 +135,11 @@ func (c *Client) Listen(ctx context.Context, cursor string, ch chan<- FirehosePo
 		return nil
 	}
 	// It looks like a single CPU can process it.
-	//sched := parallel.NewScheduler(8, 128, "stream", fn)
+	// sched := parallel.NewScheduler(8, 128, "stream", fn)
 	sched := sequential.NewScheduler("stream", fn)
 	// TODO: Switch to https://github.com/bluesky-social/jetstream, e.g.
 	// https://github.com/bluesky-social/jetstream/blob/main/cmd/client/main.go
-	err = events.HandleRepoStream(ctx, conn, sched)
+	err = events.HandleRepoStream(ctx, conn, sched, nil)
 	if ctx.Err() != nil {
 		// Ignore the websocket error "use of closed network connection" if the context was canceled.
 		err = nil
@@ -185,7 +184,7 @@ func (c *Client) onListenEvent(ctx context.Context, evt *atproto.SyncSubscribeRe
 			if util.LexLink(rc) != *op.Cid {
 				return fmt.Errorf("mismatch in record and op cid: %s != %s", rc, *op.Cid)
 			}
-			//slog.Debug("bsky", "seq", seq, "path", path, "did", did, "rcid", rcid, "rec", rec)
+			// slog.Debug("bsky", "seq", seq, "path", path, "did", did, "rcid", rcid, "rec", rec)
 			if err := c.onListenRecord(ctx, &rc, rec, ch); err != nil {
 				return err
 			}
