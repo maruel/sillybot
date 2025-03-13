@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"image"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -36,8 +35,7 @@ type Options struct {
 // Session manages an image generation server.
 type Session struct {
 	baseURL string
-	done    <-chan error
-	cancel  func() error
+	s       *py.Server
 
 	steps int64
 }
@@ -51,54 +49,46 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 		if opts.Model != "python" {
 			return nil, fmt.Errorf("unknown model %q", opts.Model)
 		}
-		cachePy := filepath.Join(cache, "py")
-		if err := os.MkdirAll(cachePy, 0o755); err != nil {
-			return nil, fmt.Errorf("failed to create the directory to cache python: %w", err)
-		}
-		if err := py.RecreateVirtualEnvIfNeeded(ctx, cachePy); err != nil {
-			return nil, fmt.Errorf("failed to load image_gen: %w", err)
-		}
-		port := internal.FindFreePort(8032)
-		cmd := []string{filepath.Join(cachePy, "image_gen.py"), "--port", strconv.Itoa(port)}
-		var err error
-		ig.done, ig.cancel, err = py.Run(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "image_gen.log"))
+		port := strconv.Itoa(internal.FindFreePort(8032))
+		svr, err := py.NewServer(ctx, "image_gen.py", filepath.Join(cache, "py"), filepath.Join(cache, "py_img.log"), []string{"--port", port})
 		if err != nil {
 			return nil, err
 		}
-		ig.baseURL = fmt.Sprintf("http://localhost:%d", port)
+		ig.s = svr
+		ig.baseURL = "http://localhost:" + port
+		slog.Info("ig", "state", "started", "url", ig.baseURL, "message", "Please be patient, it can take several minutes to download everything")
+		for ctx.Err() == nil {
+			r := struct {
+				Status string
+			}{}
+			if err := httpjson.DefaultClient.Get(ctx, ig.baseURL+"/health", nil, &r); err == nil && r.Status == "ok" {
+				break
+			}
+			select {
+			case err := <-ig.s.Done:
+				return nil, fmt.Errorf("failed to start: %w", err)
+			case <-ctx.Done():
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
 	} else {
 		if !internal.IsHostPort(opts.Remote) {
 			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
 		}
 		ig.baseURL = "http://" + opts.Remote
 	}
-
-	slog.Info("ig", "state", "started", "url", ig.baseURL, "message", "Please be patient, it can take several minutes to download everything")
-	for ctx.Err() == nil {
-		r := struct {
-			Status string
-		}{}
-		if err := httpjson.DefaultClient.Get(ctx, ig.baseURL+"/health", nil, &r); err == nil && r.Status == "ok" {
-			break
-		}
-		select {
-		case err := <-ig.done:
-			return nil, fmt.Errorf("failed to start: %w", err)
-		case <-ctx.Done():
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
 	slog.Info("ig", "state", "ready")
 	return ig, nil
 }
 
 func (ig *Session) Close() error {
-	if ig.cancel == nil {
+	if ig.s == nil {
 		return nil
 	}
 	slog.Info("ig", "state", "terminating")
-	_ = ig.cancel()
-	return <-ig.done
+	_ = ig.s.Cmd.Cancel()
+	<-ig.s.Done
+	return nil
 }
 
 // GenImage returns an image based on the prompt.

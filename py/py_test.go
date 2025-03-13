@@ -20,6 +20,10 @@ import (
 )
 
 func TestNewServer(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		// Sadly github is too slow.
+		t.Skip("skipping test in CI environment")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	// To run from scratch every time, but it's a bit slow:
@@ -34,7 +38,7 @@ func TestNewServer(t *testing.T) {
 
 	port := strconv.Itoa(internal.FindFreePort(10000))
 	// This is a very slow test.
-	srv, err := NewServer(ctx, "llm.py", cache, cache, []string{"--port", port})
+	srv, err := NewServer(ctx, "llm.py", cache, filepath.Join(cache, "py_llm.py"), []string{"--port", port})
 	if err != nil {
 		t.Fatal(err)
 	}

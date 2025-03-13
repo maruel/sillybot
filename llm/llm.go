@@ -150,7 +150,6 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		}
 	}
 
-	cachePy := filepath.Join(cache, "py")
 	if opts.Remote == "" {
 		llamasrv := ""
 		isLlamafile := false
@@ -184,7 +183,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		port := internal.FindFreePort(8031)
 		l.baseURL = fmt.Sprintf("http://localhost:%d", port)
 		if opts.Model == "python" {
-			pysvr, err2 := py.NewServer(ctx, "llm.py", cachePy, cache, []string{"--port", strconv.Itoa(port)})
+			pysvr, err2 := py.NewServer(ctx, "llm.py", filepath.Join(cache, "py"), filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
 			if err2 != nil {
 				return nil, err2
 			}
