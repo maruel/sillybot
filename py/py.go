@@ -102,8 +102,8 @@ func Run(ctx context.Context, venv string, cmd []string, cwd, log string) (<-cha
 }
 
 type Server struct {
-	done <-chan error
-	cmd  *exec.Cmd
+	Done <-chan error
+	Cmd  *exec.Cmd
 }
 
 // NewServer creates a new python virtualenv if needed and starts the server in it.
@@ -139,7 +139,7 @@ func NewServer(ctx context.Context, script, cacheDir, logDir string, extraArgs [
 	}
 	defer log.Close()
 	cmd := exec.CommandContext(ctx, rel, args...)
-	cmd.Dir = logDir
+	cmd.Dir = cacheDir
 	cmd.Stdout = log
 	cmd.Stderr = log
 	cmd.Cancel = func() error {
@@ -154,17 +154,17 @@ func NewServer(ctx context.Context, script, cacheDir, logDir string, extraArgs [
 		// slog.Info("llm", "state", "terminated")
 	}()
 	// slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", port)
-	return &Server{done: done, cmd: cmd}, nil
+	return &Server{Done: done, Cmd: cmd}, nil
 }
 
 func (s *Server) Close() error {
 	select {
-	case <-s.done:
+	case <-s.Done:
 		return nil
 	default:
 	}
-	s.cmd.Cancel()
-	<-s.done
+	_ = s.Cmd.Cancel()
+	<-s.Done
 	return nil
 }
 

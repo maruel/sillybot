@@ -28,7 +28,7 @@ func TestNewServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(cache, 0o755); err != nil {
+	if err = os.MkdirAll(cache, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -59,7 +59,11 @@ func TestNewServer(t *testing.T) {
 			if time.Since(start) > 5*time.Minute {
 				break
 			}
-			time.Sleep(10 * time.Millisecond)
+			select {
+			case <-srv.Done:
+				t.Fatal("server died")
+			case <-time.After(10 * time.Millisecond):
+			}
 			continue
 		}
 		if err != nil {

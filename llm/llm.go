@@ -156,13 +156,6 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		isLlamafile := false
 		modelFile := ""
 		if opts.Model == "python" {
-			if err = os.MkdirAll(cachePy, 0o755); err != nil {
-				return nil, fmt.Errorf("failed to create the directory to cache python: %w", err)
-			}
-			if err = py.RecreateVirtualEnvIfNeeded(ctx, cachePy); err != nil {
-				return nil, fmt.Errorf("failed to load llm: %w", err)
-			}
-			slog.Info("llm", "message", "using python")
 			l.backend = "python"
 		} else {
 			// Make sure the server is available.
@@ -191,13 +184,12 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		port := internal.FindFreePort(8031)
 		l.baseURL = fmt.Sprintf("http://localhost:%d", port)
 		if opts.Model == "python" {
-			cmd := []string{filepath.Join(cachePy, "llm.py"), "--port", strconv.Itoa(port)}
-			done, cancel, err2 := py.Run(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "llm.log"))
+			pysvr, err2 := py.NewServer(ctx, "llm.py", cachePy, cache, []string{"--port", strconv.Itoa(port)})
 			if err2 != nil {
-				return nil, fmt.Errorf("failed to start python llm server: %w", err2)
+				return nil, err2
 			}
-			l.done = done
-			l.cancel = cancel
+			l.done = pysvr.Done
+			l.cancel = pysvr.Cmd.Cancel
 		} else {
 			done := make(chan error)
 			l.done = done
