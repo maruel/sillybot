@@ -8,18 +8,89 @@ package llamacppsrv
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 
 	"golang.org/x/sys/cpu"
 )
+
+type Server struct {
+	done <-chan error
+	cmd  *exec.Cmd
+}
+
+// NewServer creates a new instance of the llama-server.
+//
+// Doesn't pass "-ngl", "9999" by default so the user can override it.
+//
+// Output is redirected to llama-server.log in logDir.
+func NewServer(ctx context.Context, exe, modelPath, logDir string, port, threads int, extraArgs []string) (*Server, error) {
+	if !filepath.IsAbs(exe) {
+		return nil, errors.New("exe must be an absolute path")
+	}
+	if !filepath.IsAbs(modelPath) {
+		return nil, errors.New("modelPath must be an absolute path")
+	}
+	if !filepath.IsAbs(logDir) {
+		return nil, errors.New("logDir must be an absolute path")
+	}
+	log, err := os.OpenFile(filepath.Join(logDir, "llama-server.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create log file: %w", err)
+	}
+	defer log.Close()
+	if threads == 0 {
+		// Surprisingly llama-server seems to be hardcoded to 8 threads. Leave 2
+		// cores (especially critical when HT) to allow us to get some CPU time.
+		// TODO: we should probably nice it a bit.
+		if threads = runtime.NumCPU() - 2; threads == 0 {
+			threads = 1
+		}
+	}
+	args := []string{
+		exe, "--model", modelPath, "--metrics", "--threads", strconv.Itoa(threads), "--port", strconv.Itoa(port),
+	}
+	args = append(args, extraArgs...)
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	// Necessary to find the dynamic libraries.
+	cmd.Dir = filepath.Dir(exe)
+	cmd.Stdout = log
+	cmd.Stderr = log
+	cmd.Cancel = func() error {
+		return cmd.Process.Kill()
+	}
+	if err = cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start llama-server: %w", err)
+	}
+	done := make(chan error)
+	go func() {
+		done <- cmd.Wait()
+		// slog.Info("llm", "state", "terminated")
+	}()
+	// slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", port)
+	return &Server{done: done, cmd: cmd}, nil
+}
+
+func (s *Server) Close() error {
+	select {
+	case <-s.done:
+		return nil
+	default:
+	}
+	s.cmd.Cancel()
+	<-s.done
+	return nil
+}
 
 // DownloadRelease downloads a specific release from GitHub into the specified
 // directory and returns the file path to llama.cpp executable.
@@ -32,6 +103,20 @@ func DownloadRelease(ctx context.Context, cache string, version int) (string, er
 		execSuffix = ".exe"
 	}
 	llamaserver := filepath.Join(cache, "llama-server"+execSuffix)
+	if _, err := os.Stat(llamaserver); err == nil {
+		// Run it to confirm the version and that the file is not corrupted.
+		// If this fails, starts from scratch.
+		if out, err := exec.CommandContext(ctx, llamaserver, "--version").CombinedOutput(); err == nil {
+			if i := bytes.IndexByte(out, '\n'); i > 1 {
+				re := regexp.MustCompile("^version: ([0-9]+) .+$")
+				if m := re.FindStringSubmatch(string(out[0:i])); len(m) == 2 {
+					if v, _ := strconv.Atoi(m[1]); v == version {
+						return llamaserver, nil
+					}
+				}
+			}
+		}
+	}
 
 	build := "b" + strconv.Itoa(version)
 	url := "https://github.com/ggerganov/llama.cpp/releases/download/" + build + "/"
@@ -60,14 +145,6 @@ func DownloadRelease(ctx context.Context, cache string, version int) (string, er
 		wantedFiles = append(wantedFiles, "ggml.dll", "llama.dll")
 	}
 	zippath := filepath.Join(cache, zipname)
-	if _, err := os.Stat(zippath); err == nil {
-		if _, err := os.Stat(llamaserver); err == nil {
-			// It both the zip and the executable are present, we are done. There's a
-			// small risk that the zip is corrupted or extraction was partial. In this
-			// case the user will have to clean up their cache.
-			return llamaserver, nil
-		}
-	}
 	if err := downloadFile(ctx, url+zipname, zippath); err != nil {
 		return "", fmt.Errorf("failed to download %s from github: %w", zipname, err)
 	}

@@ -156,17 +156,16 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		isLlamafile := false
 		modelFile := ""
 		if opts.Model == "python" {
-			if err := os.MkdirAll(cachePy, 0o755); err != nil {
+			if err = os.MkdirAll(cachePy, 0o755); err != nil {
 				return nil, fmt.Errorf("failed to create the directory to cache python: %w", err)
 			}
-			if err := py.RecreateVirtualEnvIfNeeded(ctx, cachePy); err != nil {
+			if err = py.RecreateVirtualEnvIfNeeded(ctx, cachePy); err != nil {
 				return nil, fmt.Errorf("failed to load llm: %w", err)
 			}
 			slog.Info("llm", "message", "using python")
 			l.backend = "python"
 		} else {
 			// Make sure the server is available.
-			var err error
 			if llamasrv, isLlamafile, err = getLlama(ctx, cache); err != nil {
 				return nil, fmt.Errorf("failed to load llm: %w", err)
 			}
@@ -176,9 +175,9 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			cmd := mangleForLlamafile(isLlamafile, llamasrv, "--version")
 			c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 			c.Dir = cache
-			d, err := c.CombinedOutput()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get llm version: %w\n%s", err, string(d))
+			d, err2 := c.CombinedOutput()
+			if err2 != nil {
+				return nil, fmt.Errorf("failed to get llm version: %w\n%s", err2, string(d))
 			}
 			slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
 
@@ -193,18 +192,18 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		l.baseURL = fmt.Sprintf("http://localhost:%d", port)
 		if opts.Model == "python" {
 			cmd := []string{filepath.Join(cachePy, "llm.py"), "--port", strconv.Itoa(port)}
-			done, cancel, err := py.Run(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "llm.log"))
-			if err != nil {
-				return nil, fmt.Errorf("failed to start python llm server: %w", err)
+			done, cancel, err2 := py.Run(ctx, filepath.Join(cachePy, "venv"), cmd, cachePy, filepath.Join(cachePy, "llm.log"))
+			if err2 != nil {
+				return nil, fmt.Errorf("failed to start python llm server: %w", err2)
 			}
 			l.done = done
 			l.cancel = cancel
 		} else {
 			done := make(chan error)
 			l.done = done
-			log, err := os.OpenFile(filepath.Join(cache, "llm.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create llm server log file: %w", err)
+			log, err2 := os.OpenFile(filepath.Join(cache, "llm.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+			if err2 != nil {
+				return nil, fmt.Errorf("failed to create llm server log file: %w", err2)
 			}
 			defer log.Close()
 			// Surprisingly llama-server seems to be hardcoded to 8 threads. Leave 2
@@ -497,23 +496,6 @@ func (l *Session) ensureModel(ctx context.Context, model PackedFileRef, k KnownL
 		return ln, fmt.Errorf("internal error: implement packaging type %s", k.PackagingType)
 	}
 }
-
-/*
-func copyFile(src, dst string) error {
-	s, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-	d, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	_, err = io.Copy(d, s)
-	return err
-}
-*/
 
 // processMsgs process the system prompt.
 func (l *Session) processMsgs(msgs []genaiapi.Message) []genaiapi.Message {

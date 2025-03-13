@@ -14,7 +14,6 @@ require (
 	github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.20
-	github.com/schollz/progressbar/v3 v3.17.1
 	github.com/slack-go/slack v0.15.0
 	golang.org/x/image v0.22.0
 	golang.org/x/sync v0.9.0
@@ -109,6 +108,7 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
+	github.com/schollz/progressbar/v3 v3.17.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/whyrusleeping/cbor v0.0.0-20171005072247-63513f603b11 // indirect
 	github.com/whyrusleeping/cbor-gen v0.2.1-0.20241030202151-b7a6831be65e // indirect
