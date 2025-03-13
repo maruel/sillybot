@@ -1,0 +1,77 @@
+// Copyright 2024 Marc-Antoine Ruel. All rights reserved.
+// Use of this source code is governed under the Apache License, Version 2.0
+// that can be found in the LICENSE file.
+
+package py
+
+import (
+	"context"
+	"errors"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/maruel/genai/genaiapi"
+	"github.com/maruel/sillybot/internal"
+)
+
+func TestNewServer(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	// To run from scratch every time, but it's a bit slow:
+	// cache := t.TempDir()
+	cache, err := filepath.Abs("../cache/py")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	port := strconv.Itoa(internal.FindFreePort(10000))
+	// This is a very slow test.
+	srv, err := NewServer(ctx, "llm.py", cache, cache, []string{"--port", port})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err2 := srv.Close(); err2 != nil {
+			t.Error(err2)
+		}
+	})
+
+	client := CompletionProvider{URL: "http://localhost:" + port}
+	start := time.Now()
+	for {
+		resp, err := client.Completion(ctx, []genaiapi.Message{
+			{
+				Role: genaiapi.User,
+				Text: "Say hello. Reply with only one word.",
+			},
+		}, nil)
+		var v *url.Error
+		if errors.As(err, &v) {
+			if time.Since(start) > 10*time.Second {
+				break
+			}
+			// t.Logf("retrying: %v", err)
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		txt := strings.TrimSpace(resp.Text)
+		txt = strings.TrimRight(txt, ".!")
+		txt = strings.ToLower(txt)
+		if txt != "hello" {
+			t.Errorf("got %q, want %q", txt, "hello")
+		}
+		return
+	}
+	t.Fatal("too many retries")
+}

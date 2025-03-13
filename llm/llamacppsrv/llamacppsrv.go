@@ -87,7 +87,7 @@ func (s *Server) Close() error {
 		return nil
 	default:
 	}
-	s.cmd.Cancel()
+	_ = s.cmd.Cancel()
 	<-s.done
 	return nil
 }

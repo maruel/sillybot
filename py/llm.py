@@ -183,6 +183,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
       self.send_response(200)
       self.end_headers()
       self.wfile.write(b'data: ' + json.dumps(resp).encode("ascii"))
+      self.wfile.write(b'data: [DONE]')
     else:
       resp = {
         "choices": [
