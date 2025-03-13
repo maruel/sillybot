@@ -248,8 +248,8 @@ func (c *CompletionProvider) CompletionStream(ctx context.Context, msgs []genaia
 				FinishReason string `json:"finish_reason"`
 				Delta        struct {
 					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"delta"`
+				} `json:"delta"`
+			} `json:"choices"`
 		}
 		if err = d.Decode(&msg); err != nil {
 			return fmt.Errorf("failed to decode server response %q: %w", string(line), err)

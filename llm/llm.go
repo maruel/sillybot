@@ -255,7 +255,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		l.backend = "remote"
 	}
 	if l.backend == "python" {
-		return nil, errors.New("TODO: reimplement")
+		l.cp = &py.CompletionProvider{URL: l.baseURL}
 	} else {
 		l.cp, err = llamacpp.New(l.baseURL, l.Encoding)
 		if err != nil {
