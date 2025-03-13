@@ -55,10 +55,10 @@ func TestNewServer(t *testing.T) {
 		}, nil)
 		var v *url.Error
 		if errors.As(err, &v) {
-			if time.Since(start) > 10*time.Second {
+			// It can be slow when run from scratch, especially on github.
+			if time.Since(start) > 5*time.Minute {
 				break
 			}
-			// t.Logf("retrying: %v", err)
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
