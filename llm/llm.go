@@ -124,6 +124,14 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
+
+	// Either:
+	// - Connecting to a remote server
+	// - Starting a local server
+	// The server can be either:
+	// - llama-server
+	// - our custom python backend
+
 	cacheModels := filepath.Join(cache, "models")
 	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create the directory to cache models: %w", err)
@@ -149,8 +157,10 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 
 	var done <-chan error
 	if opts.Remote == "" {
+		// We need to start the server.
 		port := internal.FindFreePort(8031)
 		l.baseURL = "http://localhost:" + strconv.Itoa(port)
+
 		if opts.Model == "python" {
 			l.backend = "python"
 			srv, err := py.NewServer(ctx, "llm.py", filepath.Join(cache, "py"), filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
@@ -202,6 +212,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		slog.Info("llm", "state", "loading")
 		l.backend = "remote"
 	}
+
 	if l.backend == "python" {
 		l.cp = &py.CompletionProvider{URL: l.baseURL}
 	} else {
@@ -211,6 +222,8 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		}
 	}
 
+	// Do a quick health check. Technically unnecessary when running llama-server
+	// locally.
 	for ctx.Err() == nil {
 		if status, _ := l.GetHealth(ctx); status == "ok" {
 			break
@@ -223,6 +236,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+
 	slog.Info("llm", "state", "ready", "model", opts.Model, "using", l.backend, "url", l.baseURL)
 	return l, nil
 }

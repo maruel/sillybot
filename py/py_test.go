@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/maruel/genai/genaiapi"
+	"github.com/maruel/httpjson"
 	"github.com/maruel/sillybot/internal"
 )
 
@@ -58,7 +59,8 @@ func TestNewServer(t *testing.T) {
 			},
 		}, nil)
 		var v *url.Error
-		if errors.As(err, &v) {
+		var h *httpjson.Error
+		if errors.As(err, &v) || errors.As(err, &h) {
 			// It can be slow when run from scratch, especially on github.
 			if time.Since(start) > 5*time.Minute {
 				break

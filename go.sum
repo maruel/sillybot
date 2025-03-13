@@ -228,8 +228,8 @@ github.com/maruel/genai v0.0.0-20250313125143-b136d87af694 h1:/63xZ8MBrpGiwoQzRp
 github.com/maruel/genai v0.0.0-20250313125143-b136d87af694/go.mod h1:KMlzfs+drEaX+a4JBO3vtNXCUDAPPB04J6OhRXQKEOc=
 github.com/maruel/httpjson v0.0.0-20250310175526-cef4d3a1f686 h1:3Lrl4qKAKGNuU+UgmkK/ULn9y2jyJnZ4lMj5bU0p6Oo=
 github.com/maruel/httpjson v0.0.0-20250310175526-cef4d3a1f686/go.mod h1:XHQeUdJCj7XG+p9Ov3sMg00tLd6HZQdZhvzvpIzfnTA=
-github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11 h1:igpEi1kYmnbLPZ9/QdkQm2Mx0Gx7Gz7V+ixTZwH7aOo=
-github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11/go.mod h1:wb55pRkjkGkuH+vmOae+iXxXfYmEAbWqRCAqptlTaZE=
+github.com/maruel/huggingface v0.0.0-20250313163813-f75c0fc738d4 h1:j/S93tbcJOKFcU3Se9B4kUfAw9nN8bMm7DPngFsIPLo=
+github.com/maruel/huggingface v0.0.0-20250313163813-f75c0fc738d4/go.mod h1:wb55pRkjkGkuH+vmOae+iXxXfYmEAbWqRCAqptlTaZE=
 github.com/maruel/safetensors v1.2.0 h1:6XFN1cXOaJwt7jBepgO7zxiLDtTorAm3EQj6sHkhpdI=
 github.com/maruel/safetensors v1.2.0/go.mod h1:vC7X0lV/KWEb4y9YWk9gwev9zoUosPuQJPwbpaTZaTU=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=

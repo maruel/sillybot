@@ -11,7 +11,7 @@ require (
 	github.com/lmittmann/tint v1.0.7
 	github.com/maruel/genai v0.0.0-20250313125143-b136d87af694
 	github.com/maruel/httpjson v0.0.0-20250310175526-cef4d3a1f686
-	github.com/maruel/huggingface v0.0.0-20241109152749-1c0489b4de11
+	github.com/maruel/huggingface v0.0.0-20250313163813-f75c0fc738d4
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.20
 	github.com/slack-go/slack v0.16.0

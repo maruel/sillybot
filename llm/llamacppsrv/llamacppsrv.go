@@ -22,7 +22,9 @@ import (
 	"runtime"
 	"strconv"
 	"syscall"
+	"time"
 
+	"github.com/maruel/genai/llamacpp"
 	"golang.org/x/sys/cpu"
 )
 
@@ -31,7 +33,8 @@ type Server struct {
 	cmd  *exec.Cmd
 }
 
-// NewServer creates a new instance of the llama-server.
+// NewServer creates a new instance of the llama-server and ensures the server
+// is healthy.
 //
 // Doesn't pass "-ngl", "9999" by default so the user can override it.
 //
@@ -95,6 +98,28 @@ func NewServer(ctx context.Context, exe, modelPath, logDir string, port, threads
 		close(done)
 	}()
 	slog.Info("llamacppsrv", "state", "started", "pid", cmd.Process.Pid)
+
+	c, err := llamacpp.New("http://localhost:"+strconv.Itoa(port), nil)
+	if err != nil {
+		_ = cmd.Cancel()
+		<-done
+		return nil, fmt.Errorf("failed to create llamacpp client: %w", err)
+	}
+	for ctx.Err() == nil {
+		if status, _ := c.GetHealth(ctx); status == "ok" {
+			break
+		}
+		select {
+		case err := <-done:
+			return nil, fmt.Errorf("starting llm server failed: %w", err)
+		case <-ctx.Done():
+			_ = cmd.Cancel()
+			<-done
+			return nil, ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+
 	return &Server{done: done, cmd: cmd}, nil
 }
 
