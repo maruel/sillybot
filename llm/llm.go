@@ -8,15 +8,12 @@
 package llm
 
 import (
-	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"html/template"
-	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,12 +26,10 @@ import (
 
 	"github.com/maruel/genai/genaiapi"
 	"github.com/maruel/genai/llamacpp"
-	"github.com/maruel/genai/openai"
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/internal"
+	"github.com/maruel/sillybot/llm/llamacppsrv"
 	"github.com/maruel/sillybot/py"
-	"github.com/schollz/progressbar/v3"
-	"golang.org/x/sys/cpu"
 )
 
 // Options for NewLLM.
@@ -261,10 +256,12 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		l.backend = "remote"
 	}
 	if l.backend == "python" {
-		// TODO: Create a new provider BaseURL: l.baseURL
-		l.cp = &openai.Client{}
+		return nil, errors.New("TODO: reimplement")
 	} else {
-		l.cp = &llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
+		l.cp, err = llamacpp.New(l.baseURL, l.Encoding)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	for ctx.Err() == nil {
@@ -313,14 +310,20 @@ func (l *Session) Close() error {
 // GetHealth retrieves the heath of the server.
 func (l *Session) GetHealth(ctx context.Context) (string, error) {
 	// TODO: Generalize.
-	c := llamacpp.Client{BaseURL: l.baseURL}
+	c, err := llamacpp.New(l.baseURL, nil)
+	if err != nil {
+		return "", err
+	}
 	return c.GetHealth(ctx)
 }
 
 // GetMetrics retrieves the performance statistics from the server.
 func (l *Session) GetMetrics(ctx context.Context, m *llamacpp.Metrics) error {
 	// TODO: Generalize.
-	c := llamacpp.Client{BaseURL: l.baseURL}
+	c, err := llamacpp.New(l.baseURL, nil)
+	if err != nil {
+		return err
+	}
 	return c.GetMetrics(ctx, m)
 }
 
@@ -553,9 +556,6 @@ func mangleForLlamafile(isLlamafile bool, cmd ...string) []string {
 
 // getLlama returns the file path to llama.cpp/llamafile executable.
 //
-// Returns the file path to the executable and true if it is llamafile, false
-// if it is llama-server from llama.cpp.
-//
 // It first look for llama-server or llamafile if one of them is PATH. Then it
 // checks if one of them is s in the cache directory, otherwise downloads an
 // hard coded version of llama-server from GitHub.
@@ -574,105 +574,6 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	if _, err := os.Stat(llamaserver); err == nil {
 		return llamaserver, false, nil
 	}
-	llamafile := filepath.Join(cache, "llamafile"+execSuffix)
-	if _, err := os.Stat(llamafile); err == nil {
-		return llamafile, true, nil
-	}
-
-	// Time to download!
-	// Do not just get the latest version because the odds of it breaking is just
-	// too high. This is best effort.
-	build := "b4856"
-	url := "https://github.com/ggerganov/llama.cpp/releases/download/" + build + "/"
-	zipname := ""
-	wantedFiles := []string{filepath.Base(llamaserver)}
-	switch runtime.GOOS {
-	case "darwin":
-		zipname = "llama-" + build + "-bin-macos-arm64.zip"
-		wantedFiles = append(wantedFiles, "*.dylib", "*.metal")
-	case "linux":
-		zipname = "llama-" + build + "-bin-ubuntu-x64.zip"
-		wantedFiles = append(wantedFiles, "*.so")
-	case "windows":
-		_, err := exec.Command("nvcc", "--version").CombinedOutput()
-		if err == nil {
-			// This is tricky because in the case of image generation, we may want to run on the CPU instead.
-			zipname = "llama-" + build + "-bin-win-cuda-cu12.2.0-x64.zip"
-		} else if cpu.X86.HasAVX512BF16 {
-			zipname = "llama-" + build + "-bin-win-avx512-x64.zip"
-		} else if cpu.X86.HasAVX2 {
-			zipname = "llama-" + build + "-bin-win-avx2-x64.zip"
-		} else {
-			zipname = "llama-" + build + "-bin-win-avx-x64.zip"
-		}
-		wantedFiles = append(wantedFiles, "ggml.dll", "llama.dll")
-	}
-	zippath := filepath.Join(cache, zipname)
-	if _, err := os.Stat(zippath); err != nil {
-		slog.Info("llm", "retrieving", zipname)
-		if err := downloadFile(ctx, url+zipname, zippath, ""); err != nil {
-			return "", false, fmt.Errorf("failed to download llamafile from github: %w", err)
-		}
-	} else {
-		slog.Info("llm", "reusing", zipname)
-	}
-	z, err := zip.OpenReader(zippath)
-	if err != nil {
-		return "", false, err
-	}
-	defer z.Close()
-	for _, f := range z.File {
-		// Files are under build/bin/
-		n := filepath.Base(f.Name)
-		for _, desired := range wantedFiles {
-			if ok, _ := filepath.Match(desired, n); ok {
-				src, err2 := f.Open()
-				if err2 != nil {
-					return "", false, err2
-				}
-				dst, err2 := os.OpenFile(filepath.Join(cache, n), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
-				if err2 == nil {
-					_, err2 = io.CopyN(dst, src, int64(f.UncompressedSize64))
-				}
-				if err3 := src.Close(); err2 == nil {
-					err2 = err3
-				}
-				if err3 := dst.Close(); err2 == nil {
-					err2 = err3
-				}
-				if err2 != nil {
-					return "", false, fmt.Errorf("failed to write %q: %w", n, err2)
-				}
-			}
-		}
-	}
+	llamaserver, err := llamacppsrv.DownloadRelease(ctx, cache, 4856)
 	return llamaserver, false, err
-}
-
-// downloadFile downloads a file optionally with a bearer token.
-//
-// This is a generic utility function. It retries 429 and 5xx automatically.
-//
-// It prints a progress bar if the file is at least 100kiB.
-func downloadFile(ctx context.Context, url, dst string, token string) error {
-	resp, err := huggingface.AuthRequest(ctx, http.DefaultClient, "GET", url, token, nil)
-	if err != nil {
-		return fmt.Errorf("failed to download %q: %w", dst, err)
-	}
-	defer resp.Body.Close()
-	// Only then create the file.
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o666)
-	if err != nil {
-		return fmt.Errorf("failed to download %q: %w", dst, err)
-	}
-	defer f.Close()
-
-	// Check if resp.ContentLength is small and skip output in this case.
-	if resp.ContentLength == 0 || resp.ContentLength >= 100*1024 {
-		bar := progressbar.DefaultBytes(resp.ContentLength, filepath.Base(dst))
-		_, err = io.Copy(io.MultiWriter(f, bar), resp.Body)
-	} else {
-		_, err = io.Copy(f, resp.Body)
-	}
-	return err
 }

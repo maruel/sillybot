@@ -344,7 +344,10 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl := len(msgs)
-	c := llamacpp.Client{BaseURL: l.baseURL, Encoding: l.Encoding}
+	c, err := llamacpp.New(l.baseURL, l.Encoding)
+	if err != nil {
+		t.Fatal(err)
+	}
 	opts := genaiapi.CompletionOptions{MaxTokens: 100, Seed: 1}
 	msg, err := c.Completion(ctx, msgs, &opts)
 	if err != nil {
