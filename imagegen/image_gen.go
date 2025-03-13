@@ -65,7 +65,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 				break
 			}
 			select {
-			case err := <-ig.s.Done:
+			case err := <-ig.s.Done():
 				return nil, fmt.Errorf("failed to start: %w", err)
 			case <-ctx.Done():
 			case <-time.After(100 * time.Millisecond):
@@ -86,8 +86,7 @@ func (ig *Session) Close() error {
 		return nil
 	}
 	slog.Info("ig", "state", "terminating")
-	_ = ig.s.Cmd.Cancel()
-	<-ig.s.Done
+	_ = ig.s.Close()
 	return nil
 }
 

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
+	"syscall"
 
 	"golang.org/x/sys/cpu"
 )
@@ -74,22 +76,35 @@ func NewServer(ctx context.Context, exe, modelPath, logDir string, port, threads
 	}
 	done := make(chan error)
 	go func() {
-		done <- cmd.Wait()
-		// slog.Info("llm", "state", "terminated")
+		err2 := cmd.Wait()
+		var er *exec.ExitError
+		if errors.As(err2, &er) {
+			s, ok := er.Sys().(syscall.WaitStatus)
+			if ok && s.Signaled() {
+				// It was simply killed.
+				err2 = nil
+			}
+			if runtime.GOOS == "windows" {
+				// We need to figure out how to differentiate between normal quitting and
+				// an error.
+				err2 = nil
+			}
+		}
+		slog.Info("llamacppsrv", "state", "terminated", "err", err2)
+		done <- err2
+		close(done)
 	}()
-	// slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", port)
+	slog.Info("llamacppsrv", "state", "started", "pid", cmd.Process.Pid)
 	return &Server{done: done, cmd: cmd}, nil
 }
 
 func (s *Server) Close() error {
-	select {
-	case <-s.done:
-		return nil
-	default:
-	}
 	_ = s.cmd.Cancel()
-	<-s.done
-	return nil
+	return <-s.done
+}
+
+func (s *Server) Done() <-chan error {
+	return s.done
 }
 
 // DownloadRelease downloads a specific release from GitHub into the specified

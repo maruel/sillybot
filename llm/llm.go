@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -21,7 +22,6 @@ import (
 	"runtime/trace"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/maruel/genai/genaiapi"
@@ -114,11 +114,8 @@ type Session struct {
 
 	cache     string
 	modelFile string
-	c         *exec.Cmd
+	srv       io.Closer
 	done      <-chan error
-	cancel    func() error
-
-	_ struct{}
 }
 
 // New instantiates a llama.cpp or llamafile server, or optionally uses
@@ -150,97 +147,57 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		}
 	}
 
+	var done <-chan error
 	if opts.Remote == "" {
-		llamasrv := ""
-		isLlamafile := false
-		modelFile := ""
+		port := internal.FindFreePort(8031)
+		l.baseURL = "http://localhost:" + strconv.Itoa(port)
 		if opts.Model == "python" {
 			l.backend = "python"
+			srv, err := py.NewServer(ctx, "llm.py", filepath.Join(cache, "py"), filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
+			if err != nil {
+				return nil, err
+			}
+			l.srv = srv
+			done = srv.Done()
 		} else {
-			// Make sure the server is available.
+			llamasrv := ""
+			isLlamafile := false
 			if llamasrv, isLlamafile, err = getLlama(ctx, cache); err != nil {
 				return nil, fmt.Errorf("failed to load llm: %w", err)
 			}
 			if l.backend = "llama-server"; isLlamafile {
-				l.backend = "llamafile"
+				// l.backend = "llamafile"
+				return nil, fmt.Errorf("llamafile is not supported yet")
 			}
-			cmd := mangleForLlamafile(isLlamafile, llamasrv, "--version")
-			c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
-			c.Dir = cache
-			d, err2 := c.CombinedOutput()
-			if err2 != nil {
-				return nil, fmt.Errorf("failed to get llm version: %w\n%s", err2, string(d))
-			}
-			slog.Info("llm", "path", llamasrv, "version", strings.TrimSpace(string(d)))
-
+			// cmd := mangleForLlamafile(isLlamafile, llamasrv, "--version")
 			// Make sure the model is available.
+			modelFile := ""
 			if modelFile, err = l.ensureModel(ctx, opts.Model, knownLLMs[known]); err != nil {
 				return nil, fmt.Errorf("failed to get llm model: %w", err)
 			}
-		}
-
-		// Create the log file to redirect llamafile's output which is quite verbose.
-		port := internal.FindFreePort(8031)
-		l.baseURL = fmt.Sprintf("http://localhost:%d", port)
-		if opts.Model == "python" {
-			pysvr, err2 := py.NewServer(ctx, "llm.py", filepath.Join(cache, "py"), filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
-			if err2 != nil {
-				return nil, err2
-			}
-			l.done = pysvr.Done
-			l.cancel = pysvr.Cmd.Cancel
-		} else {
-			done := make(chan error)
-			l.done = done
-			log, err2 := os.OpenFile(filepath.Join(cache, "llm.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
-			if err2 != nil {
-				return nil, fmt.Errorf("failed to create llm server log file: %w", err2)
-			}
-			defer log.Close()
-			// Surprisingly llama-server seems to be hardcoded to 8 threads. Leave 2
-			// cores (especially critical when HT) to allow us to get some CPU time.
-			// TODO: we should probably nice it a bit.
-			threads := runtime.NumCPU() - 2
-			if threads == 0 {
-				threads = 1
+			args := []string{"-ngl", "9999"}
+			// Limit the context window for performance.
+			if opts.ContextLength != 0 {
+				args = append(args, "--ctx-size", strconv.Itoa(opts.ContextLength))
 			}
 			// TODO: Investigate using -fa.
 			// TODO: Doesn't seem to have any effect, need investigation.
-			// "--prompt-cache", filepath.Join(cache, "llm-prompt-cache.bin"), "--prompt-cache-all",
-			common := []string{
-				llamasrv, "--model", modelFile, "--metrics", "-ngl", "9999", "--threads", strconv.Itoa(threads), "--port", strconv.Itoa(port),
+			args = append(args, "--prompt-cache", filepath.Join(cache, "llm-prompt-cache.bin"), "--prompt-cache-all")
+			//if isLlamafile {
+			//	cmd := mangleForLlamafile(isLlamafile, append(args, "--nobrowser")...)
+			//}
+			srv, err := llamacppsrv.NewServer(ctx, llamasrv, modelFile, cache, port, 0, args)
+			if err != nil {
+				return nil, err
 			}
-			// Limit the context window for now.
-			if opts.ContextLength != 0 {
-				common = append(common, "--ctx-size", strconv.Itoa(opts.ContextLength))
-			}
-			cmd := mangleForLlamafile(isLlamafile, append(common, "--nobrowser")...)
-			if !isLlamafile {
-				cmd = mangleForLlamafile(isLlamafile, common...)
-			}
-			slog.Debug("llm", "command", cmd, "cwd", cache, "log", log.Name())
-			l.c = exec.CommandContext(ctx, cmd[0], cmd[1:]...)
-			l.c.Dir = cache
-			l.c.Stdout = log
-			l.c.Stderr = log
-			l.c.Cancel = func() error {
-				slog.Debug("llm", "state", "killing")
-				return l.c.Process.Kill()
-			}
-			if err = l.c.Start(); err != nil {
-				return nil, fmt.Errorf("failed to start llm server: %w", err)
-			}
-			go l.waitForTerminated(done)
-			slog.Info("llm", "state", "started", "pid", l.c.Process.Pid, "port", port)
+			l.srv = srv
+			done = srv.Done()
 		}
 	} else {
 		if !internal.IsHostPort(opts.Remote) {
 			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
 		}
-		// TODO: Support online paid backends:
-		// https://platform.openai.com/docs/api-reference/chat/create
-		// https://docs.anthropic.com/en/api/messages-examples
-		// https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstarts/quickstart-multimodal
+		// TODO: Support other backends via genai.
 		l.baseURL = "http://" + opts.Remote
 		slog.Info("llm", "state", "loading")
 		l.backend = "remote"
@@ -259,7 +216,8 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			break
 		}
 		select {
-		case err := <-l.done:
+		case err := <-done:
+			l.srv = nil
 			return nil, fmt.Errorf("starting llm server failed: %w", err)
 		case <-ctx.Done():
 		case <-time.After(100 * time.Millisecond):
@@ -271,30 +229,10 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 
 func (l *Session) Close() error {
 	slog.Info("llm", "state", "terminating")
-	if l.done == nil {
-		// Using a remote server.
-		return nil
+	if l.srv != nil {
+		return l.srv.Close()
 	}
-	if l.cancel != nil {
-		_ = l.cancel()
-	} else {
-		_ = l.c.Cancel()
-	}
-	err := <-l.done
-	var er *exec.ExitError
-	if errors.As(err, &er) {
-		s, ok := er.Sys().(syscall.WaitStatus)
-		if ok && s.Signaled() {
-			// It was simply killed.
-			err = nil
-		}
-		if runtime.GOOS == "windows" {
-			// We need to figure out how to differentiate between normal quitting and
-			// an error.
-			err = nil
-		}
-	}
-	return err
+	return nil
 }
 
 // GetHealth retrieves the heath of the server.
@@ -382,11 +320,6 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, 
 }
 
 //
-
-func (l *Session) waitForTerminated(done chan<- error) {
-	done <- l.c.Wait()
-	slog.Info("llm", "state", "terminated")
-}
 
 // ensureModel gets the model if missing.
 //

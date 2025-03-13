@@ -64,7 +64,7 @@ func TestNewServer(t *testing.T) {
 				break
 			}
 			select {
-			case <-srv.Done:
+			case <-srv.Done():
 				t.Fatal("server died")
 			case <-time.After(10 * time.Millisecond):
 			}
