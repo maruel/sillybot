@@ -393,54 +393,22 @@ func (l *Session) waitForTerminated(done chan<- error) {
 // Currently hard-coded to GGUF files and Hugging Face. Doesn't support split
 // files.
 func (l *Session) ensureModel(ctx context.Context, model PackedFileRef, k KnownLLM) (string, error) {
-	// TODO: This is very "meh".
-	// Designed to handle special case like Mistral-7B-Instruct-v0.3-Q3_K_M.
-	ext := strings.ToUpper(model.Basename())
-	if i := strings.LastIndexByte(ext, '-'); i > 0 {
-		ext = ext[i+1:]
-	}
-	if ext2 := filepath.Ext(ext); ext2 != "" {
-		ext = strings.TrimLeft(ext2, ".")
-	}
-	switch ext {
-	case "GGUF":
-		return "", fmt.Errorf("do not include the .gguf suffix for model %q", model)
-
-	case "BF16":
-		if runtime.GOOS == "darwin" {
-			slog.Warn("llm", "message", "As of July 2024, bfloat16 was not fully supported on Apple Silicon system. Remove this warning once this is fixed.")
-		}
-
-		// Well known quantizations.
-	case "F32", "F16", "FP16":
-	case "Q8_0":
-	case "Q6_K_L", "Q6_K":
-	case "Q5_K_L", "Q5_K_M", "Q5_K_S", "Q5_1", "Q5_0":
-	case "Q4_K_L", "Q4_K_M", "Q4_K_S", "Q4_K", "Q4_1", "Q4_0":
-	case "Q3_K_XL", "Q3_K_L", "Q3_K_M", "Q3_K_S":
-	case "Q2_K_L", "Q2_K":
-	case "IQ4_NL", "IQ4_XS":
-	case "IQ3_M", "IQ3_S", "IQ3_XS", "IQ3_XXS":
-	case "IQ2_M", "IQ2_S", "IQ2_XS", "IQ2_XXS":
-	case "IQ1_M", "IQ1_S":
-
-	case "":
-		return "", fmt.Errorf("you forgot to add a quantization suffix like 'BF16', 'F16', 'Q8_0' or 'Q5_K_M' when specifying model %q", model)
-
-	default:
-		return "", fmt.Errorf("unknown quantization %q for model %q, did you forget a suffix like 'BF16' or 'Q5_K_M'?", ext, model)
-	}
-
-	// Hack: quickly check if the file is there, if so, just return this.
-	dst := filepath.Join(l.cache, model.Basename()+".gguf")
-	_, err := os.Stat(dst)
-	if err == nil {
-		l.modelFile = dst
-		return dst, nil
-	}
 	slog.Info("llm", "model", model, "state", "missing")
 	if k.Source.RepoID() == "" {
 		return "", fmt.Errorf("can't guess model %q huggingface repo", model)
+	}
+	dst, err := getModelPath(model)
+	if err != nil {
+		return "", err
+	}
+	if dst != "" {
+		// Hack: quickly check if the file is there, if so, just return this.
+		dst := filepath.Join(l.cache, dst)
+		_, err := os.Stat(dst)
+		if err == nil {
+			l.modelFile = dst
+			return dst, nil
+		}
 	}
 	// Hack: we assume everything is on HuggingFace.
 	ln := filepath.Join(l.cache, model.Basename()+".gguf")
@@ -515,6 +483,47 @@ func (l *Session) processMsgs(msgs []genaiapi.Message) []genaiapi.Message {
 }
 
 // Tools
+
+func getModelPath(model PackedFileRef) (string, error) {
+	// TODO: This is very "meh".
+	// Designed to handle special case like Mistral-7B-Instruct-v0.3-Q3_K_M.
+	ext := strings.ToUpper(model.Basename())
+	if i := strings.LastIndexByte(ext, '-'); i > 0 {
+		ext = ext[i+1:]
+	}
+	if ext2 := filepath.Ext(ext); ext2 != "" {
+		ext = strings.TrimLeft(ext2, ".")
+	}
+	switch ext {
+	case "GGUF":
+		return "", fmt.Errorf("do not include the .gguf suffix for model %q", model)
+
+	case "BF16":
+		if runtime.GOOS == "darwin" {
+			slog.Warn("llm", "message", "As of July 2024, bfloat16 was not fully supported on Apple Silicon system. Remove this warning once this is fixed.")
+		}
+
+		// Well known quantizations.
+	case "F32", "F16", "FP16":
+	case "Q8_0":
+	case "Q6_K_L", "Q6_K":
+	case "Q5_K_L", "Q5_K_M", "Q5_K_S", "Q5_1", "Q5_0":
+	case "Q4_K_L", "Q4_K_M", "Q4_K_S", "Q4_K", "Q4_1", "Q4_0":
+	case "Q3_K_XL", "Q3_K_L", "Q3_K_M", "Q3_K_S":
+	case "Q2_K_L", "Q2_K":
+	case "IQ4_NL", "IQ4_XS":
+	case "IQ3_M", "IQ3_S", "IQ3_XS", "IQ3_XXS":
+	case "IQ2_M", "IQ2_S", "IQ2_XS", "IQ2_XXS":
+	case "IQ1_M", "IQ1_S":
+
+	case "":
+		return "", fmt.Errorf("you forgot to add a quantization suffix like 'BF16', 'F16', 'Q8_0' or 'Q5_K_M' when specifying model %q", model)
+
+	default:
+		return "", fmt.Errorf("unknown quantization %q for model %q, did you forget a suffix like 'BF16' or 'Q5_K_M'?", ext, model)
+	}
+	return model.Basename() + ".gguf", nil
+}
 
 // mangleForLlamafile hacks the command arguments to make it work for llamafile. Pass
 // through otherwise.
