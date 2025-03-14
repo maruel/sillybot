@@ -65,28 +65,27 @@ type discordBot struct {
 func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
 	toolsMsg := genaiapi.Message{}
 	if l.Encoding != nil && strings.Contains(strings.ToLower(string(l.Model)), "mistral") {
+		/* TODO
 		slog.Info("discord", "message", "tools are enabled", "encoding", l.Encoding)
 		// HACK: Also an hack.
 		availtools := []tools.MistralTool{
-			/*
-				{
-					Type: "function",
-					Function: tools.MistralFunction{
-						Name:        "web_search",
-						Description: "Search the web for information",
-						Parameters: &tools.MistralFunctionParams{
-							Type: "object",
-							Properties: map[string]tools.MistralProperty{
-								"query": {
-									Type:        "string",
-									Description: "Query to use to search on the internet",
-								},
+			{
+				Type: "function",
+				Function: tools.MistralFunction{
+					Name:        "web_search",
+					Description: "Search the web for information",
+					Parameters: &tools.MistralFunctionParams{
+						Type: "object",
+						Properties: map[string]tools.MistralProperty{
+							"query": {
+								Type:        "string",
+								Description: "Query to use to search on the internet",
 							},
-							Required: []string{"query"},
 						},
+						Required: []string{"query"},
 					},
 				},
-			*/
+			},
 			tools.CalculateMistralTool,
 			tools.GetTodayClockTimeMistralTool,
 		}
@@ -99,6 +98,7 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 			Type: genaiapi.Text,
 			Text: string(b),
 		}
+		*/
 	}
 
 	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
@@ -864,7 +864,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 		// Make it blocking to force a goroutine context switch when a word is
 		// received. When it's buffered, there can be significant delay when LLM is
 		// running on the CPU.
-		words := make(chan string)
+		chunks := make(chan genaiapi.MessageChunk)
 		wg.Add(1)
 		go func() {
 			const rate = 2000 * time.Millisecond
@@ -875,8 +875,8 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 			pending := ""
 			for {
 				select {
-				case w, ok := <-words:
-					// slog.Debug("discord", "w", w, "ok", ok)
+				case pkt, ok := <-chunks:
+					// slog.Debug("discord", "pkt", pkt, "ok", ok)
 					if !ok {
 						if d.l.Encoding != nil && !gotToolCall {
 							if called := d.handleMistralToolCall(pending, c); called != "" {
@@ -933,7 +933,10 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 						wg.Done()
 						return
 					}
-					pending += w
+					if pkt.Role != genaiapi.Assistant || pkt.Type != genaiapi.Text {
+						slog.Error("discord", "role", pkt.Role, "type", pkt.Type)
+					}
+					pending += pkt.Text
 				case now := <-t.C:
 					// TODO: Handle when the model replies with more than maxMessage per
 					// rate.
@@ -977,8 +980,8 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 		}()
 		// We're chatting, we don't want too much content?
 		opts := genaiapi.CompletionOptions{Temperature: 1.0}
-		err := d.l.PromptStreaming(ctx, c.Messages, &opts, words)
-		close(words)
+		err := d.l.PromptStreaming(ctx, c.Messages, &opts, chunks)
+		close(chunks)
 		wg.Wait()
 		cancel()
 		if errors.Is(err, context.Canceled) {
@@ -1065,33 +1068,33 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 		}
 		// See MistralRequestValidatorV3._validate_tool_message() in
 		// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/protocol/instruct/validator.py
-		callid := 0
-		for _, c := range c.Messages {
-			if c.Role == genaiapi.ToolCall {
-				callid++
-			}
-		}
-		res := tools.MistralToolCallResult{Content: result, CallID: fmt.Sprintf("c%08d", callid)}
-		b, err := json.Marshal(res)
-		if err != nil {
-			slog.Error("discord", "tool", "json", "error", err)
-			// Continue as if it wasn't a tool call.
-			continue
-		}
+		// callid := 0
+		// for _, c := range c.Messages {
+		// 	if c.Role == genaiapi.ToolCall {
+		// 		callid++
+		// 	}
+		// }
+		// res := tools.MistralToolCallResult{Content: result, CallID: fmt.Sprintf("c%08d", callid)}
+		// b, err := json.Marshal(res)
+		// if err != nil {
+		// 	slog.Error("discord", "tool", "json", "error", err)
+		// 	// Continue as if it wasn't a tool call.
+		// 	continue
+		// }
 		// We want to ignore the rest of the reply and send a new query.
 		// TODO: Inject CallID instead of pending[:i]. We need to determine if
 		// Mistral prefers to receive its own content as-is or reformatted?
-		c.Messages = append(c.Messages,
-			genaiapi.Message{
-				Role: genaiapi.ToolCall,
-				Type: genaiapi.Text,
-				Text: line,
-			},
-			genaiapi.Message{
-				Role: genaiapi.ToolCallResult,
-				Type: genaiapi.Text,
-				Text: string(b),
-			})
+		// c.Messages = append(c.Messages,
+		// 	genaiapi.Message{
+		// 		Role: genaiapi.ToolCall,
+		// 		Type: genaiapi.Text,
+		// 		Text: line,
+		// 	},
+		// 	genaiapi.Message{
+		// 		Role: genaiapi.ToolCallResult,
+		// 		Type: genaiapi.Text,
+		// 		Text: string(b),
+		// 	})
 		// TODO: We should probably cancel the context and start over, there's no
 		// point in receiving more data.
 		return name

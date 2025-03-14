@@ -55,7 +55,7 @@ func (c *CompletionProvider) Completion(ctx context.Context, msgs []genaiapi.Mes
 	return msg, nil
 }
 
-func (c *CompletionProvider) CompletionStream(ctx context.Context, msgs []genaiapi.Message, opts any, words chan<- string) error {
+func (c *CompletionProvider) CompletionStream(ctx context.Context, msgs []genaiapi.Message, opts any, chunks chan<- genaiapi.MessageChunk) error {
 	in := completionRequest{Stream: true}
 	for _, m := range msgs {
 		in.Messages = append(in.Messages, message{Role: string(m.Role), Content: m.Text})
@@ -106,6 +106,6 @@ func (c *CompletionProvider) CompletionStream(ctx context.Context, msgs []genaia
 		if len(msg.Choices) != 1 {
 			return fmt.Errorf("server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
 		}
-		words <- msg.Choices[0].Delta.Content
+		chunks <- genaiapi.MessageChunk{Role: genaiapi.Assistant, Type: genaiapi.Text, Text: msg.Choices[0].Delta.Content}
 	}
 }

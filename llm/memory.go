@@ -208,12 +208,14 @@ func (s *serializedMessage) from(m *genaiapi.Message) error {
 		s.Role = 1
 	case genaiapi.Assistant:
 		s.Role = 2
-	case genaiapi.AvailableTools:
-		s.Role = 3
-	case genaiapi.ToolCall:
-		s.Role = 4
-	case genaiapi.ToolCallResult:
-		s.Role = 5
+		/*
+			case genaiapi.AvailableTools:
+				s.Role = 3
+			case genaiapi.ToolCall:
+				s.Role = 4
+			case genaiapi.ToolCallResult:
+				s.Role = 5
+		*/
 	default:
 		return fmt.Errorf("unknown role %q", m.Role)
 	}
@@ -232,12 +234,14 @@ func (s *serializedMessage) to(m *genaiapi.Message) error {
 		m.Role = genaiapi.User
 	case 2:
 		m.Role = genaiapi.Assistant
-	case 3:
-		m.Role = genaiapi.AvailableTools
-	case 4:
-		m.Role = genaiapi.ToolCall
-	case 5:
-		m.Role = genaiapi.ToolCallResult
+		/*
+			case 3:
+				m.Role = genaiapi.AvailableTools
+			case 4:
+				m.Role = genaiapi.ToolCall
+			case 5:
+				m.Role = genaiapi.ToolCallResult
+		*/
 	default:
 		return fmt.Errorf("unknown role %q", s.Role)
 	}

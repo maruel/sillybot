@@ -320,7 +320,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts any)
 // Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, opts any, words chan<- string) error {
+func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, opts any, chunks chan<- genaiapi.MessageChunk) error {
 	r := trace.StartRegion(ctx, "llm.PromptStreaming")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -329,7 +329,7 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, 
 	start := time.Now()
 	msgs = l.processMsgs(msgs)
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "streaming")
-	err := l.cp.CompletionStream(ctx, msgs, opts, words)
+	err := l.cp.CompletionStream(ctx, msgs, opts, chunks)
 	if err != nil {
 		slog.Error("llm", "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return err

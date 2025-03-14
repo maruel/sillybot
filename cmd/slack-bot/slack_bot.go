@@ -317,7 +317,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		Type: genaiapi.Text,
 		Text: req.msg,
 	})
-	words := make(chan string, 10)
+	chunks := make(chan genaiapi.MessageChunk)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
@@ -328,7 +328,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		t := time.NewTicker(2 * time.Second)
 		for {
 			select {
-			case w, ok := <-words:
+			case pkt, ok := <-chunks:
 				if !ok {
 					if pending != "" {
 						text += pending
@@ -336,7 +336,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 							slog.Error("slack", "message", "failed posting message", "error", err2)
 						}
 					}
-					// Remember our own answer.
+					// Remember LLM's answer.
 					c.Messages = append(c.Messages, genaiapi.Message{
 						Role: genaiapi.Assistant,
 						Type: genaiapi.Text,
@@ -346,7 +346,10 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 					wg.Done()
 					return
 				}
-				pending += w
+				if pkt.Role != genaiapi.Assistant || pkt.Type != genaiapi.Text {
+					slog.Error("slack", "role", pkt.Role, "type", pkt.Type)
+				}
+				pending += pkt.Text
 			case <-t.C:
 				// Don't send one word at a time.
 				if len(pending) > 30 {
@@ -361,8 +364,8 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	}()
 	// We're chatting, we don't want too much content.
 	opts := genaiapi.CompletionOptions{MaxTokens: 2000, Temperature: 1.0}
-	err = s.l.PromptStreaming(ctx, c.Messages, &opts, words)
-	close(words)
+	err = s.l.PromptStreaming(ctx, c.Messages, &opts, chunks)
+	close(chunks)
 	wg.Wait()
 
 	if err != nil {
