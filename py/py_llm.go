@@ -31,12 +31,12 @@ type completionRequest struct {
 	Messages []message `json:"messages"`
 }
 
-func (c *CompletionProvider) Completion(ctx context.Context, msgs []genaiapi.Message, opts any) (genaiapi.Message, error) {
-	in := completionRequest{}
+func (c *CompletionProvider) Completion(ctx context.Context, msgs []genaiapi.Message, opts any) (genaiapi.CompletionResult, error) {
+	rpcin := completionRequest{}
 	for _, m := range msgs {
-		in.Messages = append(in.Messages, message{Role: string(m.Role), Content: m.Text})
+		rpcin.Messages = append(rpcin.Messages, message{Role: string(m.Role), Content: m.Text})
 	}
-	var out struct {
+	var rpcout struct {
 		Choices []struct {
 			FinishReason string `json:"finish_reason"`
 			Message      struct {
@@ -45,14 +45,14 @@ func (c *CompletionProvider) Completion(ctx context.Context, msgs []genaiapi.Mes
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	msg := genaiapi.Message{}
-	if err := httpjson.DefaultClient.Post(ctx, c.URL+"/v1/chat/completions", nil, &in, &out); err != nil {
-		return msg, err
+	out := genaiapi.CompletionResult{}
+	if err := httpjson.DefaultClient.Post(ctx, c.URL+"/v1/chat/completions", nil, &rpcin, &rpcout); err != nil {
+		return out, err
 	}
-	msg.Role = genaiapi.Role(out.Choices[0].Message.Role)
-	msg.Type = genaiapi.Text
-	msg.Text = out.Choices[0].Message.Content
-	return msg, nil
+	out.Role = genaiapi.Role(rpcout.Choices[0].Message.Role)
+	out.Type = genaiapi.Text
+	out.Text = rpcout.Choices[0].Message.Content
+	return out, nil
 }
 
 func (c *CompletionProvider) CompletionStream(ctx context.Context, msgs []genaiapi.Message, opts any, chunks chan<- genaiapi.MessageChunk) error {
