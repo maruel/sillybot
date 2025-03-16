@@ -279,7 +279,7 @@ func (l *Session) GetMetrics(ctx context.Context, m *llamacpp.Metrics) error {
 // See PromptStreaming for the arguments values.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts any) (string, error) {
+func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts genaiapi.Validatable) (string, error) {
 	r := trace.StartRegion(ctx, "llm.Prompt")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -320,7 +320,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts any)
 // Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, opts any, chunks chan<- genaiapi.MessageChunk) error {
+func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, opts genaiapi.Validatable, chunks chan<- genaiapi.MessageChunk) error {
 	r := trace.StartRegion(ctx, "llm.PromptStreaming")
 	defer r.End()
 	if len(msgs) == 0 {

@@ -31,7 +31,7 @@ type completionRequest struct {
 	Messages []message `json:"messages"`
 }
 
-func (c *CompletionProvider) Completion(ctx context.Context, msgs []genaiapi.Message, opts any) (genaiapi.CompletionResult, error) {
+func (c *CompletionProvider) Completion(ctx context.Context, msgs []genaiapi.Message, opts genaiapi.Validatable) (genaiapi.CompletionResult, error) {
 	rpcin := completionRequest{}
 	for _, m := range msgs {
 		rpcin.Messages = append(rpcin.Messages, message{Role: string(m.Role), Content: m.Text})
@@ -55,7 +55,7 @@ func (c *CompletionProvider) Completion(ctx context.Context, msgs []genaiapi.Mes
 	return out, nil
 }
 
-func (c *CompletionProvider) CompletionStream(ctx context.Context, msgs []genaiapi.Message, opts any, chunks chan<- genaiapi.MessageChunk) error {
+func (c *CompletionProvider) CompletionStream(ctx context.Context, msgs []genaiapi.Message, opts genaiapi.Validatable, chunks chan<- genaiapi.MessageChunk) error {
 	in := completionRequest{Stream: true}
 	for _, m := range msgs {
 		in.Messages = append(in.Messages, message{Role: string(m.Role), Content: m.Text})
