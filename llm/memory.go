@@ -19,11 +19,12 @@ import (
 
 // Conversation is a conversation with one user.
 type Conversation struct {
-	User       string
-	Channel    string
-	Started    time.Time
-	LastUpdate time.Time
-	Messages   []genaiapi.Message
+	User         string
+	SystemPrompt string
+	Channel      string
+	Started      time.Time
+	LastUpdate   time.Time
+	Messages     []genaiapi.Message
 
 	_ struct{}
 }
@@ -160,15 +161,17 @@ func (s *serializedMemory) to(m *Memory) error {
 }
 
 type serializedConversation struct {
-	User       string              `json:"u,omitempty"`
-	Channel    string              `json:"c,omitempty"`
-	Started    time.Time           `json:"s,omitempty"`
-	LastUpdate time.Time           `json:"l,omitempty"`
-	Messages   []serializedMessage `json:"m,omitempty"`
+	User         string              `json:"u,omitempty"`
+	SystemPrompt string              `json:"sp,omitempty"`
+	Channel      string              `json:"c,omitempty"`
+	Started      time.Time           `json:"s,omitempty"`
+	LastUpdate   time.Time           `json:"l,omitempty"`
+	Messages     []serializedMessage `json:"m,omitempty"`
 }
 
 func (s *serializedConversation) from(c *Conversation) error {
 	s.User = c.User
+	s.SystemPrompt = c.SystemPrompt
 	s.Channel = c.Channel
 	s.Started = c.Started
 	s.LastUpdate = c.LastUpdate
@@ -183,6 +186,7 @@ func (s *serializedConversation) from(c *Conversation) error {
 
 func (s *serializedConversation) to(c *Conversation) error {
 	c.User = s.User
+	c.SystemPrompt = s.SystemPrompt
 	c.Channel = s.Channel
 	c.Started = s.Started
 	c.LastUpdate = s.LastUpdate
@@ -202,20 +206,10 @@ type serializedMessage struct {
 
 func (s *serializedMessage) from(m *genaiapi.Message) error {
 	switch m.Role {
-	case genaiapi.System:
-		s.Role = 0
 	case genaiapi.User:
 		s.Role = 1
 	case genaiapi.Assistant:
 		s.Role = 2
-		/*
-			case genaiapi.AvailableTools:
-				s.Role = 3
-			case genaiapi.ToolCall:
-				s.Role = 4
-			case genaiapi.ToolCallResult:
-				s.Role = 5
-		*/
 	default:
 		return fmt.Errorf("unknown role %q", m.Role)
 	}
@@ -228,20 +222,10 @@ func (s *serializedMessage) from(m *genaiapi.Message) error {
 
 func (s *serializedMessage) to(m *genaiapi.Message) error {
 	switch s.Role {
-	case 0:
-		m.Role = genaiapi.System
 	case 1:
 		m.Role = genaiapi.User
 	case 2:
 		m.Role = genaiapi.Assistant
-		/*
-			case 3:
-				m.Role = genaiapi.AvailableTools
-			case 4:
-				m.Role = genaiapi.ToolCall
-			case 5:
-				m.Role = genaiapi.ToolCallResult
-		*/
 	default:
 		return fmt.Errorf("unknown role %q", s.Role)
 	}

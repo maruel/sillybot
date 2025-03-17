@@ -212,17 +212,12 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 		t.Parallel()
 		msgs := []genaiapi.Message{
 			{
-				Role: genaiapi.System,
-				Type: genaiapi.Text,
-				Text: systemPrompt,
-			},
-			{
 				Role: genaiapi.User,
 				Type: genaiapi.Text,
 				Text: prompt,
 			},
 		}
-		opts := genaiapi.CompletionOptions{MaxTokens: 10, Seed: 1}
+		opts := genaiapi.CompletionOptions{MaxTokens: 10, Seed: 1, SystemPrompt: systemPrompt}
 		got, err2 := l.Prompt(ctx, msgs, &opts)
 		if err2 != nil {
 			t.Fatal(err2)
@@ -232,11 +227,6 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	t.Run("Streaming", func(t *testing.T) {
 		t.Parallel()
 		msgs := []genaiapi.Message{
-			{
-				Role: genaiapi.System,
-				Type: genaiapi.Text,
-				Text: systemPrompt,
-			},
 			{
 				Role: genaiapi.User,
 				Type: genaiapi.Text,
@@ -259,7 +249,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 			}
 			wg.Done()
 		}()
-		opts := genaiapi.CompletionOptions{MaxTokens: 10, Seed: 1}
+		opts := genaiapi.CompletionOptions{MaxTokens: 10, Seed: 1, SystemPrompt: systemPrompt}
 		err2 := l.PromptStreaming(ctx, msgs, &opts, chunks)
 		close(chunks)
 		wg.Wait()

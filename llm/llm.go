@@ -8,11 +8,9 @@
 package llm
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"log/slog"
 	"os"
@@ -286,7 +284,6 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts gena
 		return "", errors.New("input required")
 	}
 	start := time.Now()
-	msgs = l.processMsgs(msgs)
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "blocking")
 	msg, err := l.cp.Completion(ctx, msgs, opts)
 	if err != nil {
@@ -327,7 +324,6 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, 
 		return errors.New("input required")
 	}
 	start := time.Now()
-	msgs = l.processMsgs(msgs)
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "streaming")
 	err := l.cp.CompletionStream(ctx, msgs, opts, chunks)
 	if err != nil {
@@ -408,17 +404,12 @@ func (l *Session) ensureModel(ctx context.Context, model PackedFileRef, k KnownL
 	}
 }
 
-// processMsgs process the system prompt.
-func (l *Session) processMsgs(msgs []genaiapi.Message) []genaiapi.Message {
-	if len(msgs) == 0 || msgs[0].Role != genaiapi.System {
-		return msgs
-	}
+/*
 	t, err := template.New("").Parse(msgs[0].Text)
 	if err != nil {
 		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Text, "error", err)
 		return msgs
 	}
-
 	keys := map[string]string{
 		"Now":   time.Now().Format("Monday 2006-01-02T15:04:05 MST"),
 		"Model": string(l.Model),
@@ -428,11 +419,9 @@ func (l *Session) processMsgs(msgs []genaiapi.Message) []genaiapi.Message {
 		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Text, "error", err)
 		return msgs
 	}
-	out := make([]genaiapi.Message, len(msgs))
-	copy(out, msgs)
 	out[0].Text = b.String()
 	return out
-}
+*/
 
 // Tools
 

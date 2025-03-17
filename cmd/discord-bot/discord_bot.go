@@ -508,26 +508,13 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 	}
 	reply := "I don't know you. I can't wait to start our discussion so I can get to know you better!"
 	c := d.getMemory(event.ChannelID)
-	if len(c.Messages) >= 1 && c.Messages[len(c.Messages)-1].Role != genaiapi.System {
+	if len(c.Messages) >= 1 {
 		reply = "The memory of our past conversations just got zapped."
 	}
 	c.Messages = nil
 	c = d.getMemory(event.ChannelID)
 	// Either update, remove or add, depending.
-	if (opts.SystemPrompt == "") != (d.settings.PromptSystem == "") {
-		if opts.SystemPrompt != "" {
-			c.Messages = append(c.Messages, genaiapi.Message{
-				Role: genaiapi.System,
-				Type: genaiapi.Text,
-				Text: opts.SystemPrompt,
-			})
-		} else if len(c.Messages) != 0 {
-			c.Messages = c.Messages[:len(c.Messages)-1]
-		}
-	} else if opts.SystemPrompt != "" {
-		c.Messages[len(c.Messages)-1].Text = opts.SystemPrompt
-	}
-
+	c.SystemPrompt = opts.SystemPrompt
 	reply += "\n*System prompt*: " + escapeMarkdown(opts.SystemPrompt)
 	if err := d.interactionRespond(event.Interaction, reply); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
@@ -759,13 +746,6 @@ func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 	if len(c.Messages) == 0 {
 		if d.toolsMsg.Text != "" {
 			c.Messages = []genaiapi.Message{d.toolsMsg}
-		}
-		if d.settings.PromptSystem != "" {
-			c.Messages = append(c.Messages, genaiapi.Message{
-				Role: genaiapi.System,
-				Type: genaiapi.Text,
-				Text: d.settings.PromptSystem,
-			})
 		}
 	}
 	return c
@@ -1268,11 +1248,6 @@ func (d *discordBot) handleImage(req intReq) {
 				for ; j < len(options); j++ {
 					msgs := []genaiapi.Message{
 						{
-							Role: genaiapi.System,
-							Type: genaiapi.Text,
-							Text: d.settings.PromptLabels,
-						},
-						{
 							Role: genaiapi.User,
 							Type: genaiapi.Text,
 							Text: req.description,
@@ -1281,7 +1256,12 @@ func (d *discordBot) handleImage(req intReq) {
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*int64(i) + 4*int64(j)
-					opts := genaiapi.CompletionOptions{MaxTokens: 70, Seed: imgseed, Temperature: 1.0}
+					opts := genaiapi.CompletionOptions{
+						MaxTokens:    70,
+						Temperature:  1.0,
+						SystemPrompt: d.settings.PromptLabels,
+						Seed:         imgseed,
+					}
 					newLabels, err := d.l.Prompt(ctx, msgs, &opts)
 					if err != nil {
 						u.err = fmt.Errorf("failed to enhance labels: %w", err)
@@ -1318,17 +1298,17 @@ func (d *discordBot) handleImage(req intReq) {
 				// Image: use the LLM to generate the image prompt based on the description.
 				msgs := []genaiapi.Message{
 					{
-						Role: genaiapi.System,
-						Type: genaiapi.Text,
-						Text: d.settings.PromptImage,
-					},
-					{
 						Role: genaiapi.User,
 						Type: genaiapi.Text,
 						Text: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent,
 					},
 				}
-				opts := genaiapi.CompletionOptions{MaxTokens: 125, Seed: seed, Temperature: 1.0}
+				opts := genaiapi.CompletionOptions{
+					MaxTokens:    125,
+					Temperature:  1.0,
+					SystemPrompt: d.settings.PromptLabels,
+					Seed:         seed,
+				}
 				if imagePrompt, u.err = d.l.Prompt(ctx, msgs, &opts); u.err != nil {
 					u.err = fmt.Errorf("failed to enhance image generation prompt: %w", u.err)
 					updates <- u

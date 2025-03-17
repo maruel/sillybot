@@ -299,15 +299,6 @@ func (s *slackBot) onAppMention(ctx context.Context, req msgReq) {
 // handlePrompt uses the LLM to generate a response.
 func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	c := s.mem.Get(req.userid, req.channel)
-	if len(c.Messages) == 0 {
-		c.Messages = []genaiapi.Message{
-			{
-				Role: genaiapi.System,
-				Type: genaiapi.Text,
-				Text: s.settings.PromptSystem,
-			},
-		}
-	}
 	_, ts, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("(generating)", false), slack.MsgOptionTS(req.ts))
 	if err != nil {
 		slog.Error("slack", "message", "failed posting message", "error", err)
@@ -363,7 +354,11 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		}
 	}()
 	// We're chatting, we don't want too much content.
-	opts := genaiapi.CompletionOptions{MaxTokens: 2000, Temperature: 1.0}
+	opts := genaiapi.CompletionOptions{
+		MaxTokens:    2000,
+		Temperature:  1.0,
+		SystemPrompt: s.settings.PromptImage,
+	}
 	err = s.l.PromptStreaming(ctx, c.Messages, &opts, chunks)
 	close(chunks)
 	wg.Wait()
@@ -385,11 +380,6 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	if s.l != nil {
 		msgs := []genaiapi.Message{
 			{
-				Role: genaiapi.System,
-				Type: genaiapi.Text,
-				Text: s.settings.PromptImage,
-			},
-			{
 				Role: genaiapi.User,
 				Type: genaiapi.Text,
 				Text: req.msg,
@@ -398,7 +388,11 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 
 		// Intentionally limit the number of tokens, otherwise it's Stable
 		// Diffusion that is unhappy.
-		opts := genaiapi.CompletionOptions{MaxTokens: 70, Temperature: 1.0}
+		opts := genaiapi.CompletionOptions{
+			MaxTokens:    70,
+			Temperature:  1.0,
+			SystemPrompt: s.settings.PromptImage,
+		}
 		if reply, err := s.l.Prompt(ctx, msgs, &opts); err != nil {
 			slog.Error("discord", "message", "failed to enhance prompt", "error", err)
 		} else {
