@@ -15,9 +15,10 @@ import (
 
 	"github.com/maruel/genai/genaiapi"
 	"github.com/maruel/httpjson"
+	"golang.org/x/sync/errgroup"
 )
 
-type CompletionProvider struct {
+type Client struct {
 	URL string
 }
 
@@ -26,86 +27,132 @@ type message struct {
 	Content string `json:"content"`
 }
 
-type completionRequest struct {
+func (m *message) from(in *genaiapi.Message) {
+	m.Role = string(in.Role)
+	if len(in.Contents) != 1 {
+		panic("unexpected number of contents")
+	}
+	m.Content = in.Contents[0].Text
+}
+
+func (m *message) to(out *genaiapi.Message) {
+	out.Role = genaiapi.Role(m.Role)
+	out.Contents = []genaiapi.Content{{Text: m.Content}}
+}
+
+type CompletionRequest struct {
 	Stream   bool      `json:"stream"`
 	Messages []message `json:"messages"`
 }
 
-func (c *CompletionProvider) Completion(ctx context.Context, msgs []genaiapi.Message, opts genaiapi.Validatable) (genaiapi.CompletionResult, error) {
-	rpcin := completionRequest{}
-	for _, m := range msgs {
-		rpcin.Messages = append(rpcin.Messages, message{Role: string(m.Role), Content: m.Text})
+func (c *CompletionRequest) Init(msgs genaiapi.Messages, opts genaiapi.Validatable) error {
+	c.Messages = make([]message, len(msgs))
+	for i := range c.Messages {
+		c.Messages[i].from(&msgs[i])
 	}
-	var rpcout struct {
-		Choices []struct {
-			FinishReason string `json:"finish_reason"`
-			Message      struct {
-				Role    string `json:"role"`
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+	return nil
+}
+
+type completionResponse struct {
+	Choices []struct {
+		FinishReason string  `json:"finish_reason"`
+		Message      message `json:"message"`
+	} `json:"choices"`
+}
+
+type CompletionStreamChunkResponse struct {
+	Choices []struct {
+		FinishReason string `json:"finish_reason"`
+		Delta        struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+	} `json:"choices"`
+}
+
+func (c *Client) Completion(ctx context.Context, msgs genaiapi.Messages, opts genaiapi.Validatable) (genaiapi.CompletionResult, error) {
+	rpcin := CompletionRequest{Messages: make([]message, len(msgs))}
+	for i := range rpcin.Messages {
+		rpcin.Messages[i].from(&msgs[i])
 	}
 	out := genaiapi.CompletionResult{}
+	rpcout := completionResponse{}
 	if err := httpjson.DefaultClient.Post(ctx, c.URL+"/v1/chat/completions", nil, &rpcin, &rpcout); err != nil {
 		return out, err
 	}
-	out.Role = genaiapi.Role(rpcout.Choices[0].Message.Role)
-	out.Type = genaiapi.Text
-	out.Text = rpcout.Choices[0].Message.Content
+	rpcout.Choices[0].Message.to(&out.Message)
 	return out, nil
 }
 
-func (c *CompletionProvider) CompletionStream(ctx context.Context, msgs []genaiapi.Message, opts genaiapi.Validatable, chunks chan<- genaiapi.MessageChunk) error {
-	in := completionRequest{Stream: true}
-	for _, m := range msgs {
-		in.Messages = append(in.Messages, message{Role: string(m.Role), Content: m.Text})
-	}
-	resp, err := httpjson.DefaultClient.PostRequest(ctx, c.URL+"/v1/chat/completions", nil, &in)
-	if err != nil {
+func (c *Client) CompletionStream(ctx context.Context, msgs genaiapi.Messages, opts genaiapi.Validatable, chunks chan<- genaiapi.MessageFragment) error {
+	in := CompletionRequest{}
+	if err := in.Init(msgs, opts); err != nil {
 		return err
 	}
+	ch := make(chan CompletionStreamChunkResponse)
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return processStreamPackets(ch, chunks)
+	})
+	err := c.CompletionStreamRaw(ctx, &in, ch)
+	close(ch)
+	if err2 := eg.Wait(); err2 != nil {
+		err = err2
+	}
+	return err
+}
+
+func processStreamPackets(ch <-chan CompletionStreamChunkResponse, chunks chan<- genaiapi.MessageFragment) error {
+	defer func() {
+		// We need to empty the channel to avoid blocking the goroutine.
+		for range ch {
+		}
+	}()
+	for pkt := range ch {
+		if len(pkt.Choices) != 1 {
+			return fmt.Errorf("server returned an unexpected number of choices, expected 1, got %d", len(pkt.Choices))
+		}
+		chunks <- genaiapi.MessageFragment{TextFragment: pkt.Choices[0].Delta.Content}
+	}
+	return nil
+}
+
+func (c *Client) CompletionStreamRaw(ctx context.Context, in *CompletionRequest, out chan<- CompletionStreamChunkResponse) error {
+	in.Stream = true
+	resp, err := httpjson.DefaultClient.PostRequest(ctx, c.URL+"/v1/chat/completions", nil, in)
+	if err != nil {
+		return fmt.Errorf("failed to get server response: %w", err)
+	}
 	defer resp.Body.Close()
-	r := bufio.NewReader(resp.Body)
-	for {
+	for r := bufio.NewReader(resp.Body); ; {
 		line, err := r.ReadBytes('\n')
-		line = bytes.TrimSpace(line)
-		if err == io.EOF {
-			err = nil
+		if line = bytes.TrimSpace(line); err == io.EOF {
 			if len(line) == 0 {
 				return nil
 			}
-		}
-		if err != nil {
+		} else if err != nil {
 			return fmt.Errorf("failed to get server response: %w", err)
 		}
-		if len(line) == 0 {
-			continue
+		if len(line) != 0 {
+			if err := parseStreamLine(line, out); err != nil {
+				return err
+			}
 		}
-		const prefix = "data: "
-		if !bytes.HasPrefix(line, []byte(prefix)) {
-			return fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
-		}
-		suffix := string(line[len(prefix):])
-		if suffix == "[DONE]" {
-			return nil
-		}
-		d := json.NewDecoder(strings.NewReader(suffix))
-		d.DisallowUnknownFields()
-		d.UseNumber()
-		var msg struct {
-			Choices []struct {
-				FinishReason string `json:"finish_reason"`
-				Delta        struct {
-					Content string `json:"content"`
-				} `json:"delta"`
-			} `json:"choices"`
-		}
-		if err = d.Decode(&msg); err != nil {
-			return fmt.Errorf("failed to decode server response %q: %w", string(line), err)
-		}
-		if len(msg.Choices) != 1 {
-			return fmt.Errorf("server returned an unexpected number of choices, expected 1, got %d", len(msg.Choices))
-		}
-		chunks <- genaiapi.MessageChunk{Role: genaiapi.Assistant, Type: genaiapi.Text, Text: msg.Choices[0].Delta.Content}
 	}
+}
+
+func parseStreamLine(line []byte, out chan<- CompletionStreamChunkResponse) error {
+	const dataPrefix = "data: "
+	if !bytes.HasPrefix(line, []byte(dataPrefix)) {
+		return fmt.Errorf("unexpected line. expected \"data: \", got %q", line)
+	}
+	suffix := string(line[len(dataPrefix):])
+	d := json.NewDecoder(strings.NewReader(suffix))
+	d.DisallowUnknownFields()
+	d.UseNumber()
+	msg := CompletionStreamChunkResponse{}
+	if err := d.Decode(&msg); err != nil {
+		return fmt.Errorf("failed to decode server response %q: %w", string(line), err)
+	}
+	out <- msg
+	return nil
 }

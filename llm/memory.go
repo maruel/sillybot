@@ -213,10 +213,13 @@ func (s *serializedMessage) from(m *genaiapi.Message) error {
 	default:
 		return fmt.Errorf("unknown role %q", m.Role)
 	}
-	if m.Type != genaiapi.Text {
-		return fmt.Errorf("unsupported message type %q", m.Type)
+	if len(m.Contents) != 1 {
+		return fmt.Errorf("unsupported message type %#v", m)
 	}
-	s.Content = m.Text
+	if m.Contents[0].Text != "" {
+		return fmt.Errorf("unsupported message type %#v", m)
+	}
+	s.Content = m.Contents[0].Text
 	return nil
 }
 
@@ -229,7 +232,6 @@ func (s *serializedMessage) to(m *genaiapi.Message) error {
 	default:
 		return fmt.Errorf("unknown role %q", s.Role)
 	}
-	m.Type = genaiapi.Text
-	m.Text = s.Content
+	m.Contents = []genaiapi.Content{{Text: s.Content}}
 	return nil
 }

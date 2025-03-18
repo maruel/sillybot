@@ -217,7 +217,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 	}
 
 	if l.backend == "python" {
-		l.cp = &py.CompletionProvider{URL: l.baseURL}
+		l.cp = &py.Client{URL: l.baseURL}
 	} else {
 		l.cp, err = llamacpp.New(l.baseURL, l.Encoding)
 		if err != nil {
@@ -290,7 +290,10 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts gena
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return "", err
 	}
-	reply := msg.Text
+	if len(msg.Contents) != 1 {
+		return "", fmt.Errorf("unexpected number of messages %d", len(msg.Contents))
+	}
+	reply := msg.Contents[0].Text
 	// TODO: Remove all these.
 	// Llama-3
 	reply = strings.TrimSuffix(reply, "<|eot_id|>")
@@ -317,7 +320,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts gena
 // Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, opts genaiapi.Validatable, chunks chan<- genaiapi.MessageChunk) error {
+func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, opts genaiapi.Validatable, chunks chan<- genaiapi.MessageFragment) error {
 	r := trace.StartRegion(ctx, "llm.PromptStreaming")
 	defer r.End()
 	if len(msgs) == 0 {

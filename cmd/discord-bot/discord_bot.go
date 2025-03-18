@@ -744,7 +744,8 @@ func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 	// TODO: Send a warning or forget when one of Model, Prompt, Tools changed.
 	c := d.mem.Get("", channelID)
 	if len(c.Messages) == 0 {
-		if d.toolsMsg.Text != "" {
+		// Ish.
+		if d.toolsMsg.Contents[0].Text != "" {
 			c.Messages = []genaiapi.Message{d.toolsMsg}
 		}
 	}
@@ -764,11 +765,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 // then process it. This function exists for testing.
 func (d *discordBot) handlePromptBlocking(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, genaiapi.Message{
-		Role: genaiapi.User,
-		Type: genaiapi.Text,
-		Text: req.msg,
-	})
+	c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.User, req.msg))
 	replyToID := req.replyToID
 	for {
 		// 32768
@@ -781,11 +778,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 			return
 		}
 		// Remember our own answer.
-		c.Messages = append(c.Messages, genaiapi.Message{
-			Role: genaiapi.Assistant,
-			Type: genaiapi.Text,
-			Text: reply,
-		})
+		c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.Assistant, reply))
 		gotToolCall := false
 		for reply != "" {
 			if d.l.Encoding != nil && !gotToolCall {
@@ -832,11 +825,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 // handlePromptStreaming request a reply from the LLM and streams replies back.
 func (d *discordBot) handlePromptStreaming(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, genaiapi.Message{
-		Role: genaiapi.User,
-		Type: genaiapi.Text,
-		Text: req.msg,
-	})
+	c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.User, req.msg))
 	wg := sync.WaitGroup{}
 	for {
 		ctx, cancel := context.WithCancel(d.ctx)
@@ -844,7 +833,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 		// Make it blocking to force a goroutine context switch when a word is
 		// received. When it's buffered, there can be significant delay when LLM is
 		// running on the CPU.
-		chunks := make(chan genaiapi.MessageChunk)
+		chunks := make(chan genaiapi.MessageFragment)
 		wg.Add(1)
 		go func() {
 			const rate = 2000 * time.Millisecond
@@ -903,20 +892,16 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 								}
 							}
 							// Remember our own answer.
-							c.Messages = append(c.Messages, genaiapi.Message{
-								Role: genaiapi.Assistant,
-								Type: genaiapi.Text,
-								Text: text,
-							})
+							c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.Assistant, text))
 						}
 						t.Stop()
 						wg.Done()
 						return
 					}
-					if pkt.Role != genaiapi.Assistant || pkt.Type != genaiapi.Text {
-						slog.Error("discord", "role", pkt.Role, "type", pkt.Type)
+					if pkt.TextFragment == "" {
+						slog.Error("discord", "pkg", pkt)
 					}
-					pending += pkt.Text
+					pending += pkt.TextFragment
 				case now := <-t.C:
 					// TODO: Handle when the model replies with more than maxMessage per
 					// rate.
@@ -1246,13 +1231,7 @@ func (d *discordBot) handleImage(req intReq) {
 				options := [3]string{}
 				j := 0
 				for ; j < len(options); j++ {
-					msgs := []genaiapi.Message{
-						{
-							Role: genaiapi.User,
-							Type: genaiapi.Text,
-							Text: req.description,
-						},
-					}
+					msgs := genaiapi.Messages{genaiapi.NewTextMessage(genaiapi.User, req.description)}
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*int64(i) + 4*int64(j)
@@ -1296,12 +1275,8 @@ func (d *discordBot) handleImage(req intReq) {
 			imagePrompt := req.imagePrompt
 			if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
 				// Image: use the LLM to generate the image prompt based on the description.
-				msgs := []genaiapi.Message{
-					{
-						Role: genaiapi.User,
-						Type: genaiapi.Text,
-						Text: "Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent,
-					},
+				msgs := genaiapi.Messages{
+					genaiapi.NewTextMessage(genaiapi.User, "Prompt: "+req.description+"\n"+"Text relevant to the image: "+labelsContent),
 				}
 				opts := genaiapi.CompletionOptions{
 					MaxTokens:    125,

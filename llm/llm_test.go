@@ -210,12 +210,8 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	const prompt = "reply with \"ok chief\""
 	t.Run("Blocking", func(t *testing.T) {
 		t.Parallel()
-		msgs := []genaiapi.Message{
-			{
-				Role: genaiapi.User,
-				Type: genaiapi.Text,
-				Text: prompt,
-			},
+		msgs := genaiapi.Messages{
+			genaiapi.NewTextMessage(genaiapi.User, prompt),
 		}
 		opts := genaiapi.CompletionOptions{MaxTokens: 10, Seed: 1, SystemPrompt: systemPrompt}
 		got, err2 := l.Prompt(ctx, msgs, &opts)
@@ -227,25 +223,18 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	t.Run("Streaming", func(t *testing.T) {
 		t.Parallel()
 		msgs := []genaiapi.Message{
-			{
-				Role: genaiapi.User,
-				Type: genaiapi.Text,
-				Text: prompt,
-			},
+			genaiapi.NewTextMessage(genaiapi.User, prompt),
 		}
-		chunks := make(chan genaiapi.MessageChunk)
+		chunks := make(chan genaiapi.MessageFragment)
 		got := ""
 		wg := sync.WaitGroup{}
 		wg.Add(1)
 		go func() {
 			for pkt := range chunks {
-				if pkt.Role != genaiapi.Assistant {
-					t.Errorf("expected Assistant role, got %s", pkt.Role)
+				if pkt.TextFragment == "" {
+					t.Errorf("expected Text type, got %#v", pkt)
 				}
-				if pkt.Type != genaiapi.Text {
-					t.Errorf("expected Text type, got %s", pkt.Type)
-				}
-				got += pkt.Text
+				got += pkt.TextFragment
 			}
 			wg.Done()
 		}()
@@ -321,17 +310,13 @@ func TestMistralTool(t *testing.T) {
 	// if err != nil {
 	// 	t.Fatal(err)
 	// }
-	msgs := []genaiapi.Message{
+	msgs := genaiapi.Messages{
 		// {
 		// 	Role: genaiapi.AvailableTools,
 		// 	Type: genaiapi.Text,
 		// 	Text: string(toolsB),
 		// },
-		{
-			Role: genaiapi.User,
-			Type: genaiapi.Text,
-			Text: `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`,
-		},
+		genaiapi.NewTextMessage(genaiapi.User, `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`),
 	}
 	for _, m := range msgs {
 		t.Log(m)
@@ -346,7 +331,7 @@ func TestMistralTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := msg.Text
+	s := msg.Contents[0].Text
 	msgs = append(msgs, parseToolResponse(t, s, 0)...)
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
@@ -356,12 +341,7 @@ func TestMistralTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s = msg.Text
-	msgs = append(msgs, genaiapi.Message{
-		Role: genaiapi.Assistant,
-		Type: genaiapi.Text,
-		Text: s,
-	})
+	msgs = append(msgs, msg.Message)
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
@@ -371,11 +351,7 @@ func TestMistralTool(t *testing.T) {
 	}
 
 	// Now do a calculation!
-	msgs = append(msgs, genaiapi.Message{
-		Role: genaiapi.User,
-		Type: genaiapi.Text,
-		Text: "Give me the result of 43215 divided by 215.",
-	})
+	msgs = append(msgs, genaiapi.NewTextMessage(genaiapi.User, "Give me the result of 43215 divided by 215."))
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
@@ -383,7 +359,7 @@ func TestMistralTool(t *testing.T) {
 	if msg, err = c.Completion(ctx, msgs, &opts); err != nil {
 		t.Fatal(err)
 	}
-	s = msg.Text
+	s = msg.Contents[0].Text
 	msgs = append(msgs, parseToolResponse(t, s, 1)...)
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
@@ -392,12 +368,7 @@ func TestMistralTool(t *testing.T) {
 	if msg, err = c.Completion(ctx, msgs, &opts); err != nil {
 		t.Fatal(err)
 	}
-	s = msg.Text
-	msgs = append(msgs, genaiapi.Message{
-		Role: genaiapi.Assistant,
-		Type: genaiapi.Text,
-		Text: s,
-	})
+	msgs = append(msgs, msg.Message)
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}

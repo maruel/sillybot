@@ -49,14 +49,11 @@ func TestNewServer(t *testing.T) {
 		}
 	})
 
-	client := CompletionProvider{URL: "http://localhost:" + port}
+	client := Client{URL: "http://localhost:" + port}
 	start := time.Now()
 	for {
-		resp, err := client.Completion(ctx, []genaiapi.Message{
-			{
-				Role: genaiapi.User,
-				Text: "Say hello. Reply with only one word.",
-			},
+		resp, err := client.Completion(ctx, genaiapi.Messages{
+			genaiapi.NewTextMessage(genaiapi.User, "Say hello. Reply with only one word."),
 		}, nil)
 		var v *url.Error
 		var h *httpjson.Error
@@ -75,7 +72,7 @@ func TestNewServer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		txt := strings.TrimSpace(resp.Text)
+		txt := strings.TrimSpace(resp.Contents[0].Text)
 		txt = strings.TrimRight(txt, ".!")
 		txt = strings.ToLower(txt)
 		if txt != "hello" {

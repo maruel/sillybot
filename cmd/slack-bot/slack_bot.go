@@ -303,12 +303,8 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	if err != nil {
 		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
-	c.Messages = append(c.Messages, genaiapi.Message{
-		Role: genaiapi.User,
-		Type: genaiapi.Text,
-		Text: req.msg,
-	})
-	chunks := make(chan genaiapi.MessageChunk)
+	c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.User, req.msg))
+	chunks := make(chan genaiapi.MessageFragment)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
@@ -328,19 +324,15 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 						}
 					}
 					// Remember LLM's answer.
-					c.Messages = append(c.Messages, genaiapi.Message{
-						Role: genaiapi.Assistant,
-						Type: genaiapi.Text,
-						Text: text,
-					})
+					c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.Assistant, text))
 					t.Stop()
 					wg.Done()
 					return
 				}
-				if pkt.Role != genaiapi.Assistant || pkt.Type != genaiapi.Text {
-					slog.Error("slack", "role", pkt.Role, "type", pkt.Type)
+				if pkt.TextFragment == "" {
+					slog.Error("slack", "pkt", pkt)
 				}
-				pending += pkt.Text
+				pending += pkt.TextFragment
 			case <-t.C:
 				// Don't send one word at a time.
 				if len(pending) > 30 {
@@ -378,13 +370,7 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	req.mu.Unlock()
 	// Use the LLM to improve the prompt!
 	if s.l != nil {
-		msgs := []genaiapi.Message{
-			{
-				Role: genaiapi.User,
-				Type: genaiapi.Text,
-				Text: req.msg,
-			},
-		}
+		msgs := genaiapi.Messages{genaiapi.NewTextMessage(genaiapi.User, req.msg)}
 
 		// Intentionally limit the number of tokens, otherwise it's Stable
 		// Diffusion that is unhappy.
