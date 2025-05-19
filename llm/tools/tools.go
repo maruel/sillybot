@@ -24,7 +24,7 @@ import (
 // The supported operations are "addition", "subtraction", "multiplication" and "division".
 var Calculate = genai.ToolDef{
 	Name:        "calculate",
-	Description: "Calculate an mathematical arithmetic operation.",
+	Description: "Calculate a mathematical arithmetic operation.",
 	Callback: func(args *calculateArgs) (string, error) {
 		if i1, err := args.FirstNumber.Int64(); err == nil {
 			if i2, err := args.SecondNumber.Int64(); err == nil {
