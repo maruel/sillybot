@@ -29,8 +29,6 @@ import (
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
-	"google.golang.org/api/customsearch/v1"
-	"google.golang.org/api/option"
 )
 
 // Discord returns HTTP 400 BASE_TYPE_MAX_LENGTH if the message is longer than
@@ -617,6 +615,7 @@ func (d *discordBot) imageRoutine() {
 	}
 }
 
+/* TODO
 func (d *discordBot) toolWebSearch(ctx context.Context, query string) (*customsearch.Search, error) {
 	// - https://developers.google.com/custom-search/v1/using_rest
 	// - https://console.cloud.google.com/apis/credentials
@@ -639,6 +638,7 @@ func (d *discordBot) toolWebSearch(ctx context.Context, query string) (*customse
 	// - https://learn.microsoft.com/en-us/bing/search-apis/bing-web-search/quickstarts/rest/go
 	// - https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/CognitiveSearch
 }
+*/
 
 func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 	// TODO: Send a warning or forget when one of Model, Prompt, Tools changed.

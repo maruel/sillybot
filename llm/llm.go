@@ -104,7 +104,6 @@ type Session struct {
 	cache     string
 	modelFile string
 	srv       io.Closer
-	done      <-chan error
 }
 
 // New instantiates a llama.cpp or llamafile server, or optionally uses
@@ -140,26 +139,21 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 		if opts.Model == "python" {
 			l.backend = "python"
 			pyDir := filepath.Join(cache, "py")
-			if err := os.MkdirAll(pyDir, 0o755); err != nil {
+			if err = os.MkdirAll(pyDir, 0o755); err != nil {
 				return nil, err
 			}
-			srv, err := py.NewServer(ctx, "llm.py", pyDir, filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
-			if err != nil {
-				return nil, err
+			srv, err2 := py.NewServer(ctx, "llm.py", pyDir, filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
+			if err2 != nil {
+				return nil, err2
 			}
 			l.srv = srv
 			done = srv.Done()
 		} else {
 			llamasrv := ""
-			isLlamafile := false
-			if llamasrv, isLlamafile, err = getLlama(ctx, cache); err != nil {
+			if llamasrv, err = getLlama(ctx, cache); err != nil {
 				return nil, fmt.Errorf("failed to load llm: %w", err)
 			}
-			if l.backend = "llama-server"; isLlamafile {
-				// l.backend = "llamafile"
-				return nil, fmt.Errorf("llamafile is not supported yet")
-			}
-			// cmd := mangleForLlamafile(isLlamafile, llamasrv, "--version")
+			l.backend = "llama-server"
 			// Make sure the model is available.
 			modelFile := ""
 			if modelFile, err = l.ensureModel(ctx, opts.Model); err != nil {
@@ -170,18 +164,15 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 			if opts.ContextLength != 0 {
 				args = append(args, "--ctx-size", strconv.Itoa(opts.ContextLength))
 			}
-			//if isLlamafile {
-			//	cmd := mangleForLlamafile(isLlamafile, append(args, "--nobrowser")...)
-			//}
-			f, err := os.Create(filepath.Join(cache, "llm.log"))
-			if err != nil {
-				return nil, err
+			f, err2 := os.Create(filepath.Join(cache, "llm.log"))
+			if err2 != nil {
+				return nil, err2
 			}
 			hostPort := fmt.Sprintf("127.0.0.1:%d", port)
-			srv, err := llamacppsrv.NewServer(ctx, llamasrv, modelFile, f, hostPort, 0, args)
+			srv, err2 := llamacppsrv.NewServer(ctx, llamasrv, modelFile, f, hostPort, 0, args)
 			_ = f.Close()
-			if err != nil {
-				return nil, err
+			if err2 != nil {
+				return nil, err2
 			}
 			l.srv = srv
 			done = srv.Done()
@@ -331,9 +322,8 @@ func (l *Session) ensureModel(ctx context.Context, model PackedFileRef) (string,
 	}
 	if dst != "" {
 		// Hack: quickly check if the file is there, if so, just return this.
-		dst := filepath.Join(l.cache, dst)
-		_, err := os.Stat(dst)
-		if err == nil {
+		dst = filepath.Join(l.cache, dst)
+		if _, err = os.Stat(dst); err == nil {
 			l.modelFile = dst
 			return dst, nil
 		}
@@ -418,28 +408,14 @@ func getModelPath(model PackedFileRef) (string, error) {
 	return model.Basename() + ".gguf", nil
 }
 
-// mangleForLlamafile hacks the command arguments to make it work for llamafile. Pass
-// through otherwise.
-func mangleForLlamafile(isLlamafile bool, cmd ...string) []string {
-	// This hack is only needed for llamafile, not llama-server.
-	if runtime.GOOS == "windows" || !isLlamafile {
-		return cmd
-	}
-	// TODO: Proper escaping.
-	return []string{"/bin/sh", "-c", strings.Join(cmd, " ")}
-}
-
 // getLlama returns the file path to llama.cpp/llamafile executable.
 //
 // It first look for llama-server or llamafile if one of them is PATH. Then it
 // checks if one of them is s in the cache directory, otherwise downloads an
 // hard coded version of llama-server from GitHub.
-func getLlama(ctx context.Context, cache string) (string, bool, error) {
+func getLlama(ctx context.Context, cache string) (string, error) {
 	if s, err := exec.LookPath("llama-server"); err == nil {
-		return s, false, nil
-	}
-	if s, err := exec.LookPath("llamafile"); err == nil {
-		return s, true, nil
+		return s, nil
 	}
 	execSuffix := ""
 	if runtime.GOOS == "windows" {
@@ -447,8 +423,8 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	}
 	llamaserver := filepath.Join(cache, "llama-server"+execSuffix)
 	if _, err := os.Stat(llamaserver); err == nil {
-		return llamaserver, false, nil
+		return llamaserver, nil
 	}
 	llamaserver, err := llamacppsrv.DownloadRelease(ctx, cache, llamacppsrv.BuildNumber)
-	return llamaserver, false, err
+	return llamaserver, err
 }
