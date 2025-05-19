@@ -13,7 +13,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/maruel/genai/genaiapi"
+	"github.com/maruel/genai"
 	"github.com/maruel/httpjson"
 	"golang.org/x/sync/errgroup"
 )
@@ -27,7 +27,7 @@ type message struct {
 	Content string `json:"content"`
 }
 
-func (m *message) from(in *genaiapi.Message) {
+func (m *message) from(in *genai.Message) {
 	m.Role = string(in.Role)
 	if len(in.Contents) != 1 {
 		panic("unexpected number of contents")
@@ -35,9 +35,9 @@ func (m *message) from(in *genaiapi.Message) {
 	m.Content = in.Contents[0].Text
 }
 
-func (m *message) to(out *genaiapi.Message) {
-	out.Role = genaiapi.Role(m.Role)
-	out.Contents = []genaiapi.Content{{Text: m.Content}}
+func (m *message) to(out *genai.Message) {
+	out.Role = genai.Role(m.Role)
+	out.Contents = []genai.Content{{Text: m.Content}}
 }
 
 type CompletionRequest struct {
@@ -45,7 +45,7 @@ type CompletionRequest struct {
 	Messages []message `json:"messages"`
 }
 
-func (c *CompletionRequest) Init(msgs genaiapi.Messages, opts genaiapi.Validatable) error {
+func (c *CompletionRequest) Init(msgs genai.Messages, opts genai.Validatable) error {
 	c.Messages = make([]message, len(msgs))
 	for i := range c.Messages {
 		c.Messages[i].from(&msgs[i])
@@ -69,12 +69,12 @@ type CompletionStreamChunkResponse struct {
 	} `json:"choices"`
 }
 
-func (c *Client) Completion(ctx context.Context, msgs genaiapi.Messages, opts genaiapi.Validatable) (genaiapi.CompletionResult, error) {
+func (c *Client) Chat(ctx context.Context, msgs genai.Messages, opts genai.Validatable) (genai.ChatResult, error) {
 	rpcin := CompletionRequest{Messages: make([]message, len(msgs))}
 	for i := range rpcin.Messages {
 		rpcin.Messages[i].from(&msgs[i])
 	}
-	out := genaiapi.CompletionResult{}
+	out := genai.ChatResult{}
 	rpcout := completionResponse{}
 	if err := httpjson.DefaultClient.Post(ctx, c.URL+"/v1/chat/completions", nil, &rpcin, &rpcout); err != nil {
 		return out, err
@@ -83,25 +83,26 @@ func (c *Client) Completion(ctx context.Context, msgs genaiapi.Messages, opts ge
 	return out, nil
 }
 
-func (c *Client) CompletionStream(ctx context.Context, msgs genaiapi.Messages, opts genaiapi.Validatable, chunks chan<- genaiapi.MessageFragment) error {
+func (c *Client) ChatStream(ctx context.Context, msgs genai.Messages, opts genai.Validatable, chunks chan<- genai.MessageFragment) (genai.Usage, error) {
+	usage := genai.Usage{}
 	in := CompletionRequest{}
 	if err := in.Init(msgs, opts); err != nil {
-		return err
+		return usage, err
 	}
 	ch := make(chan CompletionStreamChunkResponse)
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		return processStreamPackets(ch, chunks)
 	})
-	err := c.CompletionStreamRaw(ctx, &in, ch)
+	usage, err := c.ChatStreamRaw(ctx, &in, ch)
 	close(ch)
 	if err2 := eg.Wait(); err2 != nil {
 		err = err2
 	}
-	return err
+	return usage, err
 }
 
-func processStreamPackets(ch <-chan CompletionStreamChunkResponse, chunks chan<- genaiapi.MessageFragment) error {
+func processStreamPackets(ch <-chan CompletionStreamChunkResponse, chunks chan<- genai.MessageFragment) error {
 	defer func() {
 		// We need to empty the channel to avoid blocking the goroutine.
 		for range ch {
@@ -111,30 +112,32 @@ func processStreamPackets(ch <-chan CompletionStreamChunkResponse, chunks chan<-
 		if len(pkt.Choices) != 1 {
 			return fmt.Errorf("server returned an unexpected number of choices, expected 1, got %d", len(pkt.Choices))
 		}
-		chunks <- genaiapi.MessageFragment{TextFragment: pkt.Choices[0].Delta.Content}
+		chunks <- genai.MessageFragment{TextFragment: pkt.Choices[0].Delta.Content}
 	}
 	return nil
 }
 
-func (c *Client) CompletionStreamRaw(ctx context.Context, in *CompletionRequest, out chan<- CompletionStreamChunkResponse) error {
+func (c *Client) ChatStreamRaw(ctx context.Context, in *CompletionRequest, out chan<- CompletionStreamChunkResponse) (genai.Usage, error) {
 	in.Stream = true
+	// TODO:
+	usage := genai.Usage{}
 	resp, err := httpjson.DefaultClient.PostRequest(ctx, c.URL+"/v1/chat/completions", nil, in)
 	if err != nil {
-		return fmt.Errorf("failed to get server response: %w", err)
+		return usage, fmt.Errorf("failed to get server response: %w", err)
 	}
 	defer resp.Body.Close()
 	for r := bufio.NewReader(resp.Body); ; {
 		line, err := r.ReadBytes('\n')
 		if line = bytes.TrimSpace(line); err == io.EOF {
 			if len(line) == 0 {
-				return nil
+				return usage, nil
 			}
 		} else if err != nil {
-			return fmt.Errorf("failed to get server response: %w", err)
+			return usage, fmt.Errorf("failed to get server response: %w", err)
 		}
 		if len(line) != 0 {
 			if err := parseStreamLine(line, out); err != nil {
-				return err
+				return usage, err
 			}
 		}
 	}

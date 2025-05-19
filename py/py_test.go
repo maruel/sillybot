@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maruel/genai/genaiapi"
+	"github.com/maruel/genai"
 	"github.com/maruel/httpjson"
 	"github.com/maruel/sillybot/internal"
 )
@@ -52,8 +52,8 @@ func TestNewServer(t *testing.T) {
 	client := Client{URL: "http://localhost:" + port}
 	start := time.Now()
 	for {
-		resp, err := client.Completion(ctx, genaiapi.Messages{
-			genaiapi.NewTextMessage(genaiapi.User, "Say hello. Reply with only one word."),
+		resp, err := client.Chat(ctx, genai.Messages{
+			genai.NewTextMessage(genai.User, "Say hello. Reply with only one word."),
 		}, nil)
 		var v *url.Error
 		var h *httpjson.Error

@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maruel/genai/genaiapi"
+	"github.com/maruel/genai"
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
@@ -303,8 +303,8 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	if err != nil {
 		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
-	c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.User, req.msg))
-	chunks := make(chan genaiapi.MessageFragment)
+	c.Messages = append(c.Messages, genai.NewTextMessage(genai.User, req.msg))
+	chunks := make(chan genai.MessageFragment)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
@@ -324,7 +324,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 						}
 					}
 					// Remember LLM's answer.
-					c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.Assistant, text))
+					c.Messages = append(c.Messages, genai.NewTextMessage(genai.Assistant, text))
 					t.Stop()
 					wg.Done()
 					return
@@ -346,9 +346,8 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		}
 	}()
 	// We're chatting, we don't want too much content.
-	opts := genaiapi.CompletionOptions{
+	opts := genai.ChatOptions{
 		MaxTokens:    2000,
-		Temperature:  1.0,
 		SystemPrompt: s.settings.PromptImage,
 	}
 	err = s.l.PromptStreaming(ctx, c.Messages, &opts, chunks)
@@ -370,13 +369,12 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	req.mu.Unlock()
 	// Use the LLM to improve the prompt!
 	if s.l != nil {
-		msgs := genaiapi.Messages{genaiapi.NewTextMessage(genaiapi.User, req.msg)}
+		msgs := genai.Messages{genai.NewTextMessage(genai.User, req.msg)}
 
 		// Intentionally limit the number of tokens, otherwise it's Stable
 		// Diffusion that is unhappy.
-		opts := genaiapi.CompletionOptions{
+		opts := genai.ChatOptions{
 			MaxTokens:    70,
-			Temperature:  1.0,
 			SystemPrompt: s.settings.PromptImage,
 		}
 		if reply, err := s.l.Prompt(ctx, msgs, &opts); err != nil {

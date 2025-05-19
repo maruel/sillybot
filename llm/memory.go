@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maruel/genai/genaiapi"
+	"github.com/maruel/genai"
 )
 
 // Conversation is a conversation with one user.
@@ -24,7 +24,7 @@ type Conversation struct {
 	Channel      string
 	Started      time.Time
 	LastUpdate   time.Time
-	Messages     []genaiapi.Message
+	Messages     []genai.Message
 
 	_ struct{}
 }
@@ -190,7 +190,7 @@ func (s *serializedConversation) to(c *Conversation) error {
 	c.Channel = s.Channel
 	c.Started = s.Started
 	c.LastUpdate = s.LastUpdate
-	c.Messages = make([]genaiapi.Message, len(s.Messages))
+	c.Messages = make([]genai.Message, len(s.Messages))
 	for i := range s.Messages {
 		if err := s.Messages[i].to(&c.Messages[i]); err != nil {
 			return err
@@ -204,11 +204,11 @@ type serializedMessage struct {
 	Content string `json:"c,omitempty"`
 }
 
-func (s *serializedMessage) from(m *genaiapi.Message) error {
+func (s *serializedMessage) from(m *genai.Message) error {
 	switch m.Role {
-	case genaiapi.User:
+	case genai.User:
 		s.Role = 1
-	case genaiapi.Assistant:
+	case genai.Assistant:
 		s.Role = 2
 	default:
 		return fmt.Errorf("unknown role %q", m.Role)
@@ -223,15 +223,15 @@ func (s *serializedMessage) from(m *genaiapi.Message) error {
 	return nil
 }
 
-func (s *serializedMessage) to(m *genaiapi.Message) error {
+func (s *serializedMessage) to(m *genai.Message) error {
 	switch s.Role {
 	case 1:
-		m.Role = genaiapi.User
+		m.Role = genai.User
 	case 2:
-		m.Role = genaiapi.Assistant
+		m.Role = genai.Assistant
 	default:
 		return fmt.Errorf("unknown role %q", s.Role)
 	}
-	m.Contents = []genaiapi.Content{{Text: s.Content}}
+	m.Contents = []genai.Content{{Text: s.Content}}
 	return nil
 }

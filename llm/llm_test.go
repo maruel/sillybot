@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
-	"github.com/maruel/genai/genaiapi"
+	"github.com/maruel/genai"
 	"github.com/maruel/genai/llamacpp"
 	"github.com/maruel/sillybot/llm/tools"
 	"github.com/mattn/go-colorable"
@@ -210,10 +210,10 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	const prompt = "reply with \"ok chief\""
 	t.Run("Blocking", func(t *testing.T) {
 		t.Parallel()
-		msgs := genaiapi.Messages{
-			genaiapi.NewTextMessage(genaiapi.User, prompt),
+		msgs := genai.Messages{
+			genai.NewTextMessage(genai.User, prompt),
 		}
-		opts := genaiapi.CompletionOptions{MaxTokens: 10, Seed: 1, SystemPrompt: systemPrompt}
+		opts := genai.ChatOptions{MaxTokens: 10, Seed: 1, SystemPrompt: systemPrompt}
 		got, err2 := l.Prompt(ctx, msgs, &opts)
 		if err2 != nil {
 			t.Fatal(err2)
@@ -222,10 +222,10 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 	})
 	t.Run("Streaming", func(t *testing.T) {
 		t.Parallel()
-		msgs := []genaiapi.Message{
-			genaiapi.NewTextMessage(genaiapi.User, prompt),
+		msgs := []genai.Message{
+			genai.NewTextMessage(genai.User, prompt),
 		}
-		chunks := make(chan genaiapi.MessageFragment)
+		chunks := make(chan genai.MessageFragment)
 		got := ""
 		wg := sync.WaitGroup{}
 		wg.Add(1)
@@ -238,7 +238,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 			}
 			wg.Done()
 		}()
-		opts := genaiapi.CompletionOptions{MaxTokens: 10, Seed: 1, SystemPrompt: systemPrompt}
+		opts := genai.ChatOptions{MaxTokens: 10, Seed: 1, SystemPrompt: systemPrompt}
 		err2 := l.PromptStreaming(ctx, msgs, &opts, chunks)
 		close(chunks)
 		wg.Wait()
@@ -310,13 +310,13 @@ func TestMistralTool(t *testing.T) {
 	// if err != nil {
 	// 	t.Fatal(err)
 	// }
-	msgs := genaiapi.Messages{
+	msgs := genai.Messages{
 		// {
-		// 	Role: genaiapi.AvailableTools,
-		// 	Type: genaiapi.Text,
+		// 	Role: genai.AvailableTools,
+		// 	Type: genai.Text,
 		// 	Text: string(toolsB),
 		// },
-		genaiapi.NewTextMessage(genaiapi.User, `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`),
+		genai.NewTextMessage(genai.User, `What's\u2581the\u2581weather\u2581like\u2581today\u2581in\u2581Paris`),
 	}
 	for _, m := range msgs {
 		t.Log(m)
@@ -326,8 +326,8 @@ func TestMistralTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := genaiapi.CompletionOptions{MaxTokens: 100, Seed: 1}
-	msg, err := c.Completion(ctx, msgs, &opts)
+	opts := genai.ChatOptions{MaxTokens: 100, Seed: 1}
+	msg, err := c.Chat(ctx, msgs, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +337,7 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	msg, err = c.Completion(ctx, msgs, &opts)
+	msg, err = c.Chat(ctx, msgs, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,12 +351,12 @@ func TestMistralTool(t *testing.T) {
 	}
 
 	// Now do a calculation!
-	msgs = append(msgs, genaiapi.NewTextMessage(genaiapi.User, "Give me the result of 43215 divided by 215."))
+	msgs = append(msgs, genai.NewTextMessage(genai.User, "Give me the result of 43215 divided by 215."))
 	for _, m := range msgs[msgsl:] {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	if msg, err = c.Completion(ctx, msgs, &opts); err != nil {
+	if msg, err = c.Chat(ctx, msgs, &opts); err != nil {
 		t.Fatal(err)
 	}
 	s = msg.Contents[0].Text
@@ -365,7 +365,7 @@ func TestMistralTool(t *testing.T) {
 		t.Log(m)
 	}
 	msgsl = len(msgs)
-	if msg, err = c.Completion(ctx, msgs, &opts); err != nil {
+	if msg, err = c.Chat(ctx, msgs, &opts); err != nil {
 		t.Fatal(err)
 	}
 	msgs = append(msgs, msg.Message)
@@ -377,7 +377,7 @@ func TestMistralTool(t *testing.T) {
 	}
 }
 
-func parseToolResponse(t *testing.T, got string, id int) []genaiapi.Message {
+func parseToolResponse(t *testing.T, got string, id int) []genai.Message {
 	got = strings.TrimSpace(got)
 	var toolCalls []tools.MistralToolCall
 	//  Search for a tool call.
@@ -420,15 +420,15 @@ func parseToolResponse(t *testing.T, got string, id int) []genaiapi.Message {
 	// if err != nil {
 	// 	t.Fatal(err)
 	// }
-	return []genaiapi.Message{
+	return []genai.Message{
 		// {
-		// 	Role: genaiapi.ToolCall,
-		// 	Type: genaiapi.Text,
+		// 	Role: genai.ToolCall,
+		// 	Type: genai.Text,
 		// 	Text: string(c),
 		// },
 		// {
-		// 	Role: genaiapi.ToolCallResult,
-		// 	Type: genaiapi.Text,
+		// 	Role: genai.ToolCallResult,
+		// 	Type: genai.Text,
 		// 	Text: string(r),
 		// },
 	}

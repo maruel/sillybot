@@ -25,8 +25,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/maruel/genai/genaiapi"
-	"github.com/maruel/genai/llamacpp"
+	"github.com/maruel/genai"
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
@@ -53,7 +52,7 @@ type discordBot struct {
 	ig        *imagegen.Session
 	settings  sillybot.Settings
 	memDir    string
-	toolsMsg  genaiapi.Message
+	toolsMsg  genai.Message
 	chat      chan msgReq
 	image     chan intReq
 	gcptoken  string
@@ -63,7 +62,7 @@ type discordBot struct {
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
 func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
-	toolsMsg := genaiapi.Message{}
+	toolsMsg := genai.Message{}
 	if l.Encoding != nil && strings.Contains(strings.ToLower(string(l.Model)), "mistral") {
 		/* TODO
 		slog.Info("discord", "message", "tools are enabled", "encoding", l.Encoding)
@@ -93,9 +92,9 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 		if err != nil {
 			return nil, err
 		}
-		toolsMsg = genaiapi.Message{
-			Role: genaiapi.AvailableTools,
-			Type: genaiapi.Text,
+		toolsMsg = genai.Message{
+			Role: genai.AvailableTools,
+			Type: genai.Text,
 			Text: string(b),
 		}
 		*/
@@ -602,23 +601,28 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 }
 
 func (d *discordBot) onMetrics(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
-	m := llamacpp.Metrics{}
-	if err := d.l.GetMetrics(d.ctx, &m); err != nil {
-		if err = d.interactionRespond(event.Interaction, "Internal error: "+err.Error()); err != nil {
-			slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
-		}
-		return
-	}
-	s := fmt.Sprintf(
-		"LLM server metrics running %s:\n"+
-			"- Prompt: **%4d** tokens; **% 8.2f** tok/s\n"+
-			"- Generated: **%4d** tokens; **% 8.2f** tok/s",
-		d.l.Model,
-		m.Prompt.Count, m.Prompt.Rate(),
-		m.Generated.Count, m.Generated.Rate())
-	if err := d.interactionRespond(event.Interaction, s); err != nil {
+	if err := d.interactionRespond(event.Interaction, "To be implemented"); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
 	}
+	/*
+		m := llamacpp.Metrics{}
+		if err := d.l.GetMetrics(d.ctx, &m); err != nil {
+			if err = d.interactionRespond(event.Interaction, "Internal error: "+err.Error()); err != nil {
+				slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
+			}
+			return
+		}
+		s := fmt.Sprintf(
+			"LLM server metrics running %s:\n"+
+				"- Prompt: **%4d** tokens; **% 8.2f** tok/s\n"+
+				"- Generated: **%4d** tokens; **% 8.2f** tok/s",
+			d.l.Model,
+			m.Prompt.Count, m.Prompt.Rate(),
+			m.Generated.Count, m.Generated.Rate())
+		if err := d.interactionRespond(event.Interaction, s); err != nil {
+			slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
+		}
+	*/
 }
 
 func (d *discordBot) onImage(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
@@ -692,7 +696,7 @@ func (d *discordBot) chatRoutine() {
 		c := d.getMemory("")
 		c.Messages = nil
 		c = d.getMemory("")
-		opts := genaiapi.CompletionOptions{MaxTokens: 100, Temperature: 1.0}
+		opts := genai.ChatOptions{MaxTokens: 100, Temperature: 1.0}
 		if _, err := d.l.Prompt(d.ctx, c.Messages, &opts); err != nil {
 			slog.Error("discord", "error", err)
 		}
@@ -746,7 +750,7 @@ func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 	if len(c.Messages) == 0 {
 		// Ish.
 		if d.toolsMsg.Contents[0].Text != "" {
-			c.Messages = []genaiapi.Message{d.toolsMsg}
+			c.Messages = []genai.Message{d.toolsMsg}
 		}
 	}
 	return c
@@ -765,11 +769,11 @@ func (d *discordBot) handlePrompt(req msgReq) {
 // then process it. This function exists for testing.
 func (d *discordBot) handlePromptBlocking(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.User, req.msg))
+	c.Messages = append(c.Messages, genai.NewTextMessage(genai.User, req.msg))
 	replyToID := req.replyToID
 	for {
 		// 32768
-		opts := genaiapi.CompletionOptions{Temperature: 1.0}
+		opts := genai.ChatOptions{Temperature: 1.0}
 		reply, err := d.l.Prompt(d.ctx, c.Messages, &opts)
 		if err != nil {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
@@ -778,7 +782,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 			return
 		}
 		// Remember our own answer.
-		c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.Assistant, reply))
+		c.Messages = append(c.Messages, genai.NewTextMessage(genai.Assistant, reply))
 		gotToolCall := false
 		for reply != "" {
 			if d.l.Encoding != nil && !gotToolCall {
@@ -825,7 +829,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 // handlePromptStreaming request a reply from the LLM and streams replies back.
 func (d *discordBot) handlePromptStreaming(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.User, req.msg))
+	c.Messages = append(c.Messages, genai.NewTextMessage(genai.User, req.msg))
 	wg := sync.WaitGroup{}
 	for {
 		ctx, cancel := context.WithCancel(d.ctx)
@@ -833,7 +837,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 		// Make it blocking to force a goroutine context switch when a word is
 		// received. When it's buffered, there can be significant delay when LLM is
 		// running on the CPU.
-		chunks := make(chan genaiapi.MessageFragment)
+		chunks := make(chan genai.MessageFragment)
 		wg.Add(1)
 		go func() {
 			const rate = 2000 * time.Millisecond
@@ -892,7 +896,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 								}
 							}
 							// Remember our own answer.
-							c.Messages = append(c.Messages, genaiapi.NewTextMessage(genaiapi.Assistant, text))
+							c.Messages = append(c.Messages, genai.NewTextMessage(genai.Assistant, text))
 						}
 						t.Stop()
 						wg.Done()
@@ -944,7 +948,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 			}
 		}()
 		// We're chatting, we don't want too much content?
-		opts := genaiapi.CompletionOptions{Temperature: 1.0}
+		opts := genai.ChatOptions{Temperature: 1.0}
 		err := d.l.PromptStreaming(ctx, c.Messages, &opts, chunks)
 		close(chunks)
 		wg.Wait()
@@ -1035,7 +1039,7 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 		// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/protocol/instruct/validator.py
 		// callid := 0
 		// for _, c := range c.Messages {
-		// 	if c.Role == genaiapi.ToolCall {
+		// 	if c.Role == genai.ToolCall {
 		// 		callid++
 		// 	}
 		// }
@@ -1050,14 +1054,14 @@ func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) 
 		// TODO: Inject CallID instead of pending[:i]. We need to determine if
 		// Mistral prefers to receive its own content as-is or reformatted?
 		// c.Messages = append(c.Messages,
-		// 	genaiapi.Message{
-		// 		Role: genaiapi.ToolCall,
-		// 		Type: genaiapi.Text,
+		// 	genai.Message{
+		// 		Role: genai.ToolCall,
+		// 		Type: genai.Text,
 		// 		Text: line,
 		// 	},
-		// 	genaiapi.Message{
-		// 		Role: genaiapi.ToolCallResult,
-		// 		Type: genaiapi.Text,
+		// 	genai.Message{
+		// 		Role: genai.ToolCallResult,
+		// 		Type: genai.Text,
 		// 		Text: string(b),
 		// 	})
 		// TODO: We should probably cancel the context and start over, there's no
@@ -1231,11 +1235,11 @@ func (d *discordBot) handleImage(req intReq) {
 				options := [3]string{}
 				j := 0
 				for ; j < len(options); j++ {
-					msgs := genaiapi.Messages{genaiapi.NewTextMessage(genaiapi.User, req.description)}
+					msgs := genai.Messages{genai.NewTextMessage(genai.User, req.description)}
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*int64(i) + 4*int64(j)
-					opts := genaiapi.CompletionOptions{
+					opts := genai.ChatOptions{
 						MaxTokens:    70,
 						Temperature:  1.0,
 						SystemPrompt: d.settings.PromptLabels,
@@ -1275,10 +1279,10 @@ func (d *discordBot) handleImage(req intReq) {
 			imagePrompt := req.imagePrompt
 			if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
 				// Image: use the LLM to generate the image prompt based on the description.
-				msgs := genaiapi.Messages{
-					genaiapi.NewTextMessage(genaiapi.User, "Prompt: "+req.description+"\n"+"Text relevant to the image: "+labelsContent),
+				msgs := genai.Messages{
+					genai.NewTextMessage(genai.User, "Prompt: "+req.description+"\n"+"Text relevant to the image: "+labelsContent),
 				}
-				opts := genaiapi.CompletionOptions{
+				opts := genai.ChatOptions{
 					MaxTokens:    125,
 					Temperature:  1.0,
 					SystemPrompt: d.settings.PromptLabels,

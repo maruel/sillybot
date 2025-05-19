@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/maruel/genai/genaiapi"
+	"github.com/maruel/genai"
 	"github.com/maruel/genai/llamacpp"
 	"github.com/maruel/genai/llamacpp/llamacppsrv"
 	"github.com/maruel/huggingface"
@@ -108,7 +108,7 @@ type Session struct {
 	Encoding *llamacpp.PromptEncoding
 	baseURL  string
 	backend  string
-	cp       genaiapi.CompletionProvider
+	cp       genai.ChatProvider
 
 	cache     string
 	modelFile string
@@ -198,7 +198,8 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			if err != nil {
 				return nil, err
 			}
-			srv, err := llamacppsrv.NewServer(ctx, llamasrv, modelFile, f, port, 0, args)
+			hostPort := fmt.Sprintf("127.0.0.1:%d", port)
+			srv, err := llamacppsrv.NewServer(ctx, llamasrv, modelFile, f, hostPort, 0, args)
 			_ = f.Close()
 			if err != nil {
 				return nil, err
@@ -277,7 +278,7 @@ func (l *Session) GetMetrics(ctx context.Context, m *llamacpp.Metrics) error {
 // See PromptStreaming for the arguments values.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts genaiapi.Validatable) (string, error) {
+func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, opts genai.Validatable) (string, error) {
 	r := trace.StartRegion(ctx, "llm.Prompt")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -285,7 +286,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts gena
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "blocking")
-	msg, err := l.cp.Completion(ctx, msgs, opts)
+	msg, err := l.cp.Chat(ctx, msgs, opts)
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return "", err
@@ -320,7 +321,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []genaiapi.Message, opts gena
 // Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, opts genaiapi.Validatable, chunks chan<- genaiapi.MessageFragment) error {
+func (l *Session) PromptStreaming(ctx context.Context, msgs []genai.Message, opts genai.Validatable, chunks chan<- genai.MessageFragment) error {
 	r := trace.StartRegion(ctx, "llm.PromptStreaming")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -328,12 +329,12 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genaiapi.Message, 
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "streaming")
-	err := l.cp.CompletionStream(ctx, msgs, opts, chunks)
+	usage, err := l.cp.ChatStream(ctx, msgs, opts, chunks)
 	if err != nil {
 		slog.Error("llm", "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return err
 	}
-	slog.Info("llm", "duration", time.Since(start).Round(time.Millisecond))
+	slog.Info("llm", "duration", time.Since(start).Round(time.Millisecond), "usage", usage)
 	return nil
 }
 
