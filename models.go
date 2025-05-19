@@ -34,16 +34,10 @@ type Config struct {
 		ImageGen imagegen.Options `yaml:"image_gen"`
 		Settings Settings
 	}
-	KnownLLMs []llm.KnownLLM
 }
 
 // Validate checks for obvious errors in the fields.
 func (c *Config) Validate() error {
-	for i := range c.KnownLLMs {
-		if err := c.KnownLLMs[i].Validate(); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -65,17 +59,6 @@ func (c *Config) LoadOrDefault(config string) error {
 	d.KnownFields(true)
 	if err = d.Decode(c); err != nil {
 		return fmt.Errorf("failed to read %q: %w", config, err)
-	}
-	if len(c.KnownLLMs) == 0 {
-		// Load the default knownllms from the default config if it was stripped
-		// out.
-		d := yaml.NewDecoder(bytes.NewReader(DefaultConfig))
-		d.KnownFields(true)
-		defaultCfg := Config{}
-		if err = d.Decode(&defaultCfg); err != nil {
-			return err
-		}
-		c.KnownLLMs = defaultCfg.KnownLLMs
 	}
 	return c.Validate()
 }
@@ -119,7 +102,7 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (*llm.Session, *
 			return nil
 		}
 		var err error
-		if l, err = llm.New(ctx, cache, &cfg.Bot.LLM, cfg.KnownLLMs); err != nil {
+		if l, err = llm.New(ctx, cache, &cfg.Bot.LLM); err != nil {
 			slog.Info("llm", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
 		}
 		return err

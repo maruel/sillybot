@@ -55,10 +55,6 @@ func mainImpl() error {
 		flag.PrintDefaults()
 		if *config != "" {
 			if cfg.LoadOrDefault(*config) == nil {
-				fmt.Fprintf(o, "\nAvailable LLM models:\n")
-				for _, k := range cfg.KnownLLMs {
-					fmt.Fprintf(o, "  %s\n", k.Source)
-				}
 			}
 		}
 	}

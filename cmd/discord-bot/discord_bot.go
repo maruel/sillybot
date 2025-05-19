@@ -26,7 +26,6 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/maruel/genai"
-	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
@@ -44,24 +43,23 @@ const maxMessage = 2000
 // Throughout the code, a Discord Server is called a "Guild". See
 // https://discord.com/developers/docs/quick-start/overview-of-apps#where-are-apps-installed
 type discordBot struct {
-	ctx       context.Context
-	dg        *discordgo.Session
-	l         *llm.Session
-	mem       *llm.Memory
-	knownLLMs []llm.KnownLLM
-	ig        *imagegen.Session
-	settings  sillybot.Settings
-	memDir    string
-	toolsMsg  genai.Message
-	chat      chan msgReq
-	image     chan intReq
-	gcptoken  string
-	cxtoken   string
-	wg        sync.WaitGroup
+	ctx      context.Context
+	dg       *discordgo.Session
+	l        *llm.Session
+	mem      *llm.Memory
+	ig       *imagegen.Session
+	settings sillybot.Settings
+	memDir   string
+	toolsMsg genai.Message
+	chat     chan msgReq
+	image    chan intReq
+	gcptoken string
+	cxtoken  string
+	wg       sync.WaitGroup
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
 	toolsMsg := genai.Message{}
 	if l.Encoding != nil && strings.Contains(strings.ToLower(string(l.Model)), "mistral") {
 		/* TODO
@@ -125,19 +123,18 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 	// We want to receive as few messages as possible.
 	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentDirectMessages
 	d := &discordBot{
-		ctx:       ctx,
-		dg:        dg,
-		l:         l,
-		mem:       mem,
-		knownLLMs: knownLLMs,
-		ig:        ig,
-		settings:  settings,
-		memDir:    memDir,
-		toolsMsg:  toolsMsg,
-		chat:      make(chan msgReq, 5),
-		image:     make(chan intReq, 3),
-		gcptoken:  gcptoken,
-		cxtoken:   cxtoken,
+		ctx:      ctx,
+		dg:       dg,
+		l:        l,
+		mem:      mem,
+		ig:       ig,
+		settings: settings,
+		memDir:   memDir,
+		toolsMsg: toolsMsg,
+		chat:     make(chan msgReq, 5),
+		image:    make(chan intReq, 3),
+		gcptoken: gcptoken,
+		cxtoken:  cxtoken,
 	}
 	// The events are listed at
 	// https://discord.com/developers/docs/topics/gateway-events#receive-events
@@ -521,108 +518,17 @@ func (d *discordBot) onForget(event *discordgo.InteractionCreate, data discordgo
 }
 
 func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
-	lines := []string{"Known models:"}
-	for _, k := range d.knownLLMs {
-		line := "- [`" + k.Source.Basename() + "`](" + k.Source.RepoURL() + ") "
-		info := huggingface.Model{ModelRef: k.Source.ModelRef()}
-		if err := d.l.HF.GetModelInfo(d.ctx, &info, "main"); err != nil {
-			line += " Oh no, we failed to query: " + err.Error()
-			slog.Error("discord", "command", data.Name, "error", err)
-		} else {
-			line += " Quantizations: "
-			added := false
-			for _, f := range info.Files {
-				// TODO: Move this into a common function.
-				if !strings.HasPrefix(f, k.Source.Basename()) {
-					continue
-				}
-				if strings.Contains(f, "/") {
-					// Skip files in subdirectories for now.
-					continue
-				}
-				if strings.HasPrefix(filepath.Ext(f), ".cat") {
-					// TODO: Support split files. For now just hide them. They are large
-					// anyway so it's only for power users.
-					continue
-				}
-				if added {
-					line += ", "
-				}
-				line += strings.TrimSuffix(f[len(k.Source.Basename()):], ".gguf")
-				added = true
-			}
-			if info.Upstream.Author == "" && info.Upstream.Repo == "" {
-				// Some forks are not setting up upstream properly. What a shame.
-				info.Upstream = k.Upstream.ModelRef()
-			}
-			if info.Upstream.Author != "" && info.Upstream.Repo != "" {
-				infoUpstream := huggingface.Model{ModelRef: info.Upstream}
-				if err = d.l.HF.GetModelInfo(d.ctx, &infoUpstream, "main"); err != nil {
-					line += " Oh no, we failed to query: " + err.Error()
-					slog.Error("discord", "command", data.Name, "error", err)
-				} else {
-					if infoUpstream.NumWeights != 0 {
-						line += fmt.Sprintf(" Tensors: %s in %.fB", infoUpstream.TensorType, float64(infoUpstream.NumWeights)*0.000000001)
-					}
-					if infoUpstream.LicenseURL != "" {
-						line += " License: [" + infoUpstream.License + "](" + infoUpstream.LicenseURL + ")"
-					} else {
-						line += " License: " + infoUpstream.License
-					}
-				}
-			}
-		}
-		lines = append(lines, line)
-	}
-	var toSend []string
-	buf := ""
-	for _, line := range lines {
-		if len(buf)+len(line) >= maxMessage {
-			toSend = append(toSend, buf)
-			buf = ""
-		}
-		if buf != "" {
-			buf += "\n"
-		}
-		buf += line
-	}
-	if buf != "" {
-		toSend = append(toSend, buf)
-	}
-	if err := d.interactionRespond(event.Interaction, toSend[0]); err != nil {
+	// Leverage genai.ModelProvider
+	if err := d.interactionRespond(event.Interaction, "To be implemented"); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
-	}
-	for _, r := range toSend[1:] {
-		// TODO: use MessageID so it becomes a set of replies.
-		if _, err := d.dg.ChannelMessageSend(event.Interaction.ChannelID, r); err != nil {
-			slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
-		}
 	}
 }
 
 func (d *discordBot) onMetrics(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	// Leverage genai.UsageTrackingChatProvider{}
 	if err := d.interactionRespond(event.Interaction, "To be implemented"); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
 	}
-	/*
-		m := llamacpp.Metrics{}
-		if err := d.l.GetMetrics(d.ctx, &m); err != nil {
-			if err = d.interactionRespond(event.Interaction, "Internal error: "+err.Error()); err != nil {
-				slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
-			}
-			return
-		}
-		s := fmt.Sprintf(
-			"LLM server metrics running %s:\n"+
-				"- Prompt: **%4d** tokens; **% 8.2f** tok/s\n"+
-				"- Generated: **%4d** tokens; **% 8.2f** tok/s",
-			d.l.Model,
-			m.Prompt.Count, m.Prompt.Rate(),
-			m.Generated.Count, m.Generated.Rate())
-		if err := d.interactionRespond(event.Interaction, s); err != nil {
-			slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
-		}
-	*/
 }
 
 func (d *discordBot) onImage(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {

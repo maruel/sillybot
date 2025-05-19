@@ -23,20 +23,19 @@ const maxMessage = 300
 
 // bskyBot is the live instance of the bot talking to the Blue Sky ATproto API.
 type bskyBot struct {
-	c         *Client
-	l         *llm.Session
-	knownLLMs []llm.KnownLLM
-	ig        *imagegen.Session
-	settings  sillybot.Settings
+	c        *Client
+	l        *llm.Session
+	ig       *imagegen.Session
+	settings sillybot.Settings
 }
 
-func newBskyBot(ctx context.Context, user, pass string, l *llm.Session, knownLLMs []llm.KnownLLM, ig *imagegen.Session, settings sillybot.Settings) (*bskyBot, error) {
+func newBskyBot(ctx context.Context, user, pass string, l *llm.Session, ig *imagegen.Session, settings sillybot.Settings) (*bskyBot, error) {
 	c, err := New(ctx, user, pass)
 	if err != nil {
 		return nil, err
 	}
 	slog.Info("bsky", "state", "connected")
-	b := &bskyBot{c: c, l: l, knownLLMs: knownLLMs, ig: ig, settings: settings}
+	b := &bskyBot{c: c, l: l, ig: ig, settings: settings}
 	slog.Info("bsky", "state", "running", "info", "Press CTRL-C to exit.")
 	return b, nil
 }

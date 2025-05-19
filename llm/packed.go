@@ -105,7 +105,7 @@ func (p PackedFileRef) Validate() error {
 	if !strings.HasPrefix(string(p), "hf:") {
 		return fmt.Errorf("invalid file ref %q", p)
 	}
-	parts := strings.Split(string(p)[4:], "/")
+	parts := strings.Split(string(p)[3:], "/")
 	if len(parts) < 4 {
 		return fmt.Errorf("invalid file ref %q", p)
 	}

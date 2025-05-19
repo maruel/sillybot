@@ -118,7 +118,7 @@ func mainImpl() error {
 		return err
 	}
 
-	b, err := newBskyBot(ctx, *handle, *password, l, cfg.KnownLLMs, ig, cfg.Bot.Settings)
+	b, err := newBskyBot(ctx, *handle, *password, l, ig, cfg.Bot.Settings)
 	if err != nil {
 		return err
 	}

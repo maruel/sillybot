@@ -60,10 +60,6 @@ func mainImpl() error {
 		flag.PrintDefaults()
 		if *config != "" {
 			if cfg.LoadOrDefault(*config) == nil {
-				fmt.Fprintf(o, "\nAvailable LLM models:\n")
-				for _, k := range cfg.KnownLLMs {
-					fmt.Fprintf(o, "  %s*\n", k.Source)
-				}
 			}
 		}
 	}
@@ -154,7 +150,7 @@ func mainImpl() error {
 		slog.Info("main", "memory", "no memory to load", "error", err)
 	}
 
-	d, err := newDiscordBot(ctx, *bottoken, *gcptoken, *cxtoken, *verbose, l, mem, cfg.KnownLLMs, ig, cfg.Bot.Settings, memDir)
+	d, err := newDiscordBot(ctx, *bottoken, *gcptoken, *cxtoken, *verbose, l, mem, ig, cfg.Bot.Settings, memDir)
 	if err != nil {
 		return err
 	}

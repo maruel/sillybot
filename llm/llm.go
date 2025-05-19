@@ -118,7 +118,7 @@ type Session struct {
 
 // New instantiates a llama.cpp or llamafile server, or optionally uses
 // python instead.
-func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM) (*Session, error) {
+func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
@@ -139,19 +139,6 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 		return nil, err
 	}
 	l := &Session{HF: hf, Model: opts.Model, cache: cacheModels}
-	known := -1
-	if opts.Model != "python" {
-		for i, k := range knownLLMs {
-			if strings.HasPrefix(string(opts.Model), string(k.Source)) {
-				known = i
-				l.Encoding = k.PromptEncoding
-				break
-			}
-		}
-		if known == -1 {
-			return nil, fmt.Errorf("unknown LLM model %q, add to knownllms section first", l.Model)
-		}
-	}
 
 	var done <-chan error
 	if opts.Remote == "" {
@@ -161,7 +148,11 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 
 		if opts.Model == "python" {
 			l.backend = "python"
-			srv, err := py.NewServer(ctx, "llm.py", filepath.Join(cache, "py"), filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
+			pyDir := filepath.Join(cache, "py")
+			if err := os.MkdirAll(pyDir, 0o755); err != nil {
+				return nil, err
+			}
+			srv, err := py.NewServer(ctx, "llm.py", pyDir, filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
 			if err != nil {
 				return nil, err
 			}
@@ -180,7 +171,7 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			// cmd := mangleForLlamafile(isLlamafile, llamasrv, "--version")
 			// Make sure the model is available.
 			modelFile := ""
-			if modelFile, err = l.ensureModel(ctx, opts.Model, knownLLMs[known]); err != nil {
+			if modelFile, err = l.ensureModel(ctx, opts.Model); err != nil {
 				return nil, fmt.Errorf("failed to get llm model: %w", err)
 			}
 			args := []string{"-ngl", "9999"}
@@ -188,9 +179,6 @@ func New(ctx context.Context, cache string, opts *Options, knownLLMs []KnownLLM)
 			if opts.ContextLength != 0 {
 				args = append(args, "--ctx-size", strconv.Itoa(opts.ContextLength))
 			}
-			// TODO: Investigate using -fa.
-			// TODO: Doesn't seem to have any effect, need investigation.
-			args = append(args, "--prompt-cache", filepath.Join(cache, "llm-prompt-cache.bin"), "--prompt-cache-all")
 			//if isLlamafile {
 			//	cmd := mangleForLlamafile(isLlamafile, append(args, "--nobrowser")...)
 			//}
@@ -344,11 +332,8 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genai.Message, opt
 //
 // Currently hard-coded to GGUF files and Hugging Face. Doesn't support split
 // files.
-func (l *Session) ensureModel(ctx context.Context, model PackedFileRef, k KnownLLM) (string, error) {
+func (l *Session) ensureModel(ctx context.Context, model PackedFileRef) (string, error) {
 	slog.Info("llm", "model", model, "state", "missing")
-	if k.Source.RepoID() == "" {
-		return "", fmt.Errorf("can't guess model %q huggingface repo", model)
-	}
 	dst, err := getModelPath(model)
 	if err != nil {
 		return "", err
@@ -362,70 +347,42 @@ func (l *Session) ensureModel(ctx context.Context, model PackedFileRef, k KnownL
 			return dst, nil
 		}
 	}
-	// Hack: we assume everything is on HuggingFace.
+	// Hack: we assume everything is on HuggingFace and is gguf.
 	ln := filepath.Join(l.cache, model.Basename()+".gguf")
-	switch k.PackagingType {
-	case "gguf":
-		if dst, err = l.HF.EnsureFile(ctx, model.ModelRef(), model.Revision(), model.Basename()+".gguf"); err != nil {
-			// Get the list of files to help the user.
-			m := huggingface.Model{ModelRef: model.ModelRef()}
-			err = fmt.Errorf("can't find model %q at %s: %w", model, m.URL(), err)
-			if err2 := l.HF.GetModelInfo(ctx, &m, model.Revision()); err2 != nil {
-				return ln, errors.Join(err, err2)
-			}
-			msg := "Supported quantizations: "
-			added := false
-			for _, f := range m.Files {
-				// TODO: Move this into a common function.
-				if !strings.HasPrefix(f, k.Source.Basename()) {
-					continue
-				}
-				if strings.Contains(f, "/") {
-					// Skip files in subdirectories for now.
-					continue
-				}
-				if strings.HasPrefix(filepath.Ext(f), ".cat") {
-					// TODO: Support split files. For now just hide them. They are large
-					// anyway so it's only for power users.
-					continue
-				}
-				if added {
-					msg += ", "
-				}
-				msg += strings.TrimSuffix(f[len(model.Basename()):], ".gguf")
-				added = true
-			}
-			return ln, fmt.Errorf("%w; %s", err, msg)
+	if dst, err = l.HF.EnsureFile(ctx, model.ModelRef(), model.Revision(), model.Basename()+".gguf"); err != nil {
+		// Get the list of files to help the user.
+		m := huggingface.Model{ModelRef: model.ModelRef()}
+		err = fmt.Errorf("can't find model %q at %s: %w", model, m.URL(), err)
+		if err2 := l.HF.GetModelInfo(ctx, &m, model.Revision()); err2 != nil {
+			return ln, errors.Join(err, err2)
 		}
-		// TODO: When I use os.Symlink(), llama-server crashes.
-		if err = os.Symlink(dst, ln); err != nil {
-			return ln, err
+		msg := "Supported quantizations: "
+		added := false
+		for _, f := range m.Files {
+			if strings.Contains(f, "/") {
+				// Skip files in subdirectories for now.
+				continue
+			}
+			if strings.HasPrefix(filepath.Ext(f), ".cat") {
+				// TODO: Support split files. For now just hide them. They are large
+				// anyway so it's only for power users.
+				continue
+			}
+			if added {
+				msg += ", "
+			}
+			msg += strings.TrimSuffix(f[len(model.Basename()):], ".gguf")
+			added = true
 		}
-		l.modelFile = ln
-		return ln, nil
-	default:
-		return ln, fmt.Errorf("internal error: implement packaging type %s", k.PackagingType)
+		return ln, fmt.Errorf("%w; %s", err, msg)
 	}
+	// TODO: When I use os.Symlink(), llama-server crashes.
+	if err = os.Symlink(dst, ln); err != nil {
+		return ln, err
+	}
+	l.modelFile = ln
+	return ln, nil
 }
-
-/*
-	t, err := template.New("").Parse(msgs[0].Text)
-	if err != nil {
-		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Text, "error", err)
-		return msgs
-	}
-	keys := map[string]string{
-		"Now":   time.Now().Format("Monday 2006-01-02T15:04:05 MST"),
-		"Model": string(l.Model),
-	}
-	b := bytes.Buffer{}
-	if err = t.Execute(&b, keys); err != nil {
-		slog.Error("llm", "message", "invalid system prompt", "system_prompt", msgs[0].Text, "error", err)
-		return msgs
-	}
-	out[0].Text = b.String()
-	return out
-*/
 
 // Tools
 
@@ -501,6 +458,6 @@ func getLlama(ctx context.Context, cache string) (string, bool, error) {
 	if _, err := os.Stat(llamaserver); err == nil {
 		return llamaserver, false, nil
 	}
-	llamaserver, err := llamacppsrv.DownloadRelease(ctx, cache, 4856)
+	llamaserver, err := llamacppsrv.DownloadRelease(ctx, cache, llamacppsrv.BuildNumber)
 	return llamaserver, false, err
 }
