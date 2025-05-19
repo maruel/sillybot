@@ -29,7 +29,6 @@ import (
 	"github.com/maruel/sillybot"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
-	"github.com/maruel/sillybot/llm/tools"
 	"google.golang.org/api/customsearch/v1"
 	"google.golang.org/api/option"
 )
@@ -50,7 +49,6 @@ type discordBot struct {
 	ig       *imagegen.Session
 	settings sillybot.Settings
 	memDir   string
-	toolsMsg genai.Message
 	chat     chan msgReq
 	image    chan intReq
 	gcptoken string
@@ -60,45 +58,43 @@ type discordBot struct {
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
 func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
-	toolsMsg := genai.Message{}
-	if l.Encoding != nil && strings.Contains(strings.ToLower(string(l.Model)), "mistral") {
-		/* TODO
-		slog.Info("discord", "message", "tools are enabled", "encoding", l.Encoding)
-		// HACK: Also an hack.
-		availtools := []tools.MistralTool{
-			{
-				Type: "function",
-				Function: tools.MistralFunction{
-					Name:        "web_search",
-					Description: "Search the web for information",
-					Parameters: &tools.MistralFunctionParams{
-						Type: "object",
-						Properties: map[string]tools.MistralProperty{
-							"query": {
-								Type:        "string",
-								Description: "Query to use to search on the internet",
-							},
-						},
-						Required: []string{"query"},
-					},
-				},
-			},
-			tools.CalculateMistralTool,
-			tools.GetTodayClockTimeMistralTool,
-		}
-		b, err := json.Marshal(availtools)
-		if err != nil {
-			return nil, err
-		}
-		toolsMsg = genai.Message{
-			Role: genai.AvailableTools,
-			Type: genai.Text,
-			Text: string(b),
-		}
-		*/
+	/* TODO
+	availtools := []genai.ToolDef{
+		tools.Calculate,
+		tools.GetTodayClockTime,
 	}
+	toolsMsg = genai.Message{
+		Role: genai.AvailableTools,
+		Type: genai.Text,
+		Text: string(b),
+	}
+	*/
+	/*
+		case "web_search":
+			query := calls[0].Arguments["query"]
+			if len(calls[0].Arguments) != 1 || query == "" {
+				slog.Warn("discord", "message", "not the call we wanted", "line", line, "calls", calls)
+				continue
+			}
+			slog.Info("discord", "tool_call", calls[0].Name, "query", query)
+			search, err := d.toolWebSearch(d.ctx, query)
+			if err != nil {
+				slog.Error("discord", "tool", "web_search", "error", err)
+				// Continue as if it wasn't a tool call.
+				continue
+			}
+			for _, l := range search.Items {
+				result += "- " + l.Title + ": " + l.Snippet + "\n"
+			}
+			if result == "" {
+				slog.Info("discord", "tool_call", calls[0].Name, "result", result, "error", "no result!")
+				result = "No result was found on the internet due to an internal error in discord-bot"
+			}
+			slog.Info("discord", "tool_call", calls[0].Name, "result", result)
+			name += fmt.Sprintf("(query=%q) = %s", query, result)
+	*/
 
-	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
+	discordgo.Logger = func(msgL, caller int, format string, a ...any) {
 		msg := fmt.Sprintf(format, a...)
 		switch msgL {
 		case discordgo.LogDebug:
@@ -130,7 +126,6 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 		ig:       ig,
 		settings: settings,
 		memDir:   memDir,
-		toolsMsg: toolsMsg,
 		chat:     make(chan msgReq, 5),
 		image:    make(chan intReq, 3),
 		gcptoken: gcptoken,
@@ -601,11 +596,6 @@ func (d *discordBot) chatRoutine() {
 	if d.settings.PromptSystem != "" {
 		c := d.getMemory("")
 		c.Messages = nil
-		c = d.getMemory("")
-		opts := genai.ChatOptions{MaxTokens: 100, Temperature: 1.0}
-		if _, err := d.l.Prompt(d.ctx, c.Messages, &opts); err != nil {
-			slog.Error("discord", "error", err)
-		}
 	}
 	for req := range d.chat {
 		if req.authorID == "" {
@@ -654,10 +644,7 @@ func (d *discordBot) getMemory(channelID string) *llm.Conversation {
 	// TODO: Send a warning or forget when one of Model, Prompt, Tools changed.
 	c := d.mem.Get("", channelID)
 	if len(c.Messages) == 0 {
-		// Ish.
-		if d.toolsMsg.Contents[0].Text != "" {
-			c.Messages = []genai.Message{d.toolsMsg}
-		}
+		// Inject a message?
 	}
 	return c
 }
@@ -679,7 +666,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 	replyToID := req.replyToID
 	for {
 		// 32768
-		opts := genai.ChatOptions{Temperature: 1.0}
+		opts := genai.ChatOptions{}
 		reply, err := d.l.Prompt(d.ctx, c.Messages, &opts)
 		if err != nil {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
@@ -689,24 +676,17 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 		}
 		// Remember our own answer.
 		c.Messages = append(c.Messages, genai.NewTextMessage(genai.Assistant, reply))
-		gotToolCall := false
-		for reply != "" {
-			if d.l.Encoding != nil && !gotToolCall {
-				if called := d.handleMistralToolCall(reply, c); called != "" {
-					// TODO: Tell the user a function is being used, not after it was used.
-					gotToolCall = true
-					if msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*"); err != nil {
-						slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
-					} else {
-						replyToID = msg.ID
-					}
-					if err := d.dg.ChannelTyping(req.channelID); err != nil {
-						slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
-					}
-					// We need to do a new loop.
-					break
-				}
+		/*
+			if msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*"); err != nil {
+				slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
+			} else {
+				replyToID = msg.ID
 			}
+			if err := d.dg.ChannelTyping(req.channelID); err != nil {
+				slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+			}
+		*/
+		for reply != "" {
 			// Only split the response if it is too large.
 			t := reply
 			rest := ""
@@ -725,9 +705,6 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 				replyToID = msg.ID
 			}
 			reply = rest
-		}
-		if !gotToolCall {
-			return
 		}
 	}
 }
@@ -757,53 +734,44 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 				case pkt, ok := <-chunks:
 					// slog.Debug("discord", "pkt", pkt, "ok", ok)
 					if !ok {
-						if d.l.Encoding != nil && !gotToolCall {
-							if called := d.handleMistralToolCall(pending, c); called != "" {
-								// TODO: Tell the user a function is being used, not after it was used.
-								gotToolCall = true
-								// No need to wait for additional content.
-								// TODO: investigate why it's not taking effect faster.
-								cancel()
-								if msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*"); err != nil {
-									slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
+						/*
+							if msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*"); err != nil {
+								slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
+							} else {
+								replyToID = msg.ID
+							}
+							if err := d.dg.ChannelTyping(req.channelID); err != nil {
+								slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
+							}
+						*/
+						// That's the end, flush all the remaining content.
+						if pending != "" {
+							text += pending
+							// When a model is asked to do a large program, it's frequent
+							// that it will buffer the whole response and send it back in
+							// one shot. In this case, the content received can be very
+							// large.
+							// TODO: It could be a function call!! Handle it.
+							for len(pending) > maxMessage {
+								t, rest := splitResponse(pending, true)
+								if t == "" {
+									t = rest[:maxMessage]
+									rest = rest[maxMessage:]
+								}
+								msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, t)
+								if err != nil {
+									slog.Error("discord", "message", "failed posting message", "error", err, "content", t)
 								} else {
 									replyToID = msg.ID
 								}
-								if err := d.dg.ChannelTyping(req.channelID); err != nil {
-									slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
-								}
+								pending = rest
+							}
+							if _, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, pending); err != nil {
+								slog.Error("discord", "message", "failed posting message", "error", err, "content", pending)
 							}
 						}
-						if !gotToolCall {
-							// That's the end, flush all the remaining content.
-							if pending != "" {
-								text += pending
-								// When a model is asked to do a large program, it's frequent
-								// that it will buffer the whole response and send it back in
-								// one shot. In this case, the content received can be very
-								// large.
-								// TODO: It could be a function call!! Handle it.
-								for len(pending) > maxMessage {
-									t, rest := splitResponse(pending, true)
-									if t == "" {
-										t = rest[:maxMessage]
-										rest = rest[maxMessage:]
-									}
-									msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, t)
-									if err != nil {
-										slog.Error("discord", "message", "failed posting message", "error", err, "content", t)
-									} else {
-										replyToID = msg.ID
-									}
-									pending = rest
-								}
-								if _, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, pending); err != nil {
-									slog.Error("discord", "message", "failed posting message", "error", err, "content", pending)
-								}
-							}
-							// Remember our own answer.
-							c.Messages = append(c.Messages, genai.NewTextMessage(genai.Assistant, text))
-						}
+						// Remember our own answer.
+						c.Messages = append(c.Messages, genai.NewTextMessage(genai.Assistant, text))
 						t.Stop()
 						wg.Done()
 						return
@@ -817,33 +785,21 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 					// rate.
 					// It becomes urgent when it's twice the period.
 					if t, rest := splitResponse(pending, now.Sub(last) >= 2*rate); t != "" {
-						if d.l.Encoding != nil && !gotToolCall {
-							// TODO: function call is when a line, any line, starts with "[".
-							// Sometimes the last "]" is not followed by a \n, which breaks json
-							// parsing.
-							if called := d.handleMistralToolCall(t, c); called != "" {
-								// TODO: Tell the user a function is being used, not after it was used.
-								gotToolCall = true
-								// No need to wait for additional content.
-								// TODO: investigate why it's not taking effect faster.
-								cancel()
-								msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
-								if err != nil {
-									slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
-								} else {
-									replyToID = msg.ID
-								}
-							}
-						}
-						if !gotToolCall {
-							msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, t)
+						/*
+							msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
 							if err != nil {
-								slog.Error("discord", "message", "failed posting message", "error", err, "content", t)
+								slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
 							} else {
 								replyToID = msg.ID
 							}
-							last = now
+						*/
+						msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, t)
+						if err != nil {
+							slog.Error("discord", "message", "failed posting message", "error", err, "content", t)
+						} else {
+							replyToID = msg.ID
 						}
+						last = now
 						text += t
 						pending = rest
 					}
@@ -854,7 +810,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 			}
 		}()
 		// We're chatting, we don't want too much content?
-		opts := genai.ChatOptions{Temperature: 1.0}
+		opts := genai.ChatOptions{}
 		err := d.l.PromptStreaming(ctx, c.Messages, &opts, chunks)
 		close(chunks)
 		wg.Wait()
@@ -879,102 +835,6 @@ func (d *discordBot) channelMessageSendComplex(replyToID, channelID, guildID, co
 		msgSend.Reference = &discordgo.MessageReference{MessageID: replyToID, ChannelID: channelID, GuildID: guildID}
 	}
 	return d.dg.ChannelMessageSendComplex(channelID, &msgSend)
-}
-
-// handleMistralToolCall check if the pending string and returns its name if so.
-//
-// TODO: This shouldn't receive the whole conversation. It should return the
-// name before calling so it can alert the user, especially for tools that take
-// a long time to run.
-func (d *discordBot) handleMistralToolCall(pending string, c *llm.Conversation) string {
-	var calls []tools.MistralToolCall
-	for _, line := range strings.Split(pending, "\n") {
-		if line = strings.TrimSpace(line); line == "" {
-			continue
-		}
-		if err := json.Unmarshal([]byte(line), &calls); err != nil {
-			// slog.Debug("discord", "message", "line is not tool call", "line", line)
-			continue
-		}
-		if len(calls) != 1 {
-			slog.Warn("discord", "message", "unexpected number of calls", "line", line, "calls", calls)
-			continue
-		}
-		name := calls[0].Name
-		result := ""
-		// TODO: Use reflect to determine arguments automatically.
-		// TODO: Stop hardcoding the function names.
-		switch calls[0].Name {
-		case "web_search":
-			query := calls[0].Arguments["query"]
-			if len(calls[0].Arguments) != 1 || query == "" {
-				slog.Warn("discord", "message", "not the call we wanted", "line", line, "calls", calls)
-				continue
-			}
-			slog.Info("discord", "tool_call", calls[0].Name, "query", query)
-			search, err := d.toolWebSearch(d.ctx, query)
-			if err != nil {
-				slog.Error("discord", "tool", "web_search", "error", err)
-				// Continue as if it wasn't a tool call.
-				continue
-			}
-			for _, l := range search.Items {
-				result += "- " + l.Title + ": " + l.Snippet + "\n"
-			}
-			if result == "" {
-				slog.Info("discord", "tool_call", calls[0].Name, "result", result, "error", "no result!")
-				result = "No result was found on the internet due to an internal error in discord-bot"
-			}
-			slog.Info("discord", "tool_call", calls[0].Name, "result", result)
-			name += fmt.Sprintf("(query=%q) = %s", query, result)
-		case "calculate":
-			op := calls[0].Arguments["operation"]
-			f := calls[0].Arguments["first_number"]
-			s := calls[0].Arguments["second_number"]
-			result = tools.Calculate(op, f, s)
-			slog.Info("discord", "tool_call", calls[0].Name, "operation", op, "first", f, "second", s, "result", result)
-			name += fmt.Sprintf("(operation=%s, first=%s, second=%s) = %s", op, f, s, result)
-		case "get_today_date_current_clock_time":
-			result = tools.GetTodayClockTime()
-			slog.Info("discord", "tool_call", calls[0].Name, "result", result)
-			name += fmt.Sprintf("() = %s", result)
-		default:
-			slog.Warn("discord", "message", "unknown tool", "line", line, "calls", calls)
-		}
-		// See MistralRequestValidatorV3._validate_tool_message() in
-		// https://github.com/mistralai/mistral-common/blob/main/src/mistral_common/protocol/instruct/validator.py
-		// callid := 0
-		// for _, c := range c.Messages {
-		// 	if c.Role == genai.ToolCall {
-		// 		callid++
-		// 	}
-		// }
-		// res := tools.MistralToolCallResult{Content: result, CallID: fmt.Sprintf("c%08d", callid)}
-		// b, err := json.Marshal(res)
-		// if err != nil {
-		// 	slog.Error("discord", "tool", "json", "error", err)
-		// 	// Continue as if it wasn't a tool call.
-		// 	continue
-		// }
-		// We want to ignore the rest of the reply and send a new query.
-		// TODO: Inject CallID instead of pending[:i]. We need to determine if
-		// Mistral prefers to receive its own content as-is or reformatted?
-		// c.Messages = append(c.Messages,
-		// 	genai.Message{
-		// 		Role: genai.ToolCall,
-		// 		Type: genai.Text,
-		// 		Text: line,
-		// 	},
-		// 	genai.Message{
-		// 		Role: genai.ToolCallResult,
-		// 		Type: genai.Text,
-		// 		Text: string(b),
-		// 	})
-		// TODO: We should probably cancel the context and start over, there's no
-		// point in receiving more data.
-		return name
-	}
-	return ""
 }
 
 // splitResponse take pending reply from the LLM and returns the amount of
@@ -1147,7 +1007,6 @@ func (d *discordBot) handleImage(req intReq) {
 					imgseed := seed + 4*int64(i) + 4*int64(j)
 					opts := genai.ChatOptions{
 						MaxTokens:    70,
-						Temperature:  1.0,
 						SystemPrompt: d.settings.PromptLabels,
 						Seed:         imgseed,
 					}
@@ -1190,7 +1049,6 @@ func (d *discordBot) handleImage(req intReq) {
 				}
 				opts := genai.ChatOptions{
 					MaxTokens:    125,
-					Temperature:  1.0,
 					SystemPrompt: d.settings.PromptLabels,
 					Seed:         seed,
 				}

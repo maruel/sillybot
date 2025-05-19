@@ -72,9 +72,6 @@ type KnownLLM struct {
 	// Upstream is the upstream repo in the form "hf:<author>/<repo>" when the
 	// model is based on another one.
 	Upstream PackedRepoRef `yaml:"upstream"`
-	// PromptEncoding is only used when using llama-server in /completion mode.
-	// When not present, llama-server is used in OpenAI compatible API mode.
-	PromptEncoding *llamacpp.PromptEncoding `yaml:"prompt_encoding"`
 
 	_ struct{}
 }
@@ -90,11 +87,6 @@ func (k *KnownLLM) Validate() error {
 	if err := k.Upstream.Validate(); err != nil {
 		return fmt.Errorf("invalid upstream: %w", err)
 	}
-	if k.PromptEncoding != nil {
-		if err := k.PromptEncoding.Validate(); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -103,12 +95,11 @@ func (k *KnownLLM) Validate() error {
 // While it is expected that the model is an Instruct form, it is not a
 // requirement.
 type Session struct {
-	HF       *huggingface.Client
-	Model    PackedFileRef
-	Encoding *llamacpp.PromptEncoding
-	baseURL  string
-	backend  string
-	cp       genai.ChatProvider
+	HF      *huggingface.Client
+	Model   PackedFileRef
+	baseURL string
+	backend string
+	cp      genai.ChatProvider
 
 	cache     string
 	modelFile string
@@ -208,7 +199,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 	if l.backend == "python" {
 		l.cp = &py.Client{URL: l.baseURL}
 	} else {
-		l.cp, err = llamacpp.New(l.baseURL, l.Encoding)
+		l.cp, err = llamacpp.New(l.baseURL, nil)
 		if err != nil {
 			return nil, err
 		}
