@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/maruel/genai"
@@ -17,13 +18,33 @@ import (
 
 // Calculate is a tool usable by LLMs.
 //
-// It executes the arithmetic operation over two float64 numbers in string
-// form. The supported operations are "addition", "subtraction",
-// "multiplication" and "division".
-var CalculateTool = genai.ToolDef{
+// It executes the arithmetic operation over two numbers. It first tries to do the calculation using int64,
+// then using float64.
+//
+// The supported operations are "addition", "subtraction", "multiplication" and "division".
+var Calculate = genai.ToolDef{
 	Name:        "calculate",
 	Description: "Calculate an mathematical arithmetic operation.",
 	Callback: func(args *calculateArgs) (string, error) {
+		if i1, err := args.FirstNumber.Int64(); err == nil {
+			if i2, err := args.SecondNumber.Int64(); err == nil {
+				switch args.Operation {
+				case "addition":
+					return strconv.FormatInt(i1+i2, 10), nil
+				case "subtraction":
+					return strconv.FormatInt(i1-i2, 10), nil
+				case "multiplication":
+					return strconv.FormatInt(i1*i2, 10), nil
+				case "division":
+					if i1%i2 == 0 {
+						return strconv.FormatInt(i1/i2, 10), nil
+					}
+					// Otherwise fall back as float.
+				default:
+					return "", fmt.Errorf("unknown operation %q", args.Operation)
+				}
+			}
+		}
 		n1, err := args.FirstNumber.Float64()
 		if err != nil {
 			return "", fmt.Errorf("couldn't understand the first number: %w", err)
@@ -63,7 +84,7 @@ type calculateArgs struct {
 }
 
 // GetTodayClockTime returns the current time and day in a format that the LLM
-// can understand.
+// can understand. It includes the weekend.
 var GetTodayClockTime = genai.ToolDef{
 	Name:        "get_today_date_current_clock_time",
 	Description: "Get the current clock time and today's date.",

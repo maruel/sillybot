@@ -43,6 +43,9 @@ func TestLLM(t *testing.T) {
 	})
 	t.Logf("processed %.1fGiB of model", float64(totalSize)*0.000000001)
 	t.Run("python", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("skipping test case in short mode")
+		}
 		l := loadModel(t, "python")
 		testModelInner(t, l, systemPrompt)
 	})
