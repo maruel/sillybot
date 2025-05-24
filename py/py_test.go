@@ -50,7 +50,7 @@ func TestNewServer(t *testing.T) {
 		}
 	})
 
-	client, err := openaicompatible.New("http://localhost:"+port+"/v1/chat/completions", nil, "")
+	client, err := openaicompatible.New("http://localhost:"+port+"/v1/chat/completions", nil, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

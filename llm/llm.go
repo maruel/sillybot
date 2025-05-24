@@ -189,9 +189,9 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 	}
 
 	if l.backend == "python" {
-		l.cp, err = openaicompatible.New(l.baseURL+"/v1/chat/completions", nil, "")
+		l.cp, err = openaicompatible.New(l.baseURL+"/v1/chat/completions", nil, "", nil)
 	} else {
-		l.cp, err = llamacpp.New(l.baseURL, nil)
+		l.cp, err = llamacpp.New(l.baseURL, nil, nil)
 	}
 	if err != nil {
 		return nil, err
@@ -227,7 +227,7 @@ func (l *Session) Close() error {
 // GetHealth retrieves the heath of the server.
 func (l *Session) GetHealth(ctx context.Context) (string, error) {
 	// TODO: Generalize.
-	c, err := llamacpp.New(l.baseURL, nil)
+	c, err := llamacpp.New(l.baseURL, nil, nil)
 	if err != nil {
 		return "", err
 	}
@@ -237,7 +237,7 @@ func (l *Session) GetHealth(ctx context.Context) (string, error) {
 // GetMetrics retrieves the performance statistics from the server.
 func (l *Session) GetMetrics(ctx context.Context, m *llamacpp.Metrics) error {
 	// TODO: Generalize.
-	c, err := llamacpp.New(l.baseURL, nil)
+	c, err := llamacpp.New(l.baseURL, nil, nil)
 	if err != nil {
 		return err
 	}
