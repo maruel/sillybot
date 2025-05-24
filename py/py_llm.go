@@ -83,26 +83,27 @@ func (c *Client) Chat(ctx context.Context, msgs genai.Messages, opts genai.Valid
 	return out, nil
 }
 
-func (c *Client) ChatStream(ctx context.Context, msgs genai.Messages, opts genai.Validatable, chunks chan<- genai.MessageFragment) (genai.Usage, error) {
-	usage := genai.Usage{}
+func (c *Client) ChatStream(ctx context.Context, msgs genai.Messages, opts genai.Validatable, chunks chan<- genai.MessageFragment) (genai.ChatResult, error) {
+	result := genai.ChatResult{}
 	in := CompletionRequest{}
 	if err := in.Init(msgs, opts); err != nil {
-		return usage, err
+		return result, err
 	}
+	// TODO:
 	ch := make(chan CompletionStreamChunkResponse)
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		return processStreamPackets(ch, chunks)
+		return processStreamPackets(ch, chunks, &result)
 	})
-	usage, err := c.ChatStreamRaw(ctx, &in, ch)
+	err := c.ChatStreamRaw(ctx, &in, ch)
 	close(ch)
 	if err2 := eg.Wait(); err2 != nil {
 		err = err2
 	}
-	return usage, err
+	return result, err
 }
 
-func processStreamPackets(ch <-chan CompletionStreamChunkResponse, chunks chan<- genai.MessageFragment) error {
+func processStreamPackets(ch <-chan CompletionStreamChunkResponse, chunks chan<- genai.MessageFragment, result *genai.ChatResult) error {
 	defer func() {
 		// We need to empty the channel to avoid blocking the goroutine.
 		for range ch {
@@ -112,32 +113,36 @@ func processStreamPackets(ch <-chan CompletionStreamChunkResponse, chunks chan<-
 		if len(pkt.Choices) != 1 {
 			return fmt.Errorf("server returned an unexpected number of choices, expected 1, got %d", len(pkt.Choices))
 		}
-		chunks <- genai.MessageFragment{TextFragment: pkt.Choices[0].Delta.Content}
+		f := genai.MessageFragment{TextFragment: pkt.Choices[0].Delta.Content}
+		if !f.IsZero() {
+			chunks <- f
+			if err := result.Accumulate(f); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-func (c *Client) ChatStreamRaw(ctx context.Context, in *CompletionRequest, out chan<- CompletionStreamChunkResponse) (genai.Usage, error) {
+func (c *Client) ChatStreamRaw(ctx context.Context, in *CompletionRequest, out chan<- CompletionStreamChunkResponse) error {
 	in.Stream = true
-	// TODO:
-	usage := genai.Usage{}
 	resp, err := httpjson.DefaultClient.PostRequest(ctx, c.URL+"/v1/chat/completions", nil, in)
 	if err != nil {
-		return usage, fmt.Errorf("failed to get server response: %w", err)
+		return fmt.Errorf("failed to get server response: %w", err)
 	}
 	defer resp.Body.Close()
 	for r := bufio.NewReader(resp.Body); ; {
 		line, err := r.ReadBytes('\n')
 		if line = bytes.TrimSpace(line); err == io.EOF {
 			if len(line) == 0 {
-				return usage, nil
+				return nil
 			}
 		} else if err != nil {
-			return usage, fmt.Errorf("failed to get server response: %w", err)
+			return fmt.Errorf("failed to get server response: %w", err)
 		}
 		if len(line) != 0 {
 			if err := parseStreamLine(line, out); err != nil {
-				return usage, err
+				return err
 			}
 		}
 	}
