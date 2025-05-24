@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/maruel/genai"
+	"github.com/maruel/genai/openaicompatible"
 	"github.com/maruel/httpjson"
 	"github.com/maruel/sillybot/internal"
 )
@@ -49,7 +50,10 @@ func TestNewServer(t *testing.T) {
 		}
 	})
 
-	client := Client{URL: "http://localhost:" + port}
+	client, err := openaicompatible.New("http://localhost:"+port+"/v1/chat/completions", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	start := time.Now()
 	for {
 		resp, err := client.Chat(ctx, genai.Messages{

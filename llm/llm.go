@@ -25,6 +25,7 @@ import (
 	"github.com/maruel/genai"
 	"github.com/maruel/genai/llamacpp"
 	"github.com/maruel/genai/llamacpp/llamacppsrv"
+	"github.com/maruel/genai/openaicompatible"
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/internal"
 	"github.com/maruel/sillybot/py"
@@ -188,12 +189,12 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 	}
 
 	if l.backend == "python" {
-		l.cp = &py.Client{URL: l.baseURL}
+		l.cp, err = openaicompatible.New(l.baseURL+"/v1/chat/completions", nil, "")
 	} else {
 		l.cp, err = llamacpp.New(l.baseURL, nil)
-		if err != nil {
-			return nil, err
-		}
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	// Do a quick health check. Technically unnecessary when running llama-server
@@ -256,24 +257,15 @@ func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, opts genai.V
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "blocking")
-	msg, err := l.cp.Chat(ctx, msgs, opts)
+	result, err := l.cp.Chat(ctx, msgs, opts)
+	if _, ok := err.(*genai.UnsupportedContinuableError); ok {
+		err = nil
+	}
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return "", err
 	}
-	if len(msg.Contents) != 1 {
-		return "", fmt.Errorf("unexpected number of messages %d", len(msg.Contents))
-	}
-	reply := msg.Contents[0].Text
-	// TODO: Remove all these.
-	// Llama-3
-	reply = strings.TrimSuffix(reply, "<|eot_id|>")
-	// Gemma-2
-	reply = strings.TrimSuffix(reply, "<end_of_turn>")
-	// Phi-3
-	reply = strings.TrimSuffix(reply, "<|end|>")
-	reply = strings.TrimSuffix(reply, "<|endoftext|>")
-	reply = strings.TrimSpace(reply)
+	reply := result.AsText()
 	slog.Info("llm", "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
 	return reply, nil
 }
@@ -299,12 +291,15 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genai.Message, opt
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "streaming")
-	usage, err := l.cp.ChatStream(ctx, msgs, opts, chunks)
+	result, err := l.cp.ChatStream(ctx, msgs, opts, chunks)
+	if _, ok := err.(*genai.UnsupportedContinuableError); ok {
+		err = nil
+	}
 	if err != nil {
 		slog.Error("llm", "error", err, "duration", time.Since(start).Round(time.Millisecond))
 		return err
 	}
-	slog.Info("llm", "duration", time.Since(start).Round(time.Millisecond), "usage", usage)
+	slog.Info("llm", "duration", time.Since(start).Round(time.Millisecond), "usage", result)
 	return nil
 }
 
