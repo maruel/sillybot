@@ -100,7 +100,7 @@ type Session struct {
 	Model   PackedFileRef
 	baseURL string
 	backend string
-	cp      genai.ChatProvider
+	cp      genai.ProviderChat
 
 	cache     string
 	modelFile string

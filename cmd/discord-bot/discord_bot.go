@@ -518,7 +518,7 @@ func (d *discordBot) onListModels(event *discordgo.InteractionCreate, data disco
 }
 
 func (d *discordBot) onMetrics(event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
-	// Leverage genai.UsageTrackingChatProvider{}
+	// Leverage genai.ProviderChatUsage{}
 	if err := d.interactionRespond(event.Interaction, "To be implemented"); err != nil {
 		slog.Error("discord", "command", data.Name, "message", "failed reply", "error", err)
 	}
