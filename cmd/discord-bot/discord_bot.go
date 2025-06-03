@@ -666,7 +666,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 	replyToID := req.replyToID
 	for {
 		// 32768
-		opts := genai.TextOptions{}
+		opts := genai.OptionsText{}
 		reply, err := d.l.Prompt(d.ctx, c.Messages, &opts)
 		if err != nil {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
@@ -810,7 +810,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 			}
 		}()
 		// We're chatting, we don't want too much content?
-		opts := genai.TextOptions{}
+		opts := genai.OptionsText{}
 		err := d.l.PromptStreaming(ctx, c.Messages, chunks, &opts)
 		close(chunks)
 		wg.Wait()
@@ -1005,7 +1005,7 @@ func (d *discordBot) handleImage(req intReq) {
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*int64(i) + 4*int64(j)
-					opts := genai.TextOptions{
+					opts := genai.OptionsText{
 						MaxTokens:    70,
 						SystemPrompt: d.settings.PromptLabels,
 						Seed:         imgseed,
@@ -1047,7 +1047,7 @@ func (d *discordBot) handleImage(req intReq) {
 				msgs := genai.Messages{
 					genai.NewTextMessage(genai.User, "Prompt: "+req.description+"\n"+"Text relevant to the image: "+labelsContent),
 				}
-				opts := genai.TextOptions{
+				opts := genai.OptionsText{
 					MaxTokens:    125,
 					SystemPrompt: d.settings.PromptLabels,
 					Seed:         seed,

@@ -71,7 +71,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 		msgs := genai.Messages{
 			genai.NewTextMessage(genai.User, prompt),
 		}
-		opts := genai.TextOptions{Seed: 1, SystemPrompt: systemPrompt}
+		opts := genai.OptionsText{Seed: 1, SystemPrompt: systemPrompt}
 		got, err2 := l.Prompt(ctx, msgs, &opts)
 		if err2 != nil {
 			t.Fatal(err2)
@@ -96,7 +96,7 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 			}
 			wg.Done()
 		}()
-		opts := genai.TextOptions{Seed: 1, SystemPrompt: systemPrompt}
+		opts := genai.OptionsText{Seed: 1, SystemPrompt: systemPrompt}
 		err2 := l.PromptStreaming(ctx, msgs, chunks, &opts)
 		close(chunks)
 		wg.Wait()
