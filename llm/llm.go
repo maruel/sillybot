@@ -100,7 +100,7 @@ type Session struct {
 	Model   PackedFileRef
 	baseURL string
 	backend string
-	cp      genai.ProviderChat
+	cp      genai.ProviderGen
 
 	cache     string
 	modelFile string
@@ -249,7 +249,7 @@ func (l *Session) GetMetrics(ctx context.Context, m *llamacpp.Metrics) error {
 // See PromptStreaming for the arguments values.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, opts genai.Validatable) (string, error) {
+func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, opts genai.Options) (string, error) {
 	r := trace.StartRegion(ctx, "llm.Prompt")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -257,7 +257,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, opts genai.V
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "blocking")
-	result, err := l.cp.Chat(ctx, msgs, opts)
+	result, err := l.cp.GenSync(ctx, msgs, opts)
 	if _, ok := err.(*genai.UnsupportedContinuableError); ok {
 		err = nil
 	}
@@ -283,7 +283,7 @@ func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, opts genai.V
 // Mistral-Nemo) requires much lower value <=0.3.
 //
 // The first message is assumed to be the system prompt.
-func (l *Session) PromptStreaming(ctx context.Context, msgs []genai.Message, opts genai.Validatable, chunks chan<- genai.MessageFragment) error {
+func (l *Session) PromptStreaming(ctx context.Context, msgs []genai.Message, chunks chan<- genai.ContentFragment, opts genai.Options) error {
 	r := trace.StartRegion(ctx, "llm.PromptStreaming")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -291,7 +291,7 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genai.Message, opt
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "streaming")
-	result, err := l.cp.ChatStream(ctx, msgs, opts, chunks)
+	result, err := l.cp.GenStream(ctx, msgs, chunks, opts)
 	if _, ok := err.(*genai.UnsupportedContinuableError); ok {
 		err = nil
 	}

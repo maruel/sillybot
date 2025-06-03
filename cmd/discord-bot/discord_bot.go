@@ -666,7 +666,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 	replyToID := req.replyToID
 	for {
 		// 32768
-		opts := genai.ChatOptions{}
+		opts := genai.TextOptions{}
 		reply, err := d.l.Prompt(d.ctx, c.Messages, &opts)
 		if err != nil {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
@@ -720,7 +720,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 		// Make it blocking to force a goroutine context switch when a word is
 		// received. When it's buffered, there can be significant delay when LLM is
 		// running on the CPU.
-		chunks := make(chan genai.MessageFragment)
+		chunks := make(chan genai.ContentFragment)
 		wg.Add(1)
 		go func() {
 			const rate = 2000 * time.Millisecond
@@ -810,8 +810,8 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 			}
 		}()
 		// We're chatting, we don't want too much content?
-		opts := genai.ChatOptions{}
-		err := d.l.PromptStreaming(ctx, c.Messages, &opts, chunks)
+		opts := genai.TextOptions{}
+		err := d.l.PromptStreaming(ctx, c.Messages, chunks, &opts)
 		close(chunks)
 		wg.Wait()
 		cancel()
@@ -1005,7 +1005,7 @@ func (d *discordBot) handleImage(req intReq) {
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*int64(i) + 4*int64(j)
-					opts := genai.ChatOptions{
+					opts := genai.TextOptions{
 						MaxTokens:    70,
 						SystemPrompt: d.settings.PromptLabels,
 						Seed:         imgseed,
@@ -1047,7 +1047,7 @@ func (d *discordBot) handleImage(req intReq) {
 				msgs := genai.Messages{
 					genai.NewTextMessage(genai.User, "Prompt: "+req.description+"\n"+"Text relevant to the image: "+labelsContent),
 				}
-				opts := genai.ChatOptions{
+				opts := genai.TextOptions{
 					MaxTokens:    125,
 					SystemPrompt: d.settings.PromptLabels,
 					Seed:         seed,

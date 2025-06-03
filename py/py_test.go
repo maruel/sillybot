@@ -56,7 +56,7 @@ func TestNewServer(t *testing.T) {
 	}
 	start := time.Now()
 	for {
-		resp, err := client.Chat(ctx, genai.Messages{
+		resp, err := client.GenSync(ctx, genai.Messages{
 			genai.NewTextMessage(genai.User, "Say hello. Reply with only one word."),
 		}, nil)
 		var v *url.Error

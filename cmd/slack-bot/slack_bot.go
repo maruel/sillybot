@@ -304,7 +304,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
 	c.Messages = append(c.Messages, genai.NewTextMessage(genai.User, req.msg))
-	chunks := make(chan genai.MessageFragment)
+	chunks := make(chan genai.ContentFragment)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
@@ -346,11 +346,11 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		}
 	}()
 	// We're chatting, we don't want too much content.
-	opts := genai.ChatOptions{
+	opts := genai.TextOptions{
 		MaxTokens:    2000,
 		SystemPrompt: s.settings.PromptImage,
 	}
-	err = s.l.PromptStreaming(ctx, c.Messages, &opts, chunks)
+	err = s.l.PromptStreaming(ctx, c.Messages, chunks, &opts)
 	close(chunks)
 	wg.Wait()
 
@@ -373,7 +373,7 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 
 		// Intentionally limit the number of tokens, otherwise it's Stable
 		// Diffusion that is unhappy.
-		opts := genai.ChatOptions{
+		opts := genai.TextOptions{
 			MaxTokens:    70,
 			SystemPrompt: s.settings.PromptImage,
 		}
