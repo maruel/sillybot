@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/maruel/genai"
-	"github.com/maruel/genai/openaicompatible"
+	"github.com/maruel/genai/providers/openaicompatible"
 	"github.com/maruel/httpjson"
 	"github.com/maruel/sillybot/internal"
 )
