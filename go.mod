@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/ipfs/go-cid v0.5.0
 	github.com/lmittmann/tint v1.1.0
-	github.com/maruel/genai v0.0.0-20250606202529-dce7803feb04
+	github.com/maruel/genai v0.0.0-20250608173858-3d1c65a4c001
 	github.com/maruel/httpjson v0.4.2
 	github.com/maruel/huggingface v0.0.0-20250313181651-d85dcc86b10e
 	github.com/mattn/go-colorable v0.1.14
@@ -73,7 +73,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
-	github.com/maruel/roundtrippers v0.3.2 // indirect
+	github.com/maruel/roundtrippers v0.3.3 // indirect
 	github.com/maruel/safetensors v1.2.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.28 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
