@@ -9,14 +9,14 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/ipfs/go-cid v0.5.0
 	github.com/lmittmann/tint v1.1.0
-	github.com/maruel/genai v0.0.0-20250608173858-3d1c65a4c001
+	github.com/maruel/genai v0.0.0-20250613192908-ef6f12e1f376
 	github.com/maruel/httpjson v0.4.2
 	github.com/maruel/huggingface v0.0.0-20250313181651-d85dcc86b10e
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.20
 	github.com/slack-go/slack v0.16.0
 	golang.org/x/image v0.27.0
-	golang.org/x/sync v0.14.0
+	golang.org/x/sync v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
