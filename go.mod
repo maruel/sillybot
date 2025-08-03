@@ -1,6 +1,6 @@
 module github.com/maruel/sillybot
 
-go 1.24.1
+go 1.24.4
 
 require (
 	github.com/bluesky-social/indigo v0.0.0-20250516010818-f8de501bd6a0
@@ -73,6 +73,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
+	github.com/maruel/genaipy v0.0.0-20250803113051-5c670aeffc54 // indirect
 	github.com/maruel/roundtrippers v0.4.2 // indirect
 	github.com/maruel/safetensors v1.2.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.28 // indirect

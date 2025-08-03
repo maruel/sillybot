@@ -26,9 +26,9 @@ import (
 	"github.com/maruel/genai/providers/llamacpp"
 	"github.com/maruel/genai/providers/llamacpp/llamacppsrv"
 	"github.com/maruel/genai/providers/openaicompatible"
+	"github.com/maruel/genaipy"
 	"github.com/maruel/huggingface"
 	"github.com/maruel/sillybot/internal"
-	"github.com/maruel/sillybot/py"
 )
 
 // Options for NewLLM.
@@ -143,7 +143,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 			if err = os.MkdirAll(pyDir, 0o755); err != nil {
 				return nil, err
 			}
-			srv, err2 := py.NewServer(ctx, "llm.py", pyDir, filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
+			srv, err2 := genaipy.NewServer(ctx, "llm.py", pyDir, filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
 			if err2 != nil {
 				return nil, err2
 			}

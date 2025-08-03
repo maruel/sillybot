@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/maruel/genaipy"
 	"github.com/maruel/httpjson"
 	"github.com/maruel/sillybot/internal"
-	"github.com/maruel/sillybot/py"
 )
 
 // Options for New.
@@ -35,7 +35,7 @@ type Options struct {
 // Session manages an image generation server.
 type Session struct {
 	baseURL string
-	s       *py.Server
+	s       *genaipy.Server
 
 	steps int64
 }
@@ -50,7 +50,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 			return nil, fmt.Errorf("unknown model %q", opts.Model)
 		}
 		port := strconv.Itoa(internal.FindFreePort(8032))
-		svr, err := py.NewServer(ctx, "image_gen.py", filepath.Join(cache, "py"), filepath.Join(cache, "py_img.log"), []string{"--port", port})
+		svr, err := genaipy.NewServer(ctx, "image_gen.py", filepath.Join(cache, "py"), filepath.Join(cache, "py_img.log"), []string{"--port", port})
 		if err != nil {
 			return nil, err
 		}
