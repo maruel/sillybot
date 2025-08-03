@@ -8,21 +8,21 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/ipfs/go-cid v0.5.0
-	github.com/lmittmann/tint v1.1.0
-	github.com/maruel/genai v0.0.0-20250613192908-ef6f12e1f376
-	github.com/maruel/httpjson v0.4.2
-	github.com/maruel/huggingface v0.0.0-20250313181651-d85dcc86b10e
+	github.com/lmittmann/tint v1.1.2
+	github.com/maruel/genai v0.0.0-20250803104054-66b427386bd1
+	github.com/maruel/httpjson v0.5.0
+	github.com/maruel/huggingface v0.1.0
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.20
 	github.com/slack-go/slack v0.16.0
 	golang.org/x/image v0.27.0
-	golang.org/x/sync v0.15.0
+	golang.org/x/sync v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
 	github.com/RussellLuo/slidingwindow v0.0.0-20200528002341-535bb99d338b // indirect
-	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
@@ -73,7 +73,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
-	github.com/maruel/roundtrippers v0.3.3 // indirect
+	github.com/maruel/roundtrippers v0.4.2 // indirect
 	github.com/maruel/safetensors v1.2.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.28 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
@@ -109,12 +109,13 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
-	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/term v0.32.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/term v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
+	gopkg.in/dnaeon/go-vcr.v4 v4.0.4 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/gorm v1.26.1 // indirect
