@@ -18,7 +18,6 @@ import (
 
 	"github.com/lmittmann/tint"
 	"github.com/maruel/genai"
-	"github.com/maruel/genai/providers/llamacpp"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 )
@@ -54,12 +53,6 @@ func TestLLM(t *testing.T) {
 func testModel(t *testing.T, model PackedFileRef, systemPrompt string) string {
 	l := loadModel(t, model)
 	testModelInner(t, l, systemPrompt)
-	m := llamacpp.Metrics{}
-	if err := l.GetMetrics(context.Background(), &m); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("prompt:    %4d tokens; % 8.2f tok/s", m.Prompt.Count, m.Prompt.Rate())
-	t.Logf("generated: %4d tokens; % 8.2f tok/s", m.Generated.Count, m.Generated.Rate())
 	return l.modelFile
 }
 

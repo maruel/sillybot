@@ -234,16 +234,6 @@ func (l *Session) GetHealth(ctx context.Context) (string, error) {
 	return c.GetHealth(ctx)
 }
 
-// GetMetrics retrieves the performance statistics from the server.
-func (l *Session) GetMetrics(ctx context.Context, m *llamacpp.Metrics) error {
-	// TODO: Generalize.
-	c, err := llamacpp.New(l.baseURL, nil, nil)
-	if err != nil {
-		return err
-	}
-	return c.GetMetrics(ctx, m)
-}
-
 // Prompt prompts the LLM and returns the reply.
 //
 // See PromptStreaming for the arguments values.
@@ -403,23 +393,20 @@ func getModelPath(model PackedFileRef) (string, error) {
 	return model.Basename() + ".gguf", nil
 }
 
-// getLlama returns the file path to llama.cpp/llamafile executable.
+// getLlama returns the file path to llama.cpp executable.
 //
-// It first look for llama-server or llamafile if one of them is PATH. Then it
-// checks if one of them is s in the cache directory, otherwise downloads an
-// hard coded version of llama-server from GitHub.
+// It first look for llama-server in PATH. Then it checks if it is in the cache directory, otherwise downloads
+// an hard coded version of llama-server from GitHub.
 func getLlama(ctx context.Context, cache string) (string, error) {
 	if s, err := exec.LookPath("llama-server"); err == nil {
 		return s, nil
 	}
-	execSuffix := ""
+	p := filepath.Join(cache, "llama-server")
 	if runtime.GOOS == "windows" {
-		execSuffix = ".exe"
+		p += ".exe"
 	}
-	llamaserver := filepath.Join(cache, "llama-server"+execSuffix)
-	if _, err := os.Stat(llamaserver); err == nil {
-		return llamaserver, nil
+	if _, err := os.Stat(p); err == nil {
+		return p, nil
 	}
-	llamaserver, err := llamacppsrv.DownloadRelease(ctx, cache, llamacppsrv.BuildNumber)
-	return llamaserver, err
+	return llamacppsrv.DownloadRelease(ctx, cache, llamacppsrv.BuildNumber)
 }
