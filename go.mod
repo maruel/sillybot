@@ -10,6 +10,7 @@ require (
 	github.com/ipfs/go-cid v0.5.0
 	github.com/lmittmann/tint v1.1.2
 	github.com/maruel/genai v0.0.0-20250803104054-66b427386bd1
+	github.com/maruel/genaipy v0.0.0-20250803113051-5c670aeffc54
 	github.com/maruel/httpjson v0.5.0
 	github.com/maruel/huggingface v0.1.0
 	github.com/mattn/go-colorable v0.1.14
@@ -73,7 +74,6 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
-	github.com/maruel/genaipy v0.0.0-20250803113051-5c670aeffc54 // indirect
 	github.com/maruel/roundtrippers v0.4.2 // indirect
 	github.com/maruel/safetensors v1.2.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.28 // indirect

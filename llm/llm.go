@@ -234,16 +234,12 @@ func (l *Session) GetHealth(ctx context.Context) (string, error) {
 	return c.GetHealth(ctx)
 }
 
-// Prompt prompts the LLM and returns the reply.
-//
-// See PromptStreaming for the arguments values.
-//
-// The first message is assumed to be the system prompt.
-func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, opts genai.Options) (string, error) {
-	r := trace.StartRegion(ctx, "llm.Prompt")
+// GenSync prompts the LLM and returns the reply.
+func (l *Session) GenSync(ctx context.Context, msgs []genai.Message, opts genai.Options) (genai.Result, error) {
+	r := trace.StartRegion(ctx, "llm.GenSync")
 	defer r.End()
 	if len(msgs) == 0 {
-		return "", errors.New("input required")
+		return genai.Result{}, errors.New("input required")
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "blocking")
@@ -253,14 +249,13 @@ func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, opts genai.O
 	}
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
-		return "", err
+	} else {
+		slog.Info("llm", "reply", result.AsText(), "duration", time.Since(start).Round(time.Millisecond))
 	}
-	reply := result.AsText()
-	slog.Info("llm", "reply", reply, "duration", time.Since(start).Round(time.Millisecond))
-	return reply, nil
+	return result, err
 }
 
-// PromptStreaming prompts the LLM and returns the reply in the supplied channel.
+// GenStream prompts the LLM and returns the reply in the supplied channel.
 //
 // Use a non-zero seed to get deterministic output (without strong guarantees).
 //
@@ -271,13 +266,11 @@ func (l *Session) Prompt(ctx context.Context, msgs []genai.Message, opts genai.O
 //
 // It is recommended to use 1.0 by default, except some models (like
 // Mistral-Nemo) requires much lower value <=0.3.
-//
-// The first message is assumed to be the system prompt.
-func (l *Session) PromptStreaming(ctx context.Context, msgs []genai.Message, chunks chan<- genai.ContentFragment, opts genai.Options) error {
-	r := trace.StartRegion(ctx, "llm.PromptStreaming")
+func (l *Session) GenStream(ctx context.Context, msgs []genai.Message, chunks chan<- genai.ContentFragment, opts genai.Options) (genai.Result, error) {
+	r := trace.StartRegion(ctx, "llm.GenStream")
 	defer r.End()
 	if len(msgs) == 0 {
-		return errors.New("input required")
+		return genai.Result{}, errors.New("input required")
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "streaming")
@@ -287,10 +280,10 @@ func (l *Session) PromptStreaming(ctx context.Context, msgs []genai.Message, chu
 	}
 	if err != nil {
 		slog.Error("llm", "error", err, "duration", time.Since(start).Round(time.Millisecond))
-		return err
+	} else {
+		slog.Info("llm", "duration", time.Since(start).Round(time.Millisecond), "usage", result)
 	}
-	slog.Info("llm", "duration", time.Since(start).Round(time.Millisecond), "usage", result)
-	return nil
+	return result, err
 }
 
 //

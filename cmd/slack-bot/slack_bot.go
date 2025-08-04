@@ -324,7 +324,6 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 						}
 					}
 					// Remember LLM's answer.
-					c.Messages = append(c.Messages, genai.NewTextMessage(genai.Assistant, text))
 					t.Stop()
 					wg.Done()
 					return
@@ -350,14 +349,16 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		MaxTokens:    2000,
 		SystemPrompt: s.settings.PromptImage,
 	}
-	err = s.l.PromptStreaming(ctx, c.Messages, chunks, &opts)
+	result, err := s.l.GenStream(ctx, c.Messages, chunks, &opts)
 	close(chunks)
 	wg.Wait()
-
-	if err != nil {
+	if err != nil && !errors.Is(err, context.Canceled) {
 		if _, _, err = s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText("Prompt generation failed: "+err.Error(), false), slack.MsgOptionTS(req.ts)); err != nil {
 			slog.Error("slack", "message", "failed posting message", "error", err)
 		}
+	} else {
+		// TODO: Handle non-text reply.
+		c.Messages = append(c.Messages, result.Message)
 	}
 }
 
@@ -377,10 +378,10 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 			MaxTokens:    70,
 			SystemPrompt: s.settings.PromptImage,
 		}
-		if reply, err := s.l.Prompt(ctx, msgs, &opts); err != nil {
+		if result, err := s.l.GenSync(ctx, msgs, &opts); err != nil {
 			slog.Error("discord", "message", "failed to enhance prompt", "error", err)
 		} else {
-			msg = reply
+			msg = result.AsText()
 		}
 	}
 	// TODO: Generate multiple images when the queue is empty?

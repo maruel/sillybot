@@ -65,11 +65,12 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 			genai.NewTextMessage(genai.User, prompt),
 		}
 		opts := genai.OptionsText{Seed: 1, SystemPrompt: systemPrompt}
-		got, err2 := l.Prompt(ctx, msgs, &opts)
+		result, err2 := l.GenSync(ctx, msgs, &opts)
 		if err2 != nil {
 			t.Fatal(err2)
 		}
-		checkAnswer(t, got)
+		t.Logf("generated: %4d tokens; returned: %4d", result.InputTokens, result.OutputTokens)
+		checkAnswer(t, result.AsText())
 	})
 	t.Run("Streaming", func(t *testing.T) {
 		t.Parallel()
@@ -90,12 +91,13 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 			wg.Done()
 		}()
 		opts := genai.OptionsText{Seed: 1, SystemPrompt: systemPrompt}
-		err2 := l.PromptStreaming(ctx, msgs, chunks, &opts)
+		result, err2 := l.GenStream(ctx, msgs, chunks, &opts)
 		close(chunks)
 		wg.Wait()
 		if err2 != nil {
 			t.Fatal(err2)
 		}
+		t.Logf("generated: %4d tokens; returned: %4d", result.InputTokens, result.OutputTokens)
 		checkAnswer(t, got)
 	})
 }

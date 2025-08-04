@@ -666,8 +666,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 	replyToID := req.replyToID
 	for {
 		// 32768
-		opts := genai.OptionsText{}
-		reply, err := d.l.Prompt(d.ctx, c.Messages, &opts)
+		result, err := d.l.GenSync(d.ctx, c.Messages, &genai.OptionsText{})
 		if err != nil {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
 				slog.Error("discord", "message", "failed posting message", "error", err)
@@ -675,7 +674,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 			return
 		}
 		// Remember our own answer.
-		c.Messages = append(c.Messages, genai.NewTextMessage(genai.Assistant, reply))
+		c.Messages = append(c.Messages, result.Message)
 		/*
 			if msg, err := d.channelMessageSendComplex(replyToID, req.channelID, req.guildID, "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*"); err != nil {
 				slog.Error("discord", "message", "failed posting message", "error", err, "content", "*An instant please, I'm calling tool "+escapeMarkdown(called)+"*")
@@ -686,6 +685,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 				slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
 			}
 		*/
+		reply := result.AsText()
 		for reply != "" {
 			// Only split the response if it is too large.
 			t := reply
@@ -716,7 +716,6 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 	wg := sync.WaitGroup{}
 	for {
 		ctx, cancel := context.WithCancel(d.ctx)
-		gotToolCall := false
 		// Make it blocking to force a goroutine context switch when a word is
 		// received. When it's buffered, there can be significant delay when LLM is
 		// running on the CPU.
@@ -727,7 +726,6 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 			t := time.NewTicker(rate)
 			last := time.Now()
 			replyToID := req.replyToID
-			text := ""
 			pending := ""
 			for {
 				select {
@@ -746,7 +744,6 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 						*/
 						// That's the end, flush all the remaining content.
 						if pending != "" {
-							text += pending
 							// When a model is asked to do a large program, it's frequent
 							// that it will buffer the whole response and send it back in
 							// one shot. In this case, the content received can be very
@@ -770,14 +767,9 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 								slog.Error("discord", "message", "failed posting message", "error", err, "content", pending)
 							}
 						}
-						// Remember our own answer.
-						c.Messages = append(c.Messages, genai.NewTextMessage(genai.Assistant, text))
 						t.Stop()
 						wg.Done()
 						return
-					}
-					if pkt.TextFragment == "" {
-						slog.Error("discord", "pkg", pkt)
 					}
 					pending += pkt.TextFragment
 				case now := <-t.C:
@@ -800,7 +792,6 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 							replyToID = msg.ID
 						}
 						last = now
-						text += t
 						pending = rest
 					}
 				}
@@ -810,21 +801,17 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 			}
 		}()
 		// We're chatting, we don't want too much content?
-		opts := genai.OptionsText{}
-		err := d.l.PromptStreaming(ctx, c.Messages, chunks, &opts)
+		result, err := d.l.GenStream(ctx, c.Messages, chunks, &genai.OptionsText{})
 		close(chunks)
 		wg.Wait()
 		cancel()
-		if errors.Is(err, context.Canceled) {
-			err = nil
-		}
-		if err != nil {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
 				slog.Error("discord", "message", "failed posting message", "error", err)
 			}
-		}
-		if !gotToolCall {
-			break
+		} else {
+			// TODO: Handle non-text reply.
+			c.Messages = append(c.Messages, result.Message)
 		}
 	}
 }
@@ -1010,7 +997,8 @@ func (d *discordBot) handleImage(req intReq) {
 						SystemPrompt: d.settings.PromptLabels,
 						Seed:         imgseed,
 					}
-					newLabels, err := d.l.Prompt(ctx, msgs, &opts)
+					result, err := d.l.GenSync(ctx, msgs, &opts)
+					newLabels := result.AsText()
 					if err != nil {
 						u.err = fmt.Errorf("failed to enhance labels: %w", err)
 						updates <- u
@@ -1052,12 +1040,13 @@ func (d *discordBot) handleImage(req intReq) {
 					SystemPrompt: d.settings.PromptLabels,
 					Seed:         seed,
 				}
-				if imagePrompt, u.err = d.l.Prompt(ctx, msgs, &opts); u.err != nil {
-					u.err = fmt.Errorf("failed to enhance image generation prompt: %w", u.err)
+				result, err := d.l.GenSync(ctx, msgs, &opts)
+				if err != nil {
+					u.err = fmt.Errorf("failed to enhance image generation prompt: %w", err)
 					updates <- u
 					return
 				}
-				imagePrompt = strings.TrimSpace(imagePrompt)
+				imagePrompt = strings.TrimSpace(result.AsText())
 				imagePrompt = strings.ReplaceAll(imagePrompt, "\n", " ")
 				imagePrompt = strings.ReplaceAll(imagePrompt, "  ", " ")
 				if len(u.content)+len(imagePrompt) < maxMessage-100 {
