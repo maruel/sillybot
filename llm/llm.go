@@ -33,18 +33,14 @@ import (
 
 // Options for NewLLM.
 type Options struct {
-	// Remote is the host:port of a pre-existing server to use instead of
-	// starting our own.
+	// Provider is the name of the provider to use. It can be one of genai's provider, or "python" for genaipy.
+	Provider string
+	// Remote is the host:port of a pre-existing server to use instead of starting our own. For "llamacpp" and
+	// "ollama" and it is unset, a local server will be started.
 	Remote string
 	// Model specifies a model to use.
-	//
-	// It will be selected automatically from KnownLLMs.
-	//
-	// Use "python" to use the integrated python backend.
 	Model PackedFileRef
-	// ContextLength will limit the context length. This is useful with the newer
-	// 128K context window models that will require too much memory and quite
-	// slow to run. A good value to recommend is 8192 or 32768.
+	// ContextLength will set the context length when using a locally managed "llamacpp" or "ollama".
 	ContextLength int `yaml:"context_length"`
 
 	_ struct{}
@@ -57,36 +53,6 @@ func (o *Options) Validate() error {
 		if err := o.Model.Validate(); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-// KnownLLM is a known model.
-//
-// Currently assumes the model is hosted on HuggingFace.
-type KnownLLM struct {
-	// Source is the repository in the form "hf:<author>/<repo>/<basename>".
-	Source PackedFileRef `yaml:"source"`
-	// PackagingType is the file format used in the model. It can be one of
-	// "safetensors" or "gguf".
-	PackagingType string
-	// Upstream is the upstream repo in the form "hf:<author>/<repo>" when the
-	// model is based on another one.
-	Upstream PackedRepoRef `yaml:"upstream"`
-
-	_ struct{}
-}
-
-// Validate checks for obvious errors in the fields.
-func (k *KnownLLM) Validate() error {
-	if err := k.Source.Validate(); err != nil {
-		return fmt.Errorf("invalid source: %w", err)
-	}
-	if k.PackagingType != "safetensors" && k.PackagingType != "gguf" {
-		return fmt.Errorf("invalid packaginetype %q", k.PackagingType)
-	}
-	if err := k.Upstream.Validate(); err != nil {
-		return fmt.Errorf("invalid upstream: %w", err)
 	}
 	return nil
 }
@@ -107,8 +73,7 @@ type Session struct {
 	srv       io.Closer
 }
 
-// New instantiates a llama.cpp or llamafile server, or optionally uses
-// python instead.
+// New instantiates a llama.cpp server, or optionally uses python instead.
 func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, err
@@ -169,8 +134,8 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 			if err2 != nil {
 				return nil, err2
 			}
-			hostPort := fmt.Sprintf("127.0.0.1:%d", port)
-			srv, err2 := llamacppsrv.NewServer(ctx, llamasrv, modelFile, f, hostPort, 0, args)
+			hostPort := fmt.Sprintf("localhost:%d", port)
+			srv, err2 := llamacppsrv.New(ctx, llamasrv, modelFile, f, hostPort, 0, args)
 			_ = f.Close()
 			if err2 != nil {
 				return nil, err2
@@ -189,9 +154,9 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 	}
 
 	if l.backend == "python" {
-		l.cp, err = openaicompatible.New(l.baseURL+"/v1/chat/completions", nil, "", nil)
+		l.cp, err = openaicompatible.New(&genai.OptionsProvider{Remote: l.baseURL + "/v1/chat/completions"}, nil)
 	} else {
-		l.cp, err = llamacpp.New(l.baseURL, nil, nil)
+		l.cp, err = llamacpp.New(&genai.OptionsProvider{Remote: l.baseURL}, nil)
 	}
 	if err != nil {
 		return nil, err
@@ -227,7 +192,7 @@ func (l *Session) Close() error {
 // GetHealth retrieves the heath of the server.
 func (l *Session) GetHealth(ctx context.Context) (string, error) {
 	// TODO: Generalize.
-	c, err := llamacpp.New(l.baseURL, nil, nil)
+	c, err := llamacpp.New(&genai.OptionsProvider{Remote: l.baseURL}, nil)
 	if err != nil {
 		return "", err
 	}

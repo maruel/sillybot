@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/ipfs/go-cid v0.5.0
 	github.com/lmittmann/tint v1.1.2
-	github.com/maruel/genai v0.0.0-20250803104054-66b427386bd1
+	github.com/maruel/genai v0.0.0-20250808191819-419a4becbad4
 	github.com/maruel/genaipy v0.0.0-20250803113051-5c670aeffc54
 	github.com/maruel/httpjson v0.5.0
 	github.com/maruel/huggingface v0.1.0
