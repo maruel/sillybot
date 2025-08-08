@@ -5,12 +5,13 @@ go 1.24.4
 require (
 	github.com/bluesky-social/indigo v0.0.0-20250516010818-f8de501bd6a0
 	github.com/bwmarrin/discordgo v0.28.1
+	github.com/goccy/go-yaml v1.18.0
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/ipfs/go-cid v0.5.0
 	github.com/lmittmann/tint v1.1.2
 	github.com/maruel/genai v0.0.0-20250808191819-419a4becbad4
-	github.com/maruel/genaipy v0.0.0-20250803113051-5c670aeffc54
+	github.com/maruel/genaipy v0.0.0-20250808205414-09c7b8fa4abe
 	github.com/maruel/httpjson v0.5.0
 	github.com/maruel/huggingface v0.1.0
 	github.com/mattn/go-colorable v0.1.14
@@ -18,7 +19,6 @@ require (
 	github.com/slack-go/slack v0.16.0
 	golang.org/x/image v0.27.0
 	golang.org/x/sync v0.16.0
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -118,6 +118,7 @@ require (
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/dnaeon/go-vcr.v4 v4.0.4 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/gorm v1.26.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect

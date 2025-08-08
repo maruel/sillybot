@@ -17,7 +17,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"runtime/trace"
 	"strconv"
 	"strings"
 	"time"
@@ -28,19 +27,15 @@ import (
 	"github.com/maruel/genai/providers/openaicompatible"
 	"github.com/maruel/genaipy"
 	"github.com/maruel/huggingface"
-	"github.com/maruel/sillybot/internal"
 )
 
 // Options for NewLLM.
 type Options struct {
-	// Provider is the name of the provider to use. It can be one of genai's provider, or "python" for genaipy.
-	Provider string
-	// Remote is the host:port of a pre-existing server to use instead of starting our own. For "llamacpp" and
-	// "ollama" and it is unset, a local server will be started.
-	Remote string
+	// Backend is the name of the backend to run. It can be "llama-server" or "python" for genaipy.
+	Backend string `yaml:"backend"`
 	// Model specifies a model to use.
-	Model PackedFileRef
-	// ContextLength will set the context length when using a locally managed "llamacpp" or "ollama".
+	Model PackedFileRef `yaml:"model"`
+	// ContextLength will set the context length when using a locally managed "llamacpp".
 	ContextLength int `yaml:"context_length"`
 
 	_ struct{}
@@ -57,14 +52,11 @@ func (o *Options) Validate() error {
 	return nil
 }
 
-// Session runs a llama.cpp or llamafile server and runs queries on it.
-//
-// While it is expected that the model is an Instruct form, it is not a
-// requirement.
-type Session struct {
+// Server runs a llamacpp-server or python.
+type Server struct {
 	HF      *huggingface.Client
 	Model   PackedFileRef
-	baseURL string
+	URL     string
 	backend string
 	cp      genai.ProviderGen
 
@@ -73,18 +65,11 @@ type Session struct {
 	srv       io.Closer
 }
 
-// New instantiates a llama.cpp server, or optionally uses python instead.
-func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
+// New instantiates a llamacpp-server or python.
+func New(ctx context.Context, cache string, opts *Options) (*Server, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
-
-	// Either:
-	// - Connecting to a remote server
-	// - Starting a local server
-	// The server can be either:
-	// - llama-server
-	// - our custom python backend
 
 	cacheModels := filepath.Join(cache, "models")
 	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
@@ -94,94 +79,67 @@ func New(ctx context.Context, cache string, opts *Options) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	l := &Session{HF: hf, Model: opts.Model, cache: cacheModels}
-
-	var done <-chan error
-	if opts.Remote == "" {
-		// We need to start the server.
-		port := internal.FindFreePort(8031)
-		l.baseURL = "http://localhost:" + strconv.Itoa(port)
-
-		if opts.Model == "python" {
-			l.backend = "python"
-			pyDir := filepath.Join(cache, "py")
-			if err = os.MkdirAll(pyDir, 0o755); err != nil {
-				return nil, err
-			}
-			srv, err2 := genaipy.NewServer(ctx, "llm.py", pyDir, filepath.Join(cache, "py_llm.log"), []string{"--port", strconv.Itoa(port)})
-			if err2 != nil {
-				return nil, err2
-			}
-			l.srv = srv
-			done = srv.Done()
-		} else {
-			llamasrv := ""
-			if llamasrv, err = getLlama(ctx, cache); err != nil {
-				return nil, fmt.Errorf("failed to load llm: %w", err)
-			}
-			l.backend = "llama-server"
-			// Make sure the model is available.
-			modelFile := ""
-			if modelFile, err = l.ensureModel(ctx, opts.Model); err != nil {
-				return nil, fmt.Errorf("failed to get llm model: %w", err)
-			}
-			args := []string{"-ngl", "9999"}
-			// Limit the context window for performance.
-			if opts.ContextLength != 0 {
-				args = append(args, "--ctx-size", strconv.Itoa(opts.ContextLength))
-			}
-			f, err2 := os.Create(filepath.Join(cache, "llm.log"))
-			if err2 != nil {
-				return nil, err2
-			}
-			hostPort := fmt.Sprintf("localhost:%d", port)
-			srv, err2 := llamacppsrv.New(ctx, llamasrv, modelFile, f, hostPort, 0, args)
-			_ = f.Close()
-			if err2 != nil {
-				return nil, err2
-			}
-			l.srv = srv
-			done = srv.Done()
+	l := &Server{HF: hf, Model: opts.Model, backend: opts.Backend, cache: cacheModels}
+	// We need to start the server.
+	switch l.backend {
+	case "python":
+		if l.Model != "" {
+			return nil, fmt.Errorf("backend \"python\" doesn't support explicit model; %q was specified", l.Model)
 		}
-	} else {
-		if !internal.IsHostPort(opts.Remote) {
-			return nil, fmt.Errorf("invalid remote %q; use form 'host:port'", opts.Remote)
+		pyDir := filepath.Join(cache, "py")
+		if err = os.MkdirAll(pyDir, 0o755); err != nil {
+			return nil, err
 		}
-		// TODO: Support other backends via genai.
-		l.baseURL = "http://" + opts.Remote
-		slog.Info("llm", "state", "loading")
-		l.backend = "remote"
+		srv, err2 := genaipy.NewServer(ctx, "llm.py", pyDir, filepath.Join(cache, "py_llm.log"), nil)
+		if err2 != nil {
+			return nil, err2
+		}
+		l.URL = srv.URL
+		l.srv = srv
+		l.cp, err = openaicompatible.New(&genai.OptionsProvider{Remote: l.URL + "/v1/chat/completions"}, nil)
+		if err != nil {
+			return nil, err
+		}
+		// Loop until it is available.
+		time.Sleep(10 * time.Second)
+	case "llama-server":
+		llamasrv := ""
+		if llamasrv, err = getLlama(ctx, cache); err != nil {
+			return nil, fmt.Errorf("failed to load llm: %w", err)
+		}
+		// Make sure the model is available.
+		modelFile := ""
+		if modelFile, err = l.ensureModel(ctx, opts.Model); err != nil {
+			return nil, fmt.Errorf("failed to get llm model: %w", err)
+		}
+		args := []string{"-ngl", "9999", "--jinja", "--flash-attn", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"}
+		if opts.ContextLength != 0 {
+			args = append(args, "--ctx-size", strconv.Itoa(opts.ContextLength))
+		}
+		f, err2 := os.Create(filepath.Join(cache, "llama-server.log"))
+		if err2 != nil {
+			return nil, err2
+		}
+		srv, err2 := llamacppsrv.New(ctx, llamasrv, modelFile, f, "localhost:0", 0, args)
+		_ = f.Close()
+		if err2 != nil {
+			return nil, err2
+		}
+		l.srv = srv
+		l.URL = srv.URL()
+		l.cp, err = llamacpp.New(&genai.OptionsProvider{Remote: l.URL}, nil)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unknown backend %q", l.backend)
 	}
 
-	if l.backend == "python" {
-		l.cp, err = openaicompatible.New(&genai.OptionsProvider{Remote: l.baseURL + "/v1/chat/completions"}, nil)
-	} else {
-		l.cp, err = llamacpp.New(&genai.OptionsProvider{Remote: l.baseURL}, nil)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	// Do a quick health check. Technically unnecessary when running llama-server
-	// locally.
-	for ctx.Err() == nil {
-		if status, _ := l.GetHealth(ctx); status == "ok" {
-			break
-		}
-		select {
-		case err := <-done:
-			l.srv = nil
-			return nil, fmt.Errorf("starting llm server failed: %w", err)
-		case <-ctx.Done():
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
-
-	slog.Info("llm", "state", "ready", "model", opts.Model, "using", l.backend, "url", l.baseURL)
+	slog.Info("llm", "state", "ready", "model", opts.Model, "using", l.backend, "url", l.URL)
 	return l, nil
 }
 
-func (l *Session) Close() error {
+func (l *Server) Close() error {
 	slog.Info("llm", "state", "terminating")
 	if l.srv != nil {
 		return l.srv.Close()
@@ -189,66 +147,8 @@ func (l *Session) Close() error {
 	return nil
 }
 
-// GetHealth retrieves the heath of the server.
-func (l *Session) GetHealth(ctx context.Context) (string, error) {
-	// TODO: Generalize.
-	c, err := llamacpp.New(&genai.OptionsProvider{Remote: l.baseURL}, nil)
-	if err != nil {
-		return "", err
-	}
-	return c.GetHealth(ctx)
-}
-
-// GenSync prompts the LLM and returns the reply.
-func (l *Session) GenSync(ctx context.Context, msgs []genai.Message, opts genai.Options) (genai.Result, error) {
-	r := trace.StartRegion(ctx, "llm.GenSync")
-	defer r.End()
-	if len(msgs) == 0 {
-		return genai.Result{}, errors.New("input required")
-	}
-	start := time.Now()
-	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "blocking")
-	result, err := l.cp.GenSync(ctx, msgs, opts)
-	if _, ok := err.(*genai.UnsupportedContinuableError); ok {
-		err = nil
-	}
-	if err != nil {
-		slog.Error("llm", "msgs", msgs, "error", err, "duration", time.Since(start).Round(time.Millisecond))
-	} else {
-		slog.Info("llm", "reply", result.AsText(), "duration", time.Since(start).Round(time.Millisecond))
-	}
-	return result, err
-}
-
-// GenStream prompts the LLM and returns the reply in the supplied channel.
-//
-// Use a non-zero seed to get deterministic output (without strong guarantees).
-//
-// Use low temperature (<1.0) to get more deterministic and repetitive output.
-//
-// Use high temperature (>1.0) to get more creative and random text. High
-// values can result in nonsensical responses.
-//
-// It is recommended to use 1.0 by default, except some models (like
-// Mistral-Nemo) requires much lower value <=0.3.
-func (l *Session) GenStream(ctx context.Context, msgs []genai.Message, chunks chan<- genai.ContentFragment, opts genai.Options) (genai.Result, error) {
-	r := trace.StartRegion(ctx, "llm.GenStream")
-	defer r.End()
-	if len(msgs) == 0 {
-		return genai.Result{}, errors.New("input required")
-	}
-	start := time.Now()
-	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "streaming")
-	result, err := l.cp.GenStream(ctx, msgs, chunks, opts)
-	if _, ok := err.(*genai.UnsupportedContinuableError); ok {
-		err = nil
-	}
-	if err != nil {
-		slog.Error("llm", "error", err, "duration", time.Since(start).Round(time.Millisecond))
-	} else {
-		slog.Info("llm", "duration", time.Since(start).Round(time.Millisecond), "usage", result)
-	}
-	return result, err
+func (l *Server) Client() genai.ProviderGen {
+	return l.cp
 }
 
 //
@@ -257,7 +157,7 @@ func (l *Session) GenStream(ctx context.Context, msgs []genai.Message, chunks ch
 //
 // Currently hard-coded to GGUF files and Hugging Face. Doesn't support split
 // files.
-func (l *Session) ensureModel(ctx context.Context, model PackedFileRef) (string, error) {
+func (l *Server) ensureModel(ctx context.Context, model PackedFileRef) (string, error) {
 	slog.Info("llm", "model", model, "state", "missing")
 	dst, err := getModelPath(model)
 	if err != nil {

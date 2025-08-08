@@ -42,7 +42,7 @@ const maxMessage = 2000
 type discordBot struct {
 	ctx      context.Context
 	dg       *discordgo.Session
-	l        *llm.Session
+	p        genai.ProviderGen
 	mem      *llm.Memory
 	ig       *imagegen.Session
 	settings sillybot.Settings
@@ -55,7 +55,7 @@ type discordBot struct {
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, l *llm.Session, mem *llm.Memory, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, p genai.ProviderGen, mem *llm.Memory, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
 	/* TODO
 	availtools := []genai.ToolDef{
 		tools.Calculate,
@@ -119,7 +119,7 @@ func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verb
 	d := &discordBot{
 		ctx:      ctx,
 		dg:       dg,
-		l:        l,
+		p:        p,
 		mem:      mem,
 		ig:       ig,
 		settings: settings,
@@ -400,7 +400,7 @@ func (d *discordBot) onMessageCreate(dg *discordgo.Session, m *discordgo.Message
 		slog.Debug("discord", "event", "messageCreate", "author", m.Author.Username, "server", m.GuildID, "channel", m.ChannelID, "message", "ignored")
 		return
 	}
-	if d.l == nil {
+	if d.p == nil {
 		if _, err := dg.ChannelMessageSend(m.ChannelID, "LLM is not enabled."); err != nil {
 			slog.Error("discord", "message", "failed posting message", "error", err)
 		}
@@ -545,7 +545,7 @@ func (d *discordBot) onImage(event *discordgo.InteractionCreate, data discordgo.
 		}
 		return
 	}
-	if d.l == nil && strings.HasSuffix(data.Name, "_auto") {
+	if d.p == nil && strings.HasSuffix(data.Name, "_auto") {
 		if err := d.interactionRespond(event.Interaction, "LLM is not enabled. Restart with bot.llm.model set in config.yml."); err != nil {
 			slog.Error("discord", "command", data.Name, "message", "failed reply to enable", "error", err)
 		}
@@ -666,7 +666,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 	replyToID := req.replyToID
 	for {
 		// 32768
-		result, err := d.l.GenSync(d.ctx, c.Messages, &genai.OptionsText{})
+		result, err := d.p.GenSync(d.ctx, c.Messages, &genai.OptionsText{})
 		if err != nil {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
 				slog.Error("discord", "message", "failed posting message", "error", err)
@@ -801,7 +801,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 			}
 		}()
 		// We're chatting, we don't want too much content?
-		result, err := d.l.GenStream(ctx, c.Messages, chunks, &genai.OptionsText{})
+		result, err := d.p.GenStream(ctx, c.Messages, chunks, &genai.OptionsText{})
 		close(chunks)
 		wg.Wait()
 		cancel()
@@ -997,7 +997,7 @@ func (d *discordBot) handleImage(req intReq) {
 						SystemPrompt: d.settings.PromptLabels,
 						Seed:         imgseed,
 					}
-					result, err := d.l.GenSync(ctx, msgs, &opts)
+					result, err := d.p.GenSync(ctx, msgs, &opts)
 					newLabels := result.AsText()
 					if err != nil {
 						u.err = fmt.Errorf("failed to enhance labels: %w", err)
@@ -1040,7 +1040,7 @@ func (d *discordBot) handleImage(req intReq) {
 					SystemPrompt: d.settings.PromptLabels,
 					Seed:         seed,
 				}
-				result, err := d.l.GenSync(ctx, msgs, &opts)
+				result, err := d.p.GenSync(ctx, msgs, &opts)
 				if err != nil {
 					u.err = fmt.Errorf("failed to enhance image generation prompt: %w", err)
 					updates <- u
@@ -1081,7 +1081,7 @@ func (d *discordBot) handleImage(req intReq) {
 				"labels":       labelsContent,
 				"seed":         seed,
 				"command":      req.cmdName,
-				"model":        d.l.Model,
+				"model":        d.p.ModelID(),
 			}
 			if req.int.User != nil {
 				data["user"] = req.int.User.Username

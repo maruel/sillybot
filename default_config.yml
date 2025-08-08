@@ -3,29 +3,35 @@
 
 bot:
   llm:
-    # Specify a "host:port" of an already running llama.cpp, llamafile or
-    # py/llm.py server.
-    #
-    # Useful when you can't run both the LLM and the image generation models on
-    # a single machine.
-    #
-    # See https://github.com/maruel/sillybot/blob/main/py/README.md for how
-    # to run.
-    remote: ""
-    # Select the model from the known models in
-    # https://github.com/maruel/sillybot/blob/main/default_config.yml or select
-    # a new one from Hugging Face.
-    #
-    # Use "python" to use the embedded pytorch generator.
+    # Provider to use.
+    # provider: "gemini"
+    provider: ""
+    options:
+      # Specify a "host:port" of an already running llama-server or genaipy server.
+      #
+      # Useful when you can't run both the LLM and the image generation models on
+      # a single machine.
+      #
+      # See https://github.com/maruel/sillybot/blob/main/py/README.md for how
+      # to run.
+      remote: ""
+      # Model to use on the provider.
+      model: ""
+      # Not recommended to set, use environment variables instead.
+      apikey: ""
+      accountid: ""
+  llm_server:
+    # When running a local model, use either "llama-server" or "python".
+    backend: "llama-server"
+    # Select the model from Hugging Face.
     #
     # Recommended small and fast model to start with. If you have a high end
     # computer, you may want to try
-    # "hf:bartowski/Mistral-Nemo-Instruct-2407-GGUF/HEAD/Mistral-Nemo-Instruct-2407-Q5_K_M"
     model: hf:Qwen/Qwen2-0.5B-Instruct-GGUF/HEAD/qwen2-0_5b-instruct-q5_k_m
     # Limit the context length for high context length models. 128K context
     # length requires a ton of RAM and significantly slow down the processing.
     # The default is to use the full model's context length.
-    #context_length: 0
+    context_length: 0
   image_gen:
     # Specify a "host:port" of an already running py/image_gen.py server.
     #

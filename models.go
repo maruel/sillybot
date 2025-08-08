@@ -16,10 +16,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/goccy/go-yaml"
+	"github.com/maruel/genai"
+	"github.com/maruel/genai/providers"
 	"github.com/maruel/sillybot/imagegen"
 	"github.com/maruel/sillybot/llm"
 	"golang.org/x/sync/errgroup"
-	"gopkg.in/yaml.v3"
 )
 
 // Default configuration with well known models and sane presets.
@@ -27,12 +29,18 @@ import (
 //go:embed default_config.yml
 var DefaultConfig []byte
 
+type LLM struct {
+	Provider string                `yaml:"provider"`
+	Options  genai.OptionsProvider `yaml:"options"`
+}
+
 // Config defines the configuration format.
 type Config struct {
 	Bot struct {
-		LLM      llm.Options
-		ImageGen imagegen.Options `yaml:"image_gen"`
-		Settings Settings
+		LLM       LLM              `yaml:"llm"`
+		LLMServer llm.Options      `yaml:"llm_server"`
+		ImageGen  imagegen.Options `yaml:"image_gen"`
+		Settings  Settings         `yaml:"settings"`
 	}
 }
 
@@ -55,8 +63,7 @@ func (c *Config) LoadOrDefault(config string) error {
 			return fmt.Errorf("failed to write default config: %w", err)
 		}
 	}
-	d := yaml.NewDecoder(bytes.NewReader(b))
-	d.KnownFields(true)
+	d := yaml.NewDecoder(bytes.NewReader(b), yaml.DisallowUnknownField())
 	if err = d.Decode(c); err != nil {
 		return fmt.Errorf("failed to read %q: %w", config, err)
 	}
@@ -81,31 +88,41 @@ type Settings struct {
 // LoadModels loads the LLM and ImageGen models.
 //
 // Both take a while to start, so load them in parallel for faster initialization.
-func LoadModels(ctx context.Context, cache string, cfg *Config) (*llm.Session, *imagegen.Session, error) {
+func LoadModels(ctx context.Context, cache string, cfg *Config) (genai.ProviderGen, *llm.Server, *imagegen.Session, error) {
 	start := time.Now()
 	slog.Info("models", "state", "initializing")
 
 	// Hack, since both may create <cache>/py and it would be racy, create it here.
-	if cfg.Bot.LLM.Model == "python" || cfg.Bot.ImageGen.Model == "python" {
+	if cfg.Bot.LLMServer.Backend == "python" || cfg.Bot.ImageGen.Model == "python" {
 		cachePy := filepath.Join(cache, "py")
 		if err := os.MkdirAll(cachePy, 0o755); err != nil {
-			return nil, nil, fmt.Errorf("failed to create the directory to cache python: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to create the directory to cache python: %w", err)
 		}
 	}
 
 	eg := errgroup.Group{}
-	var l *llm.Session
+	var l *llm.Server
+	var p genai.ProviderGen
 	var s *imagegen.Session
 	eg.Go(func() error {
-		if cfg.Bot.LLM.Remote == "" && cfg.Bot.LLM.Model == "" {
-			slog.Info("models", "message", "no llm requested")
-			return nil
-		}
 		var err error
-		if l, err = llm.New(ctx, cache, &cfg.Bot.LLM); err != nil {
-			slog.Info("llm", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
+		opts := cfg.Bot.LLM.Options
+		if cfg.Bot.LLMServer.Backend != "" {
+			if l, err = llm.New(ctx, cache, &cfg.Bot.LLMServer); err != nil {
+				slog.Info("llm", "state", "failed", "err", err, "dur", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
+				return err
+			}
+			opts.Remote = l.URL
 		}
-		return err
+		var c genai.Provider
+		if c, err = providers.All[cfg.Bot.LLM.Provider](&opts, nil); err != nil {
+			return err
+		}
+		ok := false
+		if p, ok = c.(genai.ProviderGen); !ok {
+			return fmt.Errorf("provider %q doesn't implement genai.ProviderGen", cfg.Bot.LLM.Provider)
+		}
+		return nil
 	})
 	eg.Go(func() error {
 		if cfg.Bot.ImageGen.Remote == "" && cfg.Bot.ImageGen.Model == "" {
@@ -114,7 +131,7 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (*llm.Session, *
 		}
 		var err error
 		if s, err = imagegen.New(ctx, cache, &cfg.Bot.ImageGen); err != nil {
-			slog.Info("ig", "state", "failed", "err", err, "duration", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/image_gen.log'")
+			slog.Info("ig", "state", "failed", "err", err, "dur", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/image_gen.log'")
 		}
 		return err
 	})
@@ -122,6 +139,6 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (*llm.Session, *
 	if err = eg.Wait(); err == nil {
 		err = ctx.Err()
 	}
-	slog.Info("models", "state", "ready", "error", err, "duration", time.Since(start).Round(time.Millisecond))
-	return l, s, err
+	slog.Info("models", "state", "ready", "err", err, "dur", time.Since(start).Round(time.Millisecond))
+	return p, l, s, err
 }

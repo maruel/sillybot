@@ -28,7 +28,7 @@ import (
 type slackBot struct {
 	api      *slack.Client
 	sc       *socketmode.Client
-	l        *llm.Session
+	p        genai.ProviderGen
 	mem      *llm.Memory
 	ig       *imagegen.Session
 	settings sillybot.Settings
@@ -54,7 +54,7 @@ type ilog interface {
 	Output(int, string) error
 }
 
-func newSlackBot(apptoken, bottoken string, verbose bool, l *llm.Session, mem *llm.Memory, ig *imagegen.Session, settings sillybot.Settings) (*slackBot, error) {
+func newSlackBot(apptoken, bottoken string, verbose bool, p genai.ProviderGen, mem *llm.Memory, ig *imagegen.Session, settings sillybot.Settings) (*slackBot, error) {
 	if !strings.HasPrefix(apptoken, "xapp-") {
 		return nil, errors.New("slack apptoken must have the prefix \"xapp-\"")
 	}
@@ -79,7 +79,7 @@ func newSlackBot(apptoken, bottoken string, verbose bool, l *llm.Session, mem *l
 	s := &slackBot{
 		api:      api,
 		sc:       sc,
-		l:        l,
+		p:        p,
 		mem:      mem,
 		ig:       ig,
 		settings: settings,
@@ -275,7 +275,7 @@ func (s *slackBot) onEventsAPI(ctx context.Context, evt socketmode.Event, events
 func (s *slackBot) onAppMention(ctx context.Context, req msgReq) {
 	user := "<@" + s.userID + ">"
 	req.msg = strings.TrimSpace(strings.ReplaceAll(req.msg, user, ""))
-	if s.l == nil {
+	if s.p == nil {
 		if _, _, err := s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionText("LLM is not enabled.", false), slack.MsgOptionTS(req.ts)); err != nil {
 			slog.Error("slack", "message", "failed posting message", "error", err)
 		}
@@ -349,7 +349,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		MaxTokens:    2000,
 		SystemPrompt: s.settings.PromptImage,
 	}
-	result, err := s.l.GenStream(ctx, c.Messages, chunks, &opts)
+	result, err := s.p.GenStream(ctx, c.Messages, chunks, &opts)
 	close(chunks)
 	wg.Wait()
 	if err != nil && !errors.Is(err, context.Canceled) {
@@ -369,7 +369,7 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	msg := req.msg
 	req.mu.Unlock()
 	// Use the LLM to improve the prompt!
-	if s.l != nil {
+	if s.p != nil {
 		msgs := genai.Messages{genai.NewTextMessage(genai.User, req.msg)}
 
 		// Intentionally limit the number of tokens, otherwise it's Stable
@@ -378,7 +378,7 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 			MaxTokens:    70,
 			SystemPrompt: s.settings.PromptImage,
 		}
-		if result, err := s.l.GenSync(ctx, msgs, &opts); err != nil {
+		if result, err := s.p.GenSync(ctx, msgs, &opts); err != nil {
 			slog.Error("discord", "message", "failed to enhance prompt", "error", err)
 		} else {
 			msg = result.AsText()

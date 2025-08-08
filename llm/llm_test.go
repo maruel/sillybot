@@ -25,39 +25,20 @@ import (
 func TestLLM(t *testing.T) {
 	// Run with -v to list the model sizes.
 	const systemPrompt = "You are an AI assistant. You strictly follow orders. Reply exactly with what is asked of you.\n"
-	var totalSize int64
 	t.Run("qwen3", func(t *testing.T) {
-		start := time.Now()
-		modelFile := testModel(t, "hf:Qwen/Qwen3-0.6B-GGUF/HEAD/Qwen3-0.6B-Q8_0", systemPrompt)
-		i, err := os.Stat(modelFile)
-		if err != nil {
-			t.Fatalf("%q: %s", modelFile, err)
-		}
-		// Note: duration is highly relative to the CPU's temperature and thermal
-		// throttling. So the first runs will be super fast and then performance
-		// will lower significantly. So take the numbers with a grain of salt.
-		t.Logf("model %.1fGiB, took %s", float64(i.Size())*0.000000001, time.Since(start).Round(time.Second/10))
-		// This only works because the tests are not run in parallel.
-		totalSize += i.Size()
+		testModel(t, "llama-server", "hf:Qwen/Qwen3-0.6B-GGUF/HEAD/Qwen3-0.6B-Q8_0", systemPrompt)
 	})
-	t.Logf("processed %.1fGiB of model", float64(totalSize)*0.000000001)
 	t.Run("python", func(t *testing.T) {
 		if testing.Short() {
 			t.Skip("skipping test case in short mode")
 		}
-		l := loadModel(t, "python")
-		testModelInner(t, l, systemPrompt)
+		testModel(t, "python", "", systemPrompt)
 	})
 }
 
-func testModel(t *testing.T, model PackedFileRef, systemPrompt string) string {
-	l := loadModel(t, model)
-	testModelInner(t, l, systemPrompt)
-	return l.modelFile
-}
-
-func testModelInner(t *testing.T, l *Session, systemPrompt string) {
-	ctx := context.Background()
+func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt string) {
+	p := loadBackend(t, backend, model)
+	ctx := t.Context()
 	const prompt = "reply with \"ok chief\""
 	t.Run("Blocking", func(t *testing.T) {
 		t.Parallel()
@@ -65,9 +46,11 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 			genai.NewTextMessage(genai.User, prompt),
 		}
 		opts := genai.OptionsText{Seed: 1, SystemPrompt: systemPrompt}
-		result, err2 := l.GenSync(ctx, msgs, &opts)
+		result, err2 := p.GenSync(ctx, msgs, &opts)
 		if err2 != nil {
-			t.Fatal(err2)
+			if _, ok := err2.(*genai.UnsupportedContinuableError); !ok {
+				t.Fatal(err2)
+			}
 		}
 		t.Logf("generated: %4d tokens; returned: %4d", result.InputTokens, result.OutputTokens)
 		checkAnswer(t, result.AsText())
@@ -91,11 +74,13 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 			wg.Done()
 		}()
 		opts := genai.OptionsText{Seed: 1, SystemPrompt: systemPrompt}
-		result, err2 := l.GenStream(ctx, msgs, chunks, &opts)
+		result, err2 := p.GenStream(ctx, msgs, chunks, &opts)
 		close(chunks)
 		wg.Wait()
 		if err2 != nil {
-			t.Fatal(err2)
+			if _, ok := err2.(*genai.UnsupportedContinuableError); !ok {
+				t.Fatal(err2)
+			}
 		}
 		t.Logf("generated: %4d tokens; returned: %4d", result.InputTokens, result.OutputTokens)
 		checkAnswer(t, got)
@@ -104,14 +89,14 @@ func testModelInner(t *testing.T, l *Session, systemPrompt string) {
 
 //
 
-// loadModel returns the models in ../default_config.yml to ensure they are valid.
-func loadModel(t *testing.T, model PackedFileRef) *Session {
+// loadBackend returns the models in ../default_config.yml to ensure they are valid.
+func loadBackend(t *testing.T, backend string, model PackedFileRef) genai.ProviderGen {
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	opts := Options{Model: model}
+	opts := Options{Backend: backend, Model: model}
 	l, err := New(ctx, filepath.Join(filepath.Dir(wd), "cache"), &opts)
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +106,7 @@ func loadModel(t *testing.T, model PackedFileRef) *Session {
 			t.Error(err2)
 		}
 	})
-	return l
+	return l.Client()
 }
 
 func checkAnswer(t *testing.T, got string) {

@@ -107,7 +107,7 @@ func mainImpl() error {
 	if err := os.MkdirAll(*cache, 0o755); err != nil {
 		return err
 	}
-	l, ig, err := sillybot.LoadModels(ctx, *cache, &cfg)
+	p, l, ig, err := sillybot.LoadModels(ctx, *cache, &cfg)
 	if l != nil {
 		defer l.Close()
 	}
@@ -118,7 +118,7 @@ func mainImpl() error {
 		return err
 	}
 
-	b, err := newBskyBot(ctx, *handle, *password, l, ig, cfg.Bot.Settings)
+	b, err := newBskyBot(ctx, *handle, *password, p, ig, cfg.Bot.Settings)
 	if err != nil {
 		return err
 	}

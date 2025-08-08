@@ -124,7 +124,7 @@ func mainImpl() error {
 	if err = os.MkdirAll(memDir, 0o755); err != nil {
 		return err
 	}
-	l, ig, err := sillybot.LoadModels(ctx, *cache, &cfg)
+	p, l, ig, err := sillybot.LoadModels(ctx, *cache, &cfg)
 	if l != nil {
 		defer l.Close()
 	}
@@ -150,7 +150,7 @@ func mainImpl() error {
 		slog.Info("main", "memory", "no memory to load", "error", err)
 	}
 
-	d, err := newDiscordBot(ctx, *bottoken, *gcptoken, *cxtoken, *verbose, l, mem, ig, cfg.Bot.Settings, memDir)
+	d, err := newDiscordBot(ctx, *bottoken, *gcptoken, *cxtoken, *verbose, p, mem, ig, cfg.Bot.Settings, memDir)
 	if err != nil {
 		return err
 	}
