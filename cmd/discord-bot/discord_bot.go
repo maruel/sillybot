@@ -662,7 +662,7 @@ func (d *discordBot) handlePrompt(req msgReq) {
 // then process it. This function exists for testing.
 func (d *discordBot) handlePromptBlocking(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, genai.NewTextMessage(genai.User, req.msg))
+	c.Messages = append(c.Messages, genai.NewTextMessage(req.msg))
 	replyToID := req.replyToID
 	for {
 		// 32768
@@ -712,7 +712,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 // handlePromptStreaming request a reply from the LLM and streams replies back.
 func (d *discordBot) handlePromptStreaming(req msgReq) {
 	c := d.getMemory(req.channelID)
-	c.Messages = append(c.Messages, genai.NewTextMessage(genai.User, req.msg))
+	c.Messages = append(c.Messages, genai.NewTextMessage(req.msg))
 	wg := sync.WaitGroup{}
 	for {
 		ctx, cancel := context.WithCancel(d.ctx)
@@ -988,7 +988,7 @@ func (d *discordBot) handleImage(req intReq) {
 				options := [3]string{}
 				j := 0
 				for ; j < len(options); j++ {
-					msgs := genai.Messages{genai.NewTextMessage(genai.User, req.description)}
+					msgs := genai.Messages{genai.NewTextMessage(req.description)}
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*int64(i) + 4*int64(j)
@@ -1033,7 +1033,7 @@ func (d *discordBot) handleImage(req intReq) {
 			if req.cmdName == "meme_auto" || req.cmdName == "image_auto" {
 				// Image: use the LLM to generate the image prompt based on the description.
 				msgs := genai.Messages{
-					genai.NewTextMessage(genai.User, "Prompt: "+req.description+"\n"+"Text relevant to the image: "+labelsContent),
+					genai.NewTextMessage("Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent),
 				}
 				opts := genai.OptionsText{
 					MaxTokens:    125,

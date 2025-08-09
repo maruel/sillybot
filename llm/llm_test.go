@@ -43,7 +43,7 @@ func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt s
 	t.Run("Blocking", func(t *testing.T) {
 		t.Parallel()
 		msgs := genai.Messages{
-			genai.NewTextMessage(genai.User, prompt),
+			genai.NewTextMessage(prompt),
 		}
 		opts := genai.OptionsText{Seed: 1, SystemPrompt: systemPrompt}
 		result, err2 := p.GenSync(ctx, msgs, &opts)
@@ -58,7 +58,7 @@ func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt s
 	t.Run("Streaming", func(t *testing.T) {
 		t.Parallel()
 		msgs := []genai.Message{
-			genai.NewTextMessage(genai.User, prompt),
+			genai.NewTextMessage(prompt),
 		}
 		chunks := make(chan genai.ContentFragment)
 		got := ""

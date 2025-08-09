@@ -303,7 +303,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 	if err != nil {
 		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
-	c.Messages = append(c.Messages, genai.NewTextMessage(genai.User, req.msg))
+	c.Messages = append(c.Messages, genai.NewTextMessage(req.msg))
 	chunks := make(chan genai.ContentFragment)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -370,7 +370,7 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 	req.mu.Unlock()
 	// Use the LLM to improve the prompt!
 	if s.p != nil {
-		msgs := genai.Messages{genai.NewTextMessage(genai.User, req.msg)}
+		msgs := genai.Messages{genai.NewTextMessage(req.msg)}
 
 		// Intentionally limit the number of tokens, otherwise it's Stable
 		// Diffusion that is unhappy.
