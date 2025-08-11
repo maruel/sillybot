@@ -304,7 +304,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
 	c.Messages = append(c.Messages, genai.NewTextMessage(req.msg))
-	chunks := make(chan genai.ContentFragment)
+	chunks := make(chan genai.ReplyFragment)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {

@@ -205,33 +205,39 @@ type serializedMessage struct {
 }
 
 func (s *serializedMessage) from(m *genai.Message) error {
-	switch m.Role {
-	case genai.User:
+	switch r := m.Role(); r {
+	case "user":
 		s.Role = 1
-	case genai.Assistant:
+		if len(m.Requests) != 1 {
+			return fmt.Errorf("unsupported message type %#v", m)
+		}
+		if m.Requests[0].Text != "" {
+			return fmt.Errorf("unsupported message type %#v", m)
+		}
+		s.Content = m.Requests[0].Text
+	case "assistant":
 		s.Role = 2
+		if len(m.Replies) != 1 {
+			return fmt.Errorf("unsupported message type %#v", m)
+		}
+		if m.Replies[0].Text != "" {
+			return fmt.Errorf("unsupported message type %#v", m)
+		}
+		s.Content = m.Replies[0].Text
 	default:
-		return fmt.Errorf("unknown role %q", m.Role)
+		return fmt.Errorf("unknown role %q", r)
 	}
-	if len(m.Contents) != 1 {
-		return fmt.Errorf("unsupported message type %#v", m)
-	}
-	if m.Contents[0].Text != "" {
-		return fmt.Errorf("unsupported message type %#v", m)
-	}
-	s.Content = m.Contents[0].Text
 	return nil
 }
 
 func (s *serializedMessage) to(m *genai.Message) error {
 	switch s.Role {
 	case 1:
-		m.Role = genai.User
+		m.Requests = []genai.Request{{Text: s.Content}}
 	case 2:
-		m.Role = genai.Assistant
+		m.Replies = []genai.Reply{{Text: s.Content}}
 	default:
 		return fmt.Errorf("unknown role %q", s.Role)
 	}
-	m.Contents = []genai.Content{{Text: s.Content}}
 	return nil
 }

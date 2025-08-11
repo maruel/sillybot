@@ -49,6 +49,7 @@ func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt s
 		result, err2 := p.GenSync(ctx, msgs, &opts)
 		if err2 != nil {
 			if _, ok := err2.(*genai.UnsupportedContinuableError); !ok {
+				t.Errorf("%#v", err2)
 				t.Fatal(err2)
 			}
 		}
@@ -60,7 +61,7 @@ func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt s
 		msgs := []genai.Message{
 			genai.NewTextMessage(prompt),
 		}
-		chunks := make(chan genai.ContentFragment)
+		chunks := make(chan genai.ReplyFragment)
 		got := ""
 		wg := sync.WaitGroup{}
 		wg.Add(1)

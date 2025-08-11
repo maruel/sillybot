@@ -719,7 +719,7 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 		// Make it blocking to force a goroutine context switch when a word is
 		// received. When it's buffered, there can be significant delay when LLM is
 		// running on the CPU.
-		chunks := make(chan genai.ContentFragment)
+		chunks := make(chan genai.ReplyFragment)
 		wg.Add(1)
 		go func() {
 			const rate = 2000 * time.Millisecond

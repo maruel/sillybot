@@ -41,7 +41,7 @@ func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts genai.O
 }
 
 // GenStream implements genai.ProviderGen
-func (c *Client) GenStream(ctx context.Context, msgs []genai.Message, chunks chan<- genai.ContentFragment, opts genai.Options) (genai.Result, error) {
+func (c *Client) GenStream(ctx context.Context, msgs []genai.Message, chunks chan<- genai.ReplyFragment, opts genai.Options) (genai.Result, error) {
 	r := trace.StartRegion(ctx, "llm.GenStream")
 	defer r.End()
 	if len(msgs) == 0 {
