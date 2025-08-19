@@ -53,8 +53,8 @@ func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt s
 				t.Fatal(err2)
 			}
 		}
-		t.Logf("generated: %4d tokens; returned: %4d", result.InputTokens, result.OutputTokens)
-		checkAnswer(t, result.AsText())
+		t.Logf("generated: %4d tokens; returned: %4d", result.Usage.InputTokens, result.Usage.OutputTokens)
+		checkAnswer(t, result.String())
 	})
 	t.Run("Streaming", func(t *testing.T) {
 		t.Parallel()
@@ -83,7 +83,7 @@ func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt s
 				t.Fatal(err2)
 			}
 		}
-		t.Logf("generated: %4d tokens; returned: %4d", result.InputTokens, result.OutputTokens)
+		t.Logf("generated: %4d tokens; returned: %4d", result.Usage.InputTokens, result.Usage.OutputTokens)
 		checkAnswer(t, got)
 	})
 }

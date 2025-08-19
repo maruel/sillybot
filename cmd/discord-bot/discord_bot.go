@@ -685,7 +685,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 				slog.Error("discord", "message", "failed posting 'user typing'", "error", err)
 			}
 		*/
-		reply := result.AsText()
+		reply := result.String()
 		for reply != "" {
 			// Only split the response if it is too large.
 			t := reply
@@ -998,7 +998,7 @@ func (d *discordBot) handleImage(req intReq) {
 						Seed:         imgseed,
 					}
 					result, err := d.p.GenSync(ctx, msgs, &opts)
-					newLabels := result.AsText()
+					newLabels := result.String()
 					if err != nil {
 						u.err = fmt.Errorf("failed to enhance labels: %w", err)
 						updates <- u
@@ -1046,7 +1046,7 @@ func (d *discordBot) handleImage(req intReq) {
 					updates <- u
 					return
 				}
-				imagePrompt = strings.TrimSpace(result.AsText())
+				imagePrompt = strings.TrimSpace(result.String())
 				imagePrompt = strings.ReplaceAll(imagePrompt, "\n", " ")
 				imagePrompt = strings.ReplaceAll(imagePrompt, "  ", " ")
 				if len(u.content)+len(imagePrompt) < maxMessage-100 {

@@ -381,7 +381,7 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 		if result, err := s.p.GenSync(ctx, msgs, &opts); err != nil {
 			slog.Error("discord", "message", "failed to enhance prompt", "error", err)
 		} else {
-			msg = result.AsText()
+			msg = result.String()
 		}
 	}
 	// TODO: Generate multiple images when the queue is empty?

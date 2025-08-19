@@ -35,7 +35,7 @@ func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts genai.O
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "err", err, "dur", time.Since(start).Round(time.Millisecond))
 	} else {
-		slog.Info("llm", "reply", result.AsText(), "dur", time.Since(start).Round(time.Millisecond))
+		slog.Info("llm", "reply", result.String(), "dur", time.Since(start).Round(time.Millisecond))
 	}
 	return result, err
 }

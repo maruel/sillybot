@@ -96,7 +96,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Server, error) {
 		}
 		l.URL = srv.URL
 		l.srv = srv
-		l.cp, err = openaicompatible.New(&genai.OptionsProvider{Remote: l.URL + "/v1/chat/completions"}, nil)
+		l.cp, err = openaicompatible.New(&genai.ProviderOptions{Remote: l.URL + "/v1/chat/completions"}, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +127,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Server, error) {
 		}
 		l.srv = srv
 		l.URL = srv.URL()
-		l.cp, err = llamacpp.New(&genai.OptionsProvider{Remote: l.URL}, nil)
+		l.cp, err = llamacpp.New(&genai.ProviderOptions{Remote: l.URL}, nil)
 		if err != nil {
 			return nil, err
 		}

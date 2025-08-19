@@ -31,7 +31,7 @@ var DefaultConfig []byte
 
 type LLM struct {
 	Provider string                `yaml:"provider"`
-	Options  genai.OptionsProvider `yaml:"options"`
+	Options  genai.ProviderOptions `yaml:"options"`
 }
 
 // Config defines the configuration format.
