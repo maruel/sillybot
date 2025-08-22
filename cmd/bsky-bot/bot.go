@@ -24,12 +24,12 @@ const maxMessage = 300
 // bskyBot is the live instance of the bot talking to the Blue Sky ATproto API.
 type bskyBot struct {
 	c        *Client
-	p        genai.ProviderGen
+	p        genai.Provider
 	ig       *imagegen.Session
 	settings sillybot.Settings
 }
 
-func newBskyBot(ctx context.Context, user, pass string, p genai.ProviderGen, ig *imagegen.Session, settings sillybot.Settings) (*bskyBot, error) {
+func newBskyBot(ctx context.Context, user, pass string, p genai.Provider, ig *imagegen.Session, settings sillybot.Settings) (*bskyBot, error) {
 	c, err := New(ctx, user, pass)
 	if err != nil {
 		return nil, err

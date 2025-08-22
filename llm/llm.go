@@ -58,7 +58,7 @@ type Server struct {
 	Model   PackedFileRef
 	URL     string
 	backend string
-	cp      genai.ProviderGen
+	cp      genai.Provider
 
 	cache     string
 	modelFile string
@@ -147,7 +147,7 @@ func (l *Server) Close() error {
 	return nil
 }
 
-func (l *Server) Client() genai.ProviderGen {
+func (l *Server) Client() genai.Provider {
 	return l.cp
 }
 

@@ -14,12 +14,12 @@ import (
 	"github.com/maruel/genai"
 )
 
-// Client wraps a ProviderGen client and logs its calls.
+// Client wraps a Provider client and logs its calls.
 type Client struct {
-	genai.ProviderGen
+	genai.Provider
 }
 
-// GenSync implements genai.ProviderGen
+// GenSync implements genai.Provider
 func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts genai.Options) (genai.Result, error) {
 	r := trace.StartRegion(ctx, "llm.GenSync")
 	defer r.End()
@@ -28,7 +28,7 @@ func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts genai.O
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "blocking")
-	result, err := c.ProviderGen.GenSync(ctx, msgs, opts)
+	result, err := c.Provider.GenSync(ctx, msgs, opts)
 	if _, ok := err.(*genai.UnsupportedContinuableError); ok {
 		err = nil
 	}
@@ -40,7 +40,7 @@ func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts genai.O
 	return result, err
 }
 
-// GenStream implements genai.ProviderGen
+// GenStream implements genai.Provider
 func (c *Client) GenStream(ctx context.Context, msgs []genai.Message, chunks chan<- genai.ReplyFragment, opts genai.Options) (genai.Result, error) {
 	r := trace.StartRegion(ctx, "llm.GenStream")
 	defer r.End()
@@ -49,7 +49,7 @@ func (c *Client) GenStream(ctx context.Context, msgs []genai.Message, chunks cha
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "streaming")
-	result, err := c.ProviderGen.GenStream(ctx, msgs, chunks, opts)
+	result, err := c.Provider.GenStream(ctx, msgs, chunks, opts)
 	if _, ok := err.(*genai.UnsupportedContinuableError); ok {
 		err = nil
 	}
@@ -62,5 +62,5 @@ func (c *Client) GenStream(ctx context.Context, msgs []genai.Message, chunks cha
 }
 
 func (c *Client) Unwrap() genai.Provider {
-	return c.ProviderGen
+	return c.Provider
 }

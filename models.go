@@ -24,7 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Default configuration with well known models and sane presets.
+// DefaultConfig configuration with well known models and sane presets.
 //
 //go:embed default_config.yml
 var DefaultConfig []byte
@@ -88,7 +88,7 @@ type Settings struct {
 // LoadModels loads the LLM and ImageGen models.
 //
 // Both take a while to start, so load them in parallel for faster initialization.
-func LoadModels(ctx context.Context, cache string, cfg *Config) (genai.ProviderGen, *llm.Server, *imagegen.Session, error) {
+func LoadModels(ctx context.Context, cache string, cfg *Config) (genai.Provider, *llm.Server, *imagegen.Session, error) {
 	start := time.Now()
 	slog.Info("models", "state", "initializing")
 
@@ -102,7 +102,7 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (genai.ProviderG
 
 	eg := errgroup.Group{}
 	var l *llm.Server
-	var p genai.ProviderGen
+	var p genai.Provider
 	var s *imagegen.Session
 	eg.Go(func() error {
 		var err error
@@ -114,13 +114,8 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (genai.ProviderG
 			}
 			opts.Remote = l.URL
 		}
-		var c genai.Provider
-		if c, err = providers.All[cfg.Bot.LLM.Provider](&opts, nil); err != nil {
+		if p, err = providers.All[cfg.Bot.LLM.Provider](&opts, nil); err != nil {
 			return err
-		}
-		ok := false
-		if p, ok = c.(genai.ProviderGen); !ok {
-			return fmt.Errorf("provider %q doesn't implement genai.ProviderGen", cfg.Bot.LLM.Provider)
 		}
 		return nil
 	})

@@ -91,7 +91,7 @@ func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt s
 //
 
 // loadBackend returns the models in ../default_config.yml to ensure they are valid.
-func loadBackend(t *testing.T, backend string, model PackedFileRef) genai.ProviderGen {
+func loadBackend(t *testing.T, backend string, model PackedFileRef) genai.Provider {
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)

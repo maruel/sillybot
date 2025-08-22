@@ -42,7 +42,7 @@ const maxMessage = 2000
 type discordBot struct {
 	ctx      context.Context
 	dg       *discordgo.Session
-	p        genai.ProviderGen
+	p        genai.Provider
 	mem      *llm.Memory
 	ig       *imagegen.Session
 	settings sillybot.Settings
@@ -55,7 +55,7 @@ type discordBot struct {
 }
 
 // newDiscordBot opens a websocket connection to Discord and begin listening.
-func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, p genai.ProviderGen, mem *llm.Memory, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
+func newDiscordBot(ctx context.Context, bottoken, gcptoken, cxtoken string, verbose bool, p genai.Provider, mem *llm.Memory, ig *imagegen.Session, settings sillybot.Settings, memDir string) (*discordBot, error) {
 	/* TODO
 	availtools := []genai.ToolDef{
 		tools.Calculate,
