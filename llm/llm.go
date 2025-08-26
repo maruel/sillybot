@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,6 +72,17 @@ func New(ctx context.Context, cache string, opts *Options) (*Server, error) {
 		return nil, err
 	}
 
+	fn := func(h http.RoundTripper) http.RoundTripper {
+		/*
+			return &roundtrippers.Log{
+				Transport:           h,
+				Logger:              slog.Default(),
+				Level:               slog.LevelWarn,
+				IncludeResponseBody: true,
+			}
+		*/
+		return h
+	}
 	cacheModels := filepath.Join(cache, "models")
 	if err := os.MkdirAll(cacheModels, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create the directory to cache models: %w", err)
@@ -96,7 +108,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Server, error) {
 		}
 		l.URL = srv.URL
 		l.srv = srv
-		l.cp, err = openaicompatible.New(ctx, &genai.ProviderOptions{Remote: l.URL + "/v1/chat/completions"}, nil)
+		l.cp, err = openaicompatible.New(ctx, &genai.ProviderOptions{Remote: l.URL + "/v1/chat/completions"}, fn)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +139,7 @@ func New(ctx context.Context, cache string, opts *Options) (*Server, error) {
 		}
 		l.srv = srv
 		l.URL = srv.URL()
-		l.cp, err = llamacpp.New(ctx, &genai.ProviderOptions{Remote: l.URL}, nil)
+		l.cp, err = llamacpp.New(ctx, &genai.ProviderOptions{Remote: l.URL}, fn)
 		if err != nil {
 			return nil, err
 		}

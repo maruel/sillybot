@@ -349,16 +349,19 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		MaxTokens:    2000,
 		SystemPrompt: s.settings.PromptImage,
 	}
-	result, err := s.p.GenStream(ctx, c.Messages, chunks, &opts)
+	fragments, finish := s.p.GenStream(ctx, c.Messages, &opts)
+	for f := range fragments {
+		chunks <- f
+	}
 	close(chunks)
 	wg.Wait()
-	if err != nil && !errors.Is(err, context.Canceled) {
+	if res, err := finish(); err != nil && !errors.Is(err, context.Canceled) {
 		if _, _, err = s.sc.PostMessageContext(ctx, req.channel, slack.MsgOptionUpdate(ts), slack.MsgOptionText("Prompt generation failed: "+err.Error(), false), slack.MsgOptionTS(req.ts)); err != nil {
 			slog.Error("slack", "message", "failed posting message", "error", err)
 		}
 	} else {
 		// TODO: Handle non-text reply.
-		c.Messages = append(c.Messages, result.Message)
+		c.Messages = append(c.Messages, res.Message)
 	}
 }
 

@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -42,48 +41,36 @@ func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt s
 	const prompt = "reply with \"ok chief\""
 	t.Run("Blocking", func(t *testing.T) {
 		t.Parallel()
-		msgs := genai.Messages{
-			genai.NewTextMessage(prompt),
-		}
+		msgs := genai.Messages{genai.NewTextMessage(prompt)}
 		opts := genai.OptionsText{Seed: 1, SystemPrompt: systemPrompt}
-		result, err2 := p.GenSync(ctx, msgs, &opts)
-		if err2 != nil {
-			if _, ok := err2.(*genai.UnsupportedContinuableError); !ok {
-				t.Errorf("%#v", err2)
-				t.Fatal(err2)
+		res, err := p.GenSync(ctx, msgs, &opts)
+		if err != nil {
+			if _, ok := err.(*genai.UnsupportedContinuableError); !ok {
+				t.Fatal(err)
 			}
 		}
-		t.Logf("generated: %4d tokens; returned: %4d", result.Usage.InputTokens, result.Usage.OutputTokens)
-		checkAnswer(t, result.String())
+		t.Logf("generated: %4d tokens; returned: %4d", res.Usage.InputTokens, res.Usage.OutputTokens)
+		checkAnswer(t, res.String())
 	})
 	t.Run("Streaming", func(t *testing.T) {
 		t.Parallel()
-		msgs := []genai.Message{
-			genai.NewTextMessage(prompt),
-		}
-		chunks := make(chan genai.ReplyFragment)
-		got := ""
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			for pkt := range chunks {
-				if pkt.TextFragment == "" {
-					t.Errorf("expected Text type, got %#v", pkt)
-				}
-				got += pkt.TextFragment
-			}
-			wg.Done()
-		}()
+		msgs := []genai.Message{genai.NewTextMessage(prompt)}
 		opts := genai.OptionsText{Seed: 1, SystemPrompt: systemPrompt}
-		result, err2 := p.GenStream(ctx, msgs, chunks, &opts)
-		close(chunks)
-		wg.Wait()
-		if err2 != nil {
-			if _, ok := err2.(*genai.UnsupportedContinuableError); !ok {
-				t.Fatal(err2)
+		fragments, finish := p.GenStream(ctx, msgs, &opts)
+		got := ""
+		for f := range fragments {
+			if f.TextFragment == "" {
+				t.Errorf("expected Text type, got %#v", f)
+			}
+			got += f.TextFragment
+		}
+		res, err := finish()
+		if err != nil {
+			if _, ok := err.(*genai.UnsupportedContinuableError); !ok {
+				t.Fatal(err)
 			}
 		}
-		t.Logf("generated: %4d tokens; returned: %4d", result.Usage.InputTokens, result.Usage.OutputTokens)
+		t.Logf("generated: %4d tokens; returned: %4d", res.Usage.InputTokens, res.Usage.OutputTokens)
 		checkAnswer(t, got)
 	})
 }

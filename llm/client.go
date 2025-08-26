@@ -7,6 +7,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"iter"
 	"log/slog"
 	"runtime/trace"
 	"time"
@@ -20,7 +21,7 @@ type Client struct {
 }
 
 // GenSync implements genai.Provider
-func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts genai.Options) (genai.Result, error) {
+func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts ...genai.Options) (genai.Result, error) {
 	r := trace.StartRegion(ctx, "llm.GenSync")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -28,39 +29,47 @@ func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts genai.O
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "blocking")
-	result, err := c.Provider.GenSync(ctx, msgs, opts)
+	res, err := c.Provider.GenSync(ctx, msgs, opts...)
 	if _, ok := err.(*genai.UnsupportedContinuableError); ok {
 		err = nil
 	}
 	if err != nil {
 		slog.Error("llm", "msgs", msgs, "err", err, "dur", time.Since(start).Round(time.Millisecond))
 	} else {
-		slog.Info("llm", "reply", result.String(), "dur", time.Since(start).Round(time.Millisecond))
+		slog.Info("llm", "reply", res.String(), "dur", time.Since(start).Round(time.Millisecond), "usage", res.Usage)
 	}
-	return result, err
+	return res, err
 }
 
 // GenStream implements genai.Provider
-func (c *Client) GenStream(ctx context.Context, msgs []genai.Message, chunks chan<- genai.ReplyFragment, opts genai.Options) (genai.Result, error) {
+func (c *Client) GenStream(ctx context.Context, msgs []genai.Message, opts ...genai.Options) (iter.Seq[genai.ReplyFragment], func() (genai.Result, error)) {
 	r := trace.StartRegion(ctx, "llm.GenStream")
 	defer r.End()
 	if len(msgs) == 0 {
-		return genai.Result{}, errors.New("input required")
+		return yieldNoFragment, func() (genai.Result, error) {
+			return genai.Result{}, errors.New("input required")
+		}
 	}
 	start := time.Now()
 	slog.Info("llm", "num_msgs", len(msgs), "msg", msgs[len(msgs)-1], "type", "streaming")
-	result, err := c.Provider.GenStream(ctx, msgs, chunks, opts)
-	if _, ok := err.(*genai.UnsupportedContinuableError); ok {
-		err = nil
+	fragments, finish := c.Provider.GenStream(ctx, msgs, opts...)
+	return fragments, func() (genai.Result, error) {
+		res, err := finish()
+		if _, ok := err.(*genai.UnsupportedContinuableError); ok {
+			err = nil
+		}
+		if err != nil {
+			slog.Error("llm", "err", err, "dur", time.Since(start).Round(time.Millisecond))
+		} else {
+			slog.Info("llm", "dur", time.Since(start).Round(time.Millisecond), "usage", res.Usage)
+		}
+		return res, err
 	}
-	if err != nil {
-		slog.Error("llm", "err", err, "dur", time.Since(start).Round(time.Millisecond))
-	} else {
-		slog.Info("llm", "duration", time.Since(start).Round(time.Millisecond), "usage", result)
-	}
-	return result, err
 }
 
 func (c *Client) Unwrap() genai.Provider {
 	return c.Provider
+}
+
+func yieldNoFragment(yield func(genai.ReplyFragment) bool) {
 }

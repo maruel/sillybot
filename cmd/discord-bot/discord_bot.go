@@ -801,17 +801,20 @@ func (d *discordBot) handlePromptStreaming(req msgReq) {
 			}
 		}()
 		// We're chatting, we don't want too much content?
-		result, err := d.p.GenStream(ctx, c.Messages, chunks, &genai.OptionsText{})
+		fragments, finish := d.p.GenStream(ctx, c.Messages)
+		for f := range fragments {
+			chunks <- f
+		}
 		close(chunks)
 		wg.Wait()
 		cancel()
-		if err != nil && !errors.Is(err, context.Canceled) {
+		if res, err := finish(); err != nil && !errors.Is(err, context.Canceled) {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
 				slog.Error("discord", "message", "failed posting message", "error", err)
 			}
 		} else {
 			// TODO: Handle non-text reply.
-			c.Messages = append(c.Messages, result.Message)
+			c.Messages = append(c.Messages, res.Message)
 		}
 	}
 }
