@@ -114,7 +114,7 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (genai.Provider,
 			}
 			opts.Remote = l.URL
 		}
-		if p, err = providers.All[cfg.Bot.LLM.Provider](ctx, &opts, nil); err != nil {
+		if p, err = providers.All[cfg.Bot.LLM.Provider].Factory(ctx, &opts, nil); err != nil {
 			return err
 		}
 		return nil

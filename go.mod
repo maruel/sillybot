@@ -10,8 +10,8 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/ipfs/go-cid v0.5.0
 	github.com/lmittmann/tint v1.1.2
-	github.com/maruel/genai v0.0.0-20250829205442-5f0d52be32f2
-	github.com/maruel/genaipy v0.0.0-20250829205854-eef7ec1af0be
+	github.com/maruel/genai v0.0.0-20250830211514-5f0f553dd8ff
+	github.com/maruel/genaipy v0.0.0-20250830211917-01fe5722331f
 	github.com/maruel/httpjson v0.5.0
 	github.com/maruel/huggingface v0.1.0
 	github.com/mattn/go-colorable v0.1.14
