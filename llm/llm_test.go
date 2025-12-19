@@ -45,9 +45,7 @@ func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt s
 		opts := genai.OptionsText{Seed: 1, SystemPrompt: systemPrompt}
 		res, err := p.GenSync(ctx, msgs, &opts)
 		if err != nil {
-			if _, ok := err.(*genai.UnsupportedContinuableError); !ok {
-				t.Fatal(err)
-			}
+			t.Fatal(err)
 		}
 		t.Logf("generated: %4d tokens; returned: %4d", res.Usage.InputTokens, res.Usage.OutputTokens)
 		checkAnswer(t, res.String())
@@ -59,16 +57,14 @@ func testModel(t *testing.T, backend string, model PackedFileRef, systemPrompt s
 		fragments, finish := p.GenStream(ctx, msgs, &opts)
 		got := ""
 		for f := range fragments {
-			if f.TextFragment == "" {
+			if f.Text == "" {
 				t.Errorf("expected Text type, got %#v", f)
 			}
-			got += f.TextFragment
+			got += f.Text
 		}
 		res, err := finish()
 		if err != nil {
-			if _, ok := err.(*genai.UnsupportedContinuableError); !ok {
-				t.Fatal(err)
-			}
+			t.Fatal(err)
 		}
 		t.Logf("generated: %4d tokens; returned: %4d", res.Usage.InputTokens, res.Usage.OutputTokens)
 		checkAnswer(t, got)

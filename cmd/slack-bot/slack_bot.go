@@ -304,7 +304,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		slog.Error("slack", "message", "failed posting message", "error", err)
 	}
 	c.Messages = append(c.Messages, genai.NewTextMessage(req.msg))
-	chunks := make(chan genai.ReplyFragment)
+	chunks := make(chan genai.Reply)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
@@ -328,10 +328,10 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 					wg.Done()
 					return
 				}
-				if pkt.TextFragment == "" {
+				if pkt.Text == "" {
 					slog.Error("slack", "pkt", pkt)
 				}
-				pending += pkt.TextFragment
+				pending += pkt.Text
 			case <-t.C:
 				// Don't send one word at a time.
 				if len(pending) > 30 {
