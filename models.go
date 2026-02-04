@@ -30,8 +30,10 @@ import (
 var DefaultConfig []byte
 
 type LLM struct {
-	Provider string                `yaml:"provider"`
-	Options  genai.ProviderOptions `yaml:"options"`
+	Provider string `yaml:"provider"`
+	APIKey   string `yaml:"api_key"`
+	Model    string `yaml:"model"`
+	Remote   string `yaml:"remote"`
 }
 
 // Config defines the configuration format.
@@ -106,15 +108,25 @@ func LoadModels(ctx context.Context, cache string, cfg *Config) (genai.Provider,
 	var s *imagegen.Session
 	eg.Go(func() error {
 		var err error
-		opts := cfg.Bot.LLM.Options
 		if cfg.Bot.LLMServer.Backend != "" {
 			if l, err = llm.New(ctx, cache, &cfg.Bot.LLMServer); err != nil {
 				slog.Info("llm", "state", "failed", "err", err, "dur", time.Since(start).Round(time.Millisecond), "message", "Try running 'tail -f cache/llm.log'")
 				return err
 			}
-			opts.Remote = l.URL
 		}
-		if p, err = providers.All[cfg.Bot.LLM.Provider].Factory(ctx, &opts, nil); err != nil {
+		var opts []genai.ProviderOption
+		if cfg.Bot.LLM.APIKey != "" {
+			opts = append(opts, genai.ProviderOptionAPIKey(cfg.Bot.LLM.APIKey))
+		}
+		if cfg.Bot.LLM.Model != "" {
+			opts = append(opts, genai.ProviderOptionModel(cfg.Bot.LLM.Model))
+		}
+		if l != nil {
+			opts = append(opts, genai.ProviderOptionRemote(l.URL))
+		} else if cfg.Bot.LLM.Remote != "" {
+			opts = append(opts, genai.ProviderOptionRemote(cfg.Bot.LLM.Remote))
+		}
+		if p, err = providers.All[cfg.Bot.LLM.Provider].Factory(ctx, opts...); err != nil {
 			return err
 		}
 		return nil

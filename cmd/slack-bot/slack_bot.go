@@ -345,7 +345,7 @@ func (s *slackBot) handlePrompt(ctx context.Context, req msgReq) {
 		}
 	}()
 	// We're chatting, we don't want too much content.
-	opts := genai.OptionsText{
+	opts := genai.GenOptionsText{
 		MaxTokens:    2000,
 		SystemPrompt: s.settings.PromptImage,
 	}
@@ -377,7 +377,7 @@ func (s *slackBot) handleImage(ctx context.Context, req *imgReq) {
 
 		// Intentionally limit the number of tokens, otherwise it's Stable
 		// Diffusion that is unhappy.
-		opts := genai.OptionsText{
+		opts := genai.GenOptionsText{
 			MaxTokens:    70,
 			SystemPrompt: s.settings.PromptImage,
 		}

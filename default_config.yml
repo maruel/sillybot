@@ -6,20 +6,18 @@ bot:
     # Provider to use.
     # provider: "gemini"
     provider: ""
-    options:
-      # Specify a "host:port" of an already running llama-server or genaipy server.
-      #
-      # Useful when you can't run both the LLM and the image generation models on
-      # a single machine.
-      #
-      # See https://github.com/maruel/sillybot/blob/main/py/README.md for how
-      # to run.
-      remote: ""
-      # Model to use on the provider.
-      model: ""
-      # Not recommended to set, use environment variables instead.
-      apikey: ""
-      accountid: ""
+    # Specify a "host:port" of an already running llama-server or genaipy server.
+    #
+    # Useful when you can't run both the LLM and the image generation models on
+    # a single machine.
+    #
+    # See https://github.com/maruel/sillybot/blob/main/py/README.md for how
+    # to run.
+    remote: ""
+    # Model to use on the provider.
+    model: ""
+    # Not recommended to set, use environment variables instead.
+    api_key: ""
   llm_server:
     # When running a local model, use either "llama-server" or "python".
     backend: "llama-server"

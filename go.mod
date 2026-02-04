@@ -10,15 +10,15 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/ipfs/go-cid v0.5.0
 	github.com/lmittmann/tint v1.1.2
-	github.com/maruel/genai v0.0.0-20251219013005-c5ba01509790
-	github.com/maruel/genaipy v0.0.0-20251219013319-758208b99f37
+	github.com/maruel/genai v0.0.0-20260204224035-78706961db18
+	github.com/maruel/genaipy v0.0.0-20260204225507-ad1c6fc4d903
 	github.com/maruel/httpjson v0.5.0
 	github.com/maruel/huggingface v0.1.0
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.20
 	github.com/slack-go/slack v0.16.0
 	golang.org/x/image v0.27.0
-	golang.org/x/sync v0.16.0
+	golang.org/x/sync v0.19.0
 )
 
 require (
@@ -71,9 +71,9 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
-	github.com/mailru/easyjson v0.9.0 // indirect
+	github.com/mailru/easyjson v0.9.1 // indirect
 	github.com/maruel/roundtrippers v0.5.0 // indirect
 	github.com/maruel/safetensors v1.2.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.28 // indirect
@@ -110,8 +110,8 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
-	golang.org/x/sys v0.35.0 // indirect
-	golang.org/x/term v0.34.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/term v0.38.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect

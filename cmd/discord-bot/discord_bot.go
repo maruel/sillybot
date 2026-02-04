@@ -666,7 +666,7 @@ func (d *discordBot) handlePromptBlocking(req msgReq) {
 	replyToID := req.replyToID
 	for {
 		// 32768
-		result, err := d.p.GenSync(d.ctx, c.Messages, &genai.OptionsText{})
+		result, err := d.p.GenSync(d.ctx, c.Messages, &genai.GenOptionsText{})
 		if err != nil {
 			if _, err = d.dg.ChannelMessageSend(req.channelID, "Prompt generation failed: "+err.Error()+"\nTry `/forget` to reset the internal state"); err != nil {
 				slog.Error("discord", "message", "failed posting message", "error", err)
@@ -995,12 +995,11 @@ func (d *discordBot) handleImage(req intReq) {
 					// Intentionally limit the number of tokens, otherwise it's Stable
 					// Diffusion that is unhappy.
 					imgseed := seed + 4*int64(i) + 4*int64(j)
-					opts := genai.OptionsText{
+					opts := genai.GenOptionsText{
 						MaxTokens:    70,
 						SystemPrompt: d.settings.PromptLabels,
-						Seed:         imgseed,
 					}
-					result, err := d.p.GenSync(ctx, msgs, &opts)
+					result, err := d.p.GenSync(ctx, msgs, &opts, genai.GenOptionsSeed(imgseed))
 					newLabels := result.String()
 					if err != nil {
 						u.err = fmt.Errorf("failed to enhance labels: %w", err)
@@ -1038,12 +1037,11 @@ func (d *discordBot) handleImage(req intReq) {
 				msgs := genai.Messages{
 					genai.NewTextMessage("Prompt: " + req.description + "\n" + "Text relevant to the image: " + labelsContent),
 				}
-				opts := genai.OptionsText{
+				opts := genai.GenOptionsText{
 					MaxTokens:    125,
 					SystemPrompt: d.settings.PromptLabels,
-					Seed:         seed,
 				}
-				result, err := d.p.GenSync(ctx, msgs, &opts)
+				result, err := d.p.GenSync(ctx, msgs, &opts, genai.GenOptionsSeed(seed))
 				if err != nil {
 					u.err = fmt.Errorf("failed to enhance image generation prompt: %w", err)
 					updates <- u

@@ -21,7 +21,7 @@ type Client struct {
 }
 
 // GenSync implements genai.Provider
-func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts ...genai.Options) (genai.Result, error) {
+func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts ...genai.GenOptions) (genai.Result, error) {
 	r := trace.StartRegion(ctx, "llm.GenSync")
 	defer r.End()
 	if len(msgs) == 0 {
@@ -39,7 +39,7 @@ func (c *Client) GenSync(ctx context.Context, msgs []genai.Message, opts ...gena
 }
 
 // GenStream implements genai.Provider
-func (c *Client) GenStream(ctx context.Context, msgs []genai.Message, opts ...genai.Options) (iter.Seq[genai.Reply], func() (genai.Result, error)) {
+func (c *Client) GenStream(ctx context.Context, msgs []genai.Message, opts ...genai.GenOptions) (iter.Seq[genai.Reply], func() (genai.Result, error)) {
 	r := trace.StartRegion(ctx, "llm.GenStream")
 	defer r.End()
 	if len(msgs) == 0 {
