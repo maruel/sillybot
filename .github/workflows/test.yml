@@ -25,10 +25,10 @@ jobs:
     - name: Turn off git core.autocrlf
       if: matrix.os == 'windows-latest'
       run: git config --global core.autocrlf false
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 2
-    - uses: actions/setup-go@v5
+    - uses: actions/setup-go@v6
       with:
         go-version-file: go.mod
     - name: 'go install necessary tools'
@@ -39,7 +39,7 @@ jobs:
       if: always()
       run: go test -timeout=600s -v -covermode=count -coverprofile coverage.txt -bench=. -benchtime=1x -short ./...
       # Don't send code coverage if anything failed to reduce spam.
-    - uses: codecov/codecov-action@v4
+    - uses: codecov/codecov-action@v5
       with:
         token: ${{secrets.CODECOV_TOKEN}}
     - name: 'Cleanup'
@@ -82,8 +82,8 @@ jobs:
     - name: Turn off git core.autocrlf
       if: matrix.os == 'windows-latest'
       run: git config --global core.autocrlf false
-    - uses: actions/checkout@v4
-    - uses: actions/setup-go@v5
+    - uses: actions/checkout@v6
+    - uses: actions/setup-go@v6
       with:
         go-version-file: go.mod
     - name: 'go install necessary tools'
@@ -210,15 +210,15 @@ jobs:
     permissions:
       security-events: write
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-go@v5
+    - uses: actions/checkout@v6
+    - uses: actions/setup-go@v6
       with:
         go-version-file: go.mod
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
+      uses: github/codeql-action/init@v4
       with:
         languages: go
     - name: Autobuild
-      uses: github/codeql-action/autobuild@v3
+      uses: github/codeql-action/autobuild@v4
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
+      uses: github/codeql-action/analyze@v4
