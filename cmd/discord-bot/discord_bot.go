@@ -1017,7 +1017,7 @@ func (d *discordBot) handleImage(req intReq) {
 						break
 					}
 				}
-				if j == len(options) {
+				if j == len(options) && len(options) > 0 {
 					// No great option found, take a guess which is the less bad one.
 					// TODO: We loose the seed when we sort.
 					slices.SortFunc(options[:], memeLabelHeuristics)
